@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# Production
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.production
+.env.test
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# Prisma
+prisma/migrations/
+*.db
+*.db-journal
+
+# Redis
+dump.rdb
+
+# Uploads
+uploads/
+temp/
+tmp/
+
+# PDF
+*.pdf
+!api-documentation.pdf
+
+# Cache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
+.eslintcache

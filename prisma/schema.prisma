@@ -1,0 +1,230 @@
+// Enterprise-grade Prisma Schema for HRMS Backend
+// Production-ready with full audit trails, soft deletes, and proper indexing
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  EMPLOYEE
+  HR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum ClientGroupStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  BULK_OPERATION
+  FILE_UPLOAD
+  PASSWORD_CHANGE
+  OTP_VERIFICATION
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id                String      @id @default(uuid()) @db.Uuid
+  email             String      @unique
+  password          String
+  firstName         String      @map("first_name")
+  lastName          String      @map("last_name")
+  role              UserRole    @default(EMPLOYEE)
+  status            UserStatus  @default(PENDING_VERIFICATION)
+  isEmailVerified   Boolean     @default(false) @map("is_email_verified")
+  lastLoginAt       DateTime?   @map("last_login_at")
+  lastLoginIp       String?     @map("last_login_ip")
+  passwordChangedAt DateTime?   @map("password_changed_at")
+  
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  
+  // Relations
+  refreshTokens     RefreshToken[]
+  sessions          Session[]
+  auditLogs         AuditLog[]
+  activityLogs      ActivityLog[]
+  createdClientGroups ClientGroup[] @relation("CreatedByUser")
+  updatedClientGroups ClientGroup[] @relation("UpdatedByUser")
+  deletedClientGroups ClientGroup[] @relation("DeletedByUser")
+
+  @@index([email])
+  @@index([status])
+  @@index([role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+// ============================================
+// AUTHENTICATION & SESSION MANAGEMENT
+// ============================================
+
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  token        String    @unique
+  userId       String    @map("user_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at")
+  isRevoked    Boolean   @default(false) @map("is_revoked")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedBy   String?   @map("replaced_by")
+  ipAddress    String    @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  sessionId    String    @unique @map("session_id")
+  userId       String    @map("user_id") @db.Uuid
+  ipAddress    String    @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  expiresAt    DateTime  @map("expires_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastActivity DateTime  @default(now()) @map("last_activity")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================
+// CLIENT GROUP MODULE
+// ============================================
+
+model ClientGroup {
+  id         String            @id @default(uuid()) @db.Uuid
+  cgNumber   String            @unique @map("cg_number") // CG-11001, CG-11002, etc.
+  groupNo    String            @map("group_no")
+  groupName  String            @map("group_name")
+  groupCode  String            @unique @map("group_code")
+  country    String
+  status     ClientGroupStatus @default(ACTIVE)
+  remark     String?           @db.Text
+  
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  deletedBy String? @map("deleted_by") @db.Uuid
+  
+  // Relations
+  creator User? @relation("CreatedByUser", fields: [createdBy], references: [id])
+  updater User? @relation("UpdatedByUser", fields: [updatedBy], references: [id])
+  deleter User? @relation("DeletedByUser", fields: [deletedBy], references: [id])
+
+  @@index([cgNumber])
+  @@index([groupCode])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("client_groups")
+}
+
+// ============================================
+// AUDIT & ACTIVITY LOGS
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  action      String
+  entity      String
+  entityId    String?  @map("entity_id")
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  ipAddress   String   @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String?      @map("user_id") @db.Uuid
+  type        ActivityType
+  description String
+  metadata    Json?
+  ipAddress   String       @map("ip_address")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ============================================
+// FILE STORAGE METADATA
+// ============================================
+
+model FileMetadata {
+  id           String    @id @default(uuid()) @db.Uuid
+  fileName     String    @map("file_name")
+  originalName String    @map("original_name")
+  mimeType     String    @map("mime_type")
+  size         Int
+  url          String
+  storageKey   String    @map("storage_key") // Cloud storage key/path
+  uploadedBy   String?   @map("uploaded_by") @db.Uuid
+  
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([uploadedBy])
+  @@index([createdAt])
+  @@map("file_metadata")
+}
