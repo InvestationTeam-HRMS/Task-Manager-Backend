@@ -137,8 +137,7 @@ model Session {
 
 model ClientGroup {
   id         String            @id @default(uuid()) @db.Uuid
-  cgNumber   String            @unique @map("cg_number") // CG-11001, CG-11002, etc.
-  groupNo    String            @map("group_no")
+  groupNo    String            @unique @map("group_no")
   groupName  String            @map("group_name")
   groupCode  String            @unique @map("group_code")
   country    String
@@ -158,7 +157,7 @@ model ClientGroup {
   updater User? @relation("UpdatedByUser", fields: [updatedBy], references: [id])
   deleter User? @relation("DeletedByUser", fields: [deletedBy], references: [id])
 
-  @@index([cgNumber])
+  @@index([groupNo])
   @@index([groupCode])
   @@index([status])
   @@index([deletedAt])

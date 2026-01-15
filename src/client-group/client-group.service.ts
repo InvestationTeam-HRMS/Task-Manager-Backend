@@ -38,14 +38,13 @@ export class ClientGroupService {
             throw new ConflictException('Group code already exists');
         }
 
-        // Generate CG number
-        const cgNumber = await this.generateCgNumber();
+        // Generate Group Number
+        const generatedGroupNo = await this.generateGroupNo();
 
         const clientGroup = await this.prisma.clientGroup.create({
             data: {
                 ...dto,
-                groupNo: dto.groupNo || cgNumber,
-                cgNumber,
+                groupNo: dto.groupNo || generatedGroupNo,
                 status: dto.status || ClientGroupStatus.ACTIVE,
                 createdBy: userId,
             },
@@ -71,20 +70,11 @@ export class ClientGroupService {
                 OR: [
                     { groupName: { contains: search, mode: Prisma.QueryMode.insensitive } },
                     { groupCode: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                    { cgNumber: { contains: search, mode: Prisma.QueryMode.insensitive } },
+                    { groupNo: { contains: search, mode: Prisma.QueryMode.insensitive } },
                     { country: { contains: search, mode: Prisma.QueryMode.insensitive } },
                 ],
             }),
         };
-
-        // Try cache for list without search
-        if (!search) {
-            const cacheKey = `${this.CACHE_KEY}:list:${page}:${limit}:${sortBy}:${sortOrder}`;
-            const cached = await this.redisService.getCache(cacheKey);
-            if (cached) {
-                return cached;
-            }
-        }
 
         const [data, total] = await Promise.all([
             this.prisma.clientGroup.findMany({
@@ -92,27 +82,11 @@ export class ClientGroupService {
                 skip,
                 take: limit,
                 orderBy: { [sortBy]: sortOrder },
-                include: {
-                    creator: {
-                        select: { id: true, firstName: true, lastName: true, email: true },
-                    },
-                    updater: {
-                        select: { id: true, firstName: true, lastName: true, email: true },
-                    },
-                },
             }),
             this.prisma.clientGroup.count({ where }),
         ]);
 
-        const response = new PaginatedResponse(data, total, page, limit);
-
-        // Cache if no search
-        if (!search) {
-            const cacheKey = `${this.CACHE_KEY}:list:${page}:${limit}:${sortBy}:${sortOrder}`;
-            await this.redisService.setCache(cacheKey, response, this.CACHE_TTL);
-        }
-
-        return response;
+        return new PaginatedResponse(data, total, page, limit);
     }
 
     async findActive(pagination: PaginationDto) {
@@ -234,13 +208,12 @@ export class ClientGroupService {
                         continue;
                     }
 
-                    const cgNumber = await this.generateCgNumber();
+                    const generatedGroupNo = await this.generateGroupNo();
 
                     const created = await tx.clientGroup.create({
                         data: {
                             ...clientGroupDto,
-                            groupNo: clientGroupDto.groupNo || cgNumber,
-                            cgNumber,
+                            groupNo: clientGroupDto.groupNo || generatedGroupNo,
                             status: clientGroupDto.status || ClientGroupStatus.ACTIVE,
                             createdBy: userId,
                         },
@@ -415,20 +388,20 @@ export class ClientGroupService {
         };
     }
 
-    private async generateCgNumber(): Promise<string> {
+    private async generateGroupNo(): Promise<string> {
         const prefix = this.configService.get('CG_NUMBER_PREFIX', 'CG-');
         const startNumber = parseInt(this.configService.get('CG_NUMBER_START', '11001'));
 
-        // Get the last CG number
+        // Get the last Group number
         const lastClientGroup = await this.prisma.clientGroup.findFirst({
-            orderBy: { cgNumber: 'desc' },
-            select: { cgNumber: true },
+            orderBy: { groupNo: 'desc' },
+            select: { groupNo: true },
         });
 
         let nextNumber = startNumber;
 
         if (lastClientGroup) {
-            const lastNumber = parseInt(lastClientGroup.cgNumber.replace(prefix, ''));
+            const lastNumber = parseInt(lastClientGroup.groupNo.replace(prefix, ''));
             nextNumber = lastNumber + 1;
         }
 

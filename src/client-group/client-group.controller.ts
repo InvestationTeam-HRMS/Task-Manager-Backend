@@ -11,6 +11,8 @@ import {
     UseGuards,
     UseInterceptors,
     UploadedFile,
+    UsePipes,
+    ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ClientGroupService } from './client-group.service';
@@ -36,14 +38,15 @@ export class ClientGroupController {
     constructor(private clientGroupService: ClientGroupService) { }
 
     @Post()
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateClientGroupDto, @GetUser('id') userId: string) {
         return this.clientGroupService.create(dto, userId);
     }
 
     @Get()
-    findAll(@Query() pagination: PaginationDto, @Query() filter: FilterClientGroupDto) {
-        return this.clientGroupService.findAll(pagination, filter);
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    findAll(@Query() query: any) {
+        return this.clientGroupService.findAll(query, query);
     }
 
     @Get('active')
