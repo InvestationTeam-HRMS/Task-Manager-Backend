@@ -193,28 +193,44 @@ export class ClientGroupService {
         const results: any[] = [];
         const errors: any[] = [];
 
+        // Pre-fetch the base starting number to avoid duplicate generation issues in transaction
+        let currentGroupNoStr = await this.generateGroupNo();
+        const prefix = this.configService.get('CG_NUMBER_PREFIX', 'CG-');
+        let currentNum = parseInt(currentGroupNoStr.replace(prefix, ''));
+
         await this.prisma.$transaction(async (tx) => {
+            // Get all existing groupCodes to check against
+            const existingGroups = await tx.clientGroup.findMany({
+                select: { groupCode: true }
+            });
+            const existingCodes = new Set(existingGroups.map(g => g.groupCode));
+            const codesInCurrentBatch = new Set<string>();
+
             for (const clientGroupDto of dto.clientGroups) {
                 try {
-                    // Check duplicate
-                    const existing = await tx.clientGroup.findUnique({
-                        where: { groupCode: clientGroupDto.groupCode },
-                    });
+                    let finalGroupCode = clientGroupDto.groupCode;
 
-                    if (existing) {
-                        errors.push({
-                            groupCode: clientGroupDto.groupCode,
-                            error: 'Group code already exists',
-                        });
-                        continue;
+                    // If groupCode is already in DB or in this batch, make it unique
+                    let suffix = 1;
+                    const originalCode = finalGroupCode;
+                    while (existingCodes.has(finalGroupCode) || codesInCurrentBatch.has(finalGroupCode)) {
+                        finalGroupCode = `${originalCode}-${suffix}`;
+                        suffix++;
                     }
+                    codesInCurrentBatch.add(finalGroupCode);
 
-                    const generatedGroupNo = await this.generateGroupNo();
+                    // Generate unique Group No
+                    let finalGroupNo = clientGroupDto.groupNo;
+                    if (!finalGroupNo || finalGroupNo.trim() === '') {
+                        finalGroupNo = `${prefix}${currentNum}`;
+                        currentNum++;
+                    }
 
                     const created = await tx.clientGroup.create({
                         data: {
                             ...clientGroupDto,
-                            groupNo: clientGroupDto.groupNo || generatedGroupNo,
+                            groupCode: finalGroupCode,
+                            groupNo: finalGroupNo,
                             status: clientGroupDto.status || ClientGroupStatus.ACTIVE,
                             createdBy: userId,
                         },
@@ -222,6 +238,7 @@ export class ClientGroupService {
 
                     results.push(created);
                 } catch (error) {
+                    this.logger.error(`[BULK_CREATE_ERROR] Row failed: ${clientGroupDto.groupCode} - Error: ${error.message}`);
                     errors.push({
                         groupCode: clientGroupDto.groupCode,
                         error: error.message,
@@ -229,6 +246,8 @@ export class ClientGroupService {
                 }
             }
         });
+
+        this.logger.log(`[BULK_CREATE_COMPLETED] Success: ${results.length}, Failed: ${errors.length}`);
 
         await this.invalidateCache();
 
@@ -377,29 +396,42 @@ export class ClientGroupService {
         }
 
         const clientGroups: CreateClientGroupDto[] = [];
-        const errors: any[] = [];
+        const parseErrors: any[] = [];
 
-        this.logger.log(`[UPLOAD_DATA] Processing ${worksheet.rowCount - 1} rows from ${formatUsed} file.`);
+        this.logger.log(`[UPLOAD_DATA] Processing worksheet with ${worksheet.rowCount} max rows.`);
 
-        worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip Header
+        // Use a standard loop to ensure we check every row up to rowCount
+        for (let i = 2; i <= worksheet.rowCount; i++) {
+            const row = worksheet.getRow(i);
+
+            // Check if row has any data (built-in check + our custom check)
+            if (!row || !row.hasValues) continue;
 
             try {
                 const getVal = (idx: number) => {
                     const cell = row.getCell(idx);
                     if (!cell || cell.value === null || cell.value === undefined) return '';
-                    if (typeof cell.value === 'object') {
-                        if ('result' in (cell.value as any)) return (cell.value as any).result?.toString().trim();
-                        if ('text' in (cell.value as any)) return (cell.value as any).text?.toString().trim();
+
+                    // Handle ExcelJS value objects (formulas, shared strings, etc)
+                    const val = cell.value;
+                    if (typeof val === 'object') {
+                        if ('result' in (val as any)) return (val as any).result?.toString().trim() || '';
+                        if ('text' in (val as any)) return (val as any).text?.toString().trim() || '';
+                        if ('richText' in (val as any)) {
+                            return (val as any).richText.map((rt: any) => rt.text).join('').trim();
+                        }
                         return '';
                     }
-                    return cell.value.toString().trim();
+                    return val.toString().trim();
                 };
 
                 const groupName = getVal(2);
                 const groupCode = getVal(3);
 
-                if (!groupName && !groupCode) return; // Skip blank rows
+                // Basic validation: if both name and code are missing, it's likely an empty row or junk
+                if (!groupName && !groupCode) {
+                    continue;
+                }
 
                 clientGroups.push({
                     groupNo: getVal(1),
@@ -409,10 +441,15 @@ export class ClientGroupService {
                     status: (getVal(5).toUpperCase() as ClientGroupStatus) || ClientGroupStatus.ACTIVE,
                     remark: getVal(6),
                 });
+
+                this.logger.debug(`[UPLOAD_PARSED] Row ${i}: Found ${groupCode}`);
             } catch (e) {
-                errors.push({ row: rowNumber, error: e.message });
+                this.logger.error(`[UPLOAD_PARSE_ROW_ERROR] Row ${i}: ${e.message}`);
+                parseErrors.push({ row: i, error: e.message });
             }
-        });
+        }
+
+        this.logger.log(`[UPLOAD_PARSED_ALL] Successfully parsed ${clientGroups.length} records. Failures: ${parseErrors.length}`);
 
         if (clientGroups.length === 0) {
             throw new BadRequestException('No valid data found to import.');
