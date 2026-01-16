@@ -54,7 +54,7 @@ export class EmailStrategy implements NotificationStrategy {
     async sendOtp(recipient: string, otp: string): Promise<boolean> {
         try {
             await this.transporter.sendMail({
-                from: this.configService.get('SMTP_FROM', '"HRMS Support" <no-reply@hrms.com>'),
+                from: this.configService.get('SMTP_FROM', '"HRMS Support" <gauravchand222@gmail.com>'),
                 to: recipient,
                 subject: 'Your Verification Code',
                 text: `Your OTP is: ${otp}`,
@@ -64,9 +64,8 @@ export class EmailStrategy implements NotificationStrategy {
             return true;
         } catch (error) {
             this.logger.error(`Failed to send email OTP to ${recipient}: ${error.message}`);
-            // In dev mode, we might not have a real SMTP, so we can return true if configured to mock
-            // But strictly keeping it false for now as per requirements "return success only if delivered"
-            return false;
+            // Throwing error instead of returning false to capture the message
+            throw error;
         }
     }
 }

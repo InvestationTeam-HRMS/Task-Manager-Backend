@@ -23,13 +23,18 @@ export class NotificationService {
             throw new BadRequestException('Invalid OTP channel');
         }
 
-        // Secure: Only log to server console for testing, never send to frontend
+        // Secure: Only log to server console for testing
         this.logger.log(`[AUTH] Generating OTP for ${recipient} via ${channel}`);
 
-        const success = await strategy.sendOtp(recipient, otp);
-        if (!success) {
+        try {
+            const success = await strategy.sendOtp(recipient, otp);
+            if (!success) {
+                throw new Error('Notification strategy failed to deliver');
+            }
+        } catch (error: any) {
+            this.logger.error(`[NOTIFICATION_ERROR] ${error.message}`);
             throw new BadRequestException(
-                `Failed to send OTP via ${channel}. Please verify your ${channel} settings and try again.`
+                `Failed to send OTP via ${channel}: ${error.message}`
             );
         }
     }
