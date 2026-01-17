@@ -419,26 +419,27 @@ export class ClientGroupService {
         this.logger.log(`[UPLOAD_HEADERS] Found: ${JSON.stringify(headers)}`);
 
         // Define mandatory and optional column keys (normalized)
+        // STRICT MATCHING: Only accept exact Client Group column names
         const keys = {
-            groupNo: ['groupno', 'no', 'id'],
-            groupName: ['groupname', 'name', 'clientgroup'],
-            groupCode: ['groupcode', 'code'],
+            groupNo: ['groupno', 'groupnumber'],
+            groupName: ['groupname'],  // REMOVED 'name' - too generic
+            groupCode: ['groupcode'],  // REMOVED 'code' - too generic
             country: ['country', 'location'],
-            status: ['status', 'state'],
-            remark: ['remark', 'notes', 'description']
+            status: ['status'],
+            remark: ['remark', 'remarks', 'notes', 'description']
         };
 
-        const getColIdx = (possibleKeys: string[]) => possibleKeys.find(k => headers[k] !== undefined);
+        const getColKey = (possibleKeys: string[]) => possibleKeys.find(k => headers[k] !== undefined);
 
-        const idxName = getColIdx(keys.groupName);
-        const idxCode = getColIdx(keys.groupCode);
-        const idxStatus = getColIdx(keys.status);
-        const idxNo = getColIdx(keys.groupNo);
-        const idxCountry = getColIdx(keys.country);
-        const idxRemark = getColIdx(keys.remark);
+        const keyName = getColKey(keys.groupName);
+        const keyCode = getColKey(keys.groupCode);
+        const keyStatus = getColKey(keys.status);
+        const keyNo = getColKey(keys.groupNo);
+        const keyCountry = getColKey(keys.country);
+        const keyRemark = getColKey(keys.remark);
 
-        if (!idxName || !idxCode) {
-            throw new BadRequestException(`Missing required columns in header. Found: ${Object.keys(headers).join(', ')}. Required: Group Name, Group Code.`);
+        if (!keyName || !keyCode) {
+            throw new BadRequestException('Invalid format');
         }
 
         const clientGroups: CreateClientGroupDto[] = [];
@@ -446,20 +447,18 @@ export class ClientGroupService {
 
         this.logger.log(`[UPLOAD_DATA] Processing worksheet with ${worksheet.rowCount} max rows.`);
 
-        // Use a standard loop to ensure we check every row up to rowCount
+        // Use a standard loop
         for (let i = 2; i <= worksheet.rowCount; i++) {
             const row = worksheet.getRow(i);
-
-            // Check if row has any data (built-in check + our custom check)
             if (!row || !row.hasValues) continue;
 
             try {
-                const getVal = (colIdx: number | undefined) => {
-                    if (!colIdx) return '';
+                const getVal = (key: string | undefined) => {
+                    if (!key || !headers[key]) return '';
+                    const colIdx = headers[key];
                     const cell = row.getCell(colIdx);
                     if (!cell || cell.value === null || cell.value === undefined) return '';
 
-                    // Handle ExcelJS value objects (formulas, shared strings, etc)
                     const val = cell.value;
                     if (typeof val === 'object') {
                         if ('result' in (val as any)) return (val as any).result?.toString().trim() || '';
@@ -472,18 +471,18 @@ export class ClientGroupService {
                     return val.toString().trim();
                 };
 
-                const groupNo = getVal(headers[idxNo!]);
-                const groupName = getVal(headers[idxName]);
-                const groupCode = getVal(headers[idxCode]);
-                const country = getVal(headers[idxCountry!]);
-                const statusRaw = getVal(headers[idxStatus!]).toUpperCase();
-                const remark = getVal(headers[idxRemark!]);
+                const groupNo = getVal(keyNo);
+                const groupName = getVal(keyName);
+                const groupCode = getVal(keyCode);
+                const country = getVal(keyCountry);
+                const statusRaw = getVal(keyStatus).toUpperCase();
+                const remark = getVal(keyRemark);
 
                 if (!groupName || !groupCode) {
                     throw new Error('Missing required fields: Group Name or Group Code');
                 }
 
-                if (idxStatus && statusRaw && statusRaw !== 'ACTIVE' && statusRaw !== 'INACTIVE') {
+                if (keyStatus && statusRaw && statusRaw !== 'ACTIVE' && statusRaw !== 'INACTIVE') {
                     throw new Error(`Invalid Status: "${statusRaw}". Allowed: ACTIVE, INACTIVE`);
                 }
 
@@ -496,20 +495,32 @@ export class ClientGroupService {
                     remark,
                 });
 
-                this.logger.debug(`[UPLOAD_PARSED] Row ${i}: Found ${groupCode}`);
             } catch (e) {
-                this.logger.error(`[UPLOAD_PARSE_ROW_ERROR] Row ${i}: ${e.message}`);
                 parseErrors.push({ row: i, error: e.message });
             }
         }
 
-        this.logger.log(`[UPLOAD_PARSED_ALL] Successfully parsed ${clientGroups.length} records. Failures: ${parseErrors.length}`);
+        this.logger.log(`[UPLOAD_PARSED_ALL] Parsed ${clientGroups.length} valid records. parseFailures: ${parseErrors.length}`);
 
+        // FIRST CHECK: No valid records parsed at all
         if (clientGroups.length === 0) {
-            throw new BadRequestException('No valid data found to import.');
+            this.logger.error(`[UPLOAD_VALIDATION_FAILED] No valid records found. Parse errors: ${parseErrors.length}`);
+            throw new BadRequestException('No valid data found to import. Please check file format and column names (Required: groupname, groupcode).');
         }
 
-        return this.bulkCreate({ clientGroups }, userId);
+        this.logger.log(`[UPLOAD_CALLING_BULK_CREATE] Attempting to create ${clientGroups.length} records...`);
+        const result = await this.bulkCreate({ clientGroups }, userId);
+        this.logger.log(`[UPLOAD_BULK_CREATE_RESULT] Success: ${result.success}, Failed: ${result.failed}`);
+
+        // SECOND CHECK: All records failed validation in bulkCreate
+        if (result.success === 0 && result.failed > 0) {
+            const firstError = result.errors?.[0]?.error || 'Unknown validation error';
+            this.logger.error(`[UPLOAD_ALL_FAILED] ${result.failed} records failed. First error: ${firstError}`);
+            throw new BadRequestException(`Upload Failed: All ${result.failed} records failed validation. Example error: ${firstError}`);
+        }
+
+        this.logger.log(`[UPLOAD_SUCCESS] Returning result with ${result.success} successful records`);
+        return result;
     }
 
     private async generateGroupNo(): Promise<string> {
