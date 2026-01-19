@@ -454,13 +454,75 @@ export class GroupService {
             );
         }
 
+        // Validate enums and resolve names to IDs
+        const processedData: CreateGroupDto[] = [];
         for (const row of data) {
             if (row.status) {
                 this.excelUploadService.validateEnum(row.status as string, GroupStatus, 'Status');
             }
+
+            // Resolve clientGroupName to clientGroupId
+            let clientGroupId: string | undefined = undefined;
+            if ((row as any).clientGroupName) {
+                const group = await this.prisma.clientGroup.findFirst({
+                    where: { groupName: (row as any).clientGroupName },
+                });
+                if (!group) {
+                    throw new BadRequestException(`Client Group not found: ${(row as any).clientGroupName}`);
+                }
+                clientGroupId = group.id;
+            }
+
+            // Resolve companyName to companyId
+            let companyId: string | undefined = undefined;
+            if ((row as any).companyName) {
+                const company = await this.prisma.clientCompany.findFirst({
+                    where: { companyName: (row as any).companyName },
+                });
+                if (!company) {
+                    throw new BadRequestException(`Client Company not found: ${(row as any).companyName}`);
+                }
+                companyId = company.id;
+            }
+
+            // Resolve locationName to locationId
+            let locationId: string | undefined = undefined;
+            if ((row as any).locationName) {
+                const location = await this.prisma.clientLocation.findFirst({
+                    where: { locationName: (row as any).locationName },
+                });
+                if (!location) {
+                    throw new BadRequestException(`Client Location not found: ${(row as any).locationName}`);
+                }
+                locationId = location.id;
+            }
+
+            // Resolve subLocationName to subLocationId
+            let subLocationId: string | undefined = undefined;
+            if ((row as any).subLocationName) {
+                const subLocation = await this.prisma.subLocation.findFirst({
+                    where: { subLocationName: (row as any).subLocationName },
+                });
+                if (!subLocation) {
+                    throw new BadRequestException(`Sub Location not found: ${(row as any).subLocationName}`);
+                }
+                subLocationId = subLocation.id;
+            }
+
+            processedData.push({
+                groupNo: (row as any).groupNo,
+                groupName: (row as any).groupName,
+                groupCode: (row as any).groupCode,
+                clientGroupId,
+                companyId,
+                locationId,
+                subLocationId,
+                status: (row as any).status,
+                remark: (row as any).remark,
+            });
         }
 
-        const result = await this.bulkCreate({ groups: data }, userId);
+        const result = await this.bulkCreate({ groups: processedData }, userId);
 
         if (result.success === 0 && result.failed > 0) {
             const firstError = result.errors?.[0]?.error || 'Unknown validation error';

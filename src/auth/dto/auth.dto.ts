@@ -10,7 +10,7 @@ export class RegisterDto {
     email: string;
 
     @IsString()
-    @MinLength(8)
+    @MinLength(4)
     password: string;
 
     @IsString()
@@ -67,7 +67,7 @@ export class ChangePasswordDto {
     oldPassword: string;
 
     @IsString()
-    @MinLength(8)
+    @MinLength(4)
     newPassword: string;
 }
 
@@ -84,6 +84,6 @@ export class ResetPasswordDto {
     otp: string;
 
     @IsString()
-    @MinLength(8)
+    @MinLength(4)
     newPassword: string;
 }
