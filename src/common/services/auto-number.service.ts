@@ -127,6 +127,20 @@ export class AutoNumberService {
     }
 
     /**
+     * Generate next number for Task (T-11001, T-11002, etc.)
+     */
+    async generateTaskNo(): Promise<string> {
+        return this.generateNumber(
+            'task',
+            'taskNo',
+            'T_NUMBER_PREFIX',
+            'T_NUMBER_START',
+            'T-',
+            '11001'
+        );
+    }
+
+    /**
      * Generic number generator
      * @param modelName - Prisma model name (e.g., 'clientGroup')
      * @param fieldName - Field name for the number (e.g., 'groupNo')

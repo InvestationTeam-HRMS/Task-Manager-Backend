@@ -107,6 +107,11 @@ model User {
   // IP Address relations
   createdIpAddresses IpAddress[] @relation("IpAddressCreatedByUser")
   updatedIpAddresses IpAddress[] @relation("IpAddressUpdatedByUser")
+  
+  // Task relations
+  assignedTasks Task[] @relation("TaskAssignedTo")
+  createdTasks  Task[] @relation("TaskCreatedBy")
+  workingTasks  Task[] @relation("TaskWorkingBy")
 
   @@index([email])
   @@index([status])
@@ -127,7 +132,7 @@ model RefreshToken {
   isRevoked    Boolean   @default(false) @map("is_revoked")
   revokedAt    DateTime? @map("revoked_at")
   replacedBy   String?   @map("replaced_by")
-  ipAddress    String    @map("ip_address")
+  ipAddress    String?   @map("ip_address") // Changed to optional as per instruction
   userAgent    String?   @map("user_agent")
   
   createdAt DateTime @default(now()) @map("created_at")
@@ -460,6 +465,8 @@ model Project {
   creator User? @relation("ProjectCreatedByUser", fields: [createdBy], references: [id])
   updater User? @relation("ProjectUpdatedByUser", fields: [updatedBy], references: [id])
 
+  tasks       Task[]
+
   @@index([projectNo])
   @@index([subLocationId])
   @@index([status])
@@ -595,4 +602,51 @@ model IpAddress {
   @@index([status])
   @@index([createdAt])
   @@map("ip_addresses")
+}
+
+// ============================================
+// TASK MODULE
+// ============================================
+
+model Task {
+  id              String      @id @default(uuid()) @db.Uuid
+  taskNo          String      @unique @map("task_no")
+  taskTitle       String      @map("task_title")
+  priority        String?
+  taskStatus      TaskStatus  @default(PENDING) @map("task_status")
+  additionalNote  String?     @map("additional_note") @db.Text
+  deadline        DateTime?
+  completeTime    DateTime?   @map("complete_time")
+  reviewedTime    DateTime?   @map("reviewed_time")
+  reminderTime    DateTime?   @map("reminder_time")
+  attachment      String?
+  remarkChat      String?     @map("remark_chat") @db.Text
+  
+  creatingTime    DateTime    @default(now()) @map("creating_time")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  
+  projectId       String?     @map("project_id") @db.Uuid
+  assignedTo      String?     @map("assigned_to") @db.Uuid
+  createdBy       String?     @map("created_by") @db.Uuid
+  workingBy       String?     @map("working_by") @db.Uuid
+  
+  // Relations
+  project         Project?    @relation(fields: [projectId], references: [id])
+  assignee        User?       @relation("TaskAssignedTo", fields: [assignedTo], references: [id])
+  creator         User?       @relation("TaskCreatedBy", fields: [createdBy], references: [id])
+  worker          User?       @relation("TaskWorkingBy", fields: [workingBy], references: [id])
+
+  @@index([taskNo])
+  @@index([taskStatus])
+  @@index([projectId])
+  @@index([assignedTo])
+  @@map("tasks")
+}
+
+enum TaskStatus {
+  PENDING
+  SUCCESS
+  WORKING
+  REVIEW
+  HOLD
 }
