@@ -227,7 +227,7 @@ export class AuthService {
         );
 
         // Store refresh token
-        const refreshExpiry = 7 * 24 * 60 * 60; // 7 days
+        const refreshExpiry = 30 * 24 * 60 * 60; // 30 days
         await this.prisma.refreshToken.create({
             data: {
                 token: refreshToken,
@@ -302,7 +302,7 @@ export class AuthService {
         );
 
         // Store new refresh token
-        const refreshExpiry = 7 * 24 * 60 * 60;
+        const refreshExpiry = 30 * 24 * 60 * 60; // 30 days
         await this.prisma.refreshToken.create({
             data: {
                 token: refreshToken,
