@@ -35,10 +35,15 @@ export class TaskService {
         const { page = 1, limit = 25 } = pagination;
         const skip = (page - 1) * limit;
 
-        const where: Prisma.TaskWhereInput = {};
+        const where: Prisma.TaskWhereInput = {
+            AND: []
+        };
+
+        const andArray = where.AND as Array<Prisma.TaskWhereInput>;
 
         if (filter.search) {
-            where.OR = [
+            const searchLower = filter.search.toLowerCase();
+            const orConditions: Prisma.TaskWhereInput[] = [
                 { taskTitle: { contains: filter.search, mode: 'insensitive' } },
                 { taskNo: { contains: filter.search, mode: 'insensitive' } },
                 { additionalNote: { contains: filter.search, mode: 'insensitive' } },
@@ -49,31 +54,48 @@ export class TaskService {
                 { creator: { firstName: { contains: filter.search, mode: 'insensitive' } } },
                 { worker: { firstName: { contains: filter.search, mode: 'insensitive' } } },
             ];
+
+            // Specific status matching
+            if ('pending'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ taskStatus: 'PENDING' });
+            if ('success'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ taskStatus: 'SUCCESS' });
+            if ('working'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ taskStatus: 'WORKING' });
+            if ('review'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ taskStatus: 'REVIEW' });
+            if ('hold'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ taskStatus: 'HOLD' });
+
+            andArray.push({ OR: orConditions });
         }
 
         if (filter.taskStatus) {
-            where.taskStatus = filter.taskStatus;
+            const statusValues = typeof filter.taskStatus === 'string'
+                ? filter.taskStatus.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.taskStatus) ? filter.taskStatus : [filter.taskStatus];
+            if (statusValues.length > 0) andArray.push({ taskStatus: { in: statusValues as any } });
         }
 
         if (filter.priority) {
-            where.priority = filter.priority;
+            const priorityValues = typeof filter.priority === 'string'
+                ? filter.priority.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.priority) ? filter.priority : [filter.priority];
+            if (priorityValues.length > 0) andArray.push({ priority: { in: priorityValues as any } });
         }
 
         if (filter.projectId) {
-            where.projectId = filter.projectId;
+            andArray.push({ projectId: filter.projectId });
         }
 
         if (filter.assignedTo) {
-            where.assignedTo = filter.assignedTo;
+            andArray.push({ assignedTo: filter.assignedTo });
         }
 
         if (filter.createdBy) {
-            where.createdBy = filter.createdBy;
+            andArray.push({ createdBy: filter.createdBy });
         }
 
         if (filter.workingBy) {
-            where.workingBy = filter.workingBy;
+            andArray.push({ workingBy: filter.workingBy });
         }
+
+        if (andArray.length === 0) delete where.AND;
 
         const [data, total] = await Promise.all([
             this.prisma.task.findMany({

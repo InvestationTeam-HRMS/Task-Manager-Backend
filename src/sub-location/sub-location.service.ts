@@ -81,28 +81,56 @@ export class SubLocationService {
         } = pagination;
         const skip = (page - 1) * limit;
 
+        const cleanedSearch = search?.trim();
         const where: Prisma.SubLocationWhereInput = {
-            AND: [
-                filter?.status ? { status: filter.status } : {},
-                filter?.companyId ? { companyId: filter.companyId } : {},
-                filter?.locationId ? { locationId: filter.locationId } : {},
-                buildMultiValueFilter('subLocationName', filter?.subLocationName),
-                buildMultiValueFilter('subLocationNo', filter?.subLocationNo),
-                buildMultiValueFilter('subLocationCode', filter?.subLocationCode),
-                buildMultiValueFilter('remark', filter?.remark),
-                search ? {
-                    OR: [
-                        { subLocationName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { subLocationCode: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { subLocationNo: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { address: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { remark: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { location: { locationName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                        { company: { companyName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                    ]
-                } : {},
-            ].filter(condition => condition && Object.keys(condition).length > 0) as any
+            AND: []
         };
+
+        const andArray = where.AND as Array<Prisma.SubLocationWhereInput>;
+
+        // Handle Status Filter (handle possible multi-select from UI)
+        if (filter?.status) {
+            const statusValues = typeof filter.status === 'string'
+                ? filter.status.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.status) ? filter.status : [filter.status];
+
+            if (statusValues.length > 0) {
+                andArray.push({
+                    status: { in: statusValues as any }
+                });
+            }
+        }
+
+        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+        if (filter?.subLocationName) andArray.push(buildMultiValueFilter('subLocationName', filter.subLocationName));
+        if (filter?.subLocationNo) andArray.push(buildMultiValueFilter('subLocationNo', filter.subLocationNo));
+        if (filter?.subLocationCode) andArray.push(buildMultiValueFilter('subLocationCode', filter.subLocationCode));
+        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
+        if (cleanedSearch) {
+            const orConditions: Prisma.SubLocationWhereInput[] = [
+                { subLocationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { subLocationCode: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { subLocationNo: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { address: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { remark: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { location: { locationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+                { company: { companyName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+            ];
+
+            const searchLower = cleanedSearch.toLowerCase();
+            if ('active'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'ACTIVE' as any });
+            }
+            if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'INACTIVE' as any });
+            }
+
+            andArray.push({ OR: orConditions });
+        }
+
+        if (andArray.length === 0) delete where.AND;
 
         const [data, total] = await Promise.all([
             this.prisma.subLocation.findMany({

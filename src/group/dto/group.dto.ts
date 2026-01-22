@@ -132,4 +132,8 @@ export class FilterGroupDto {
     @IsOptional()
     @IsString()
     groupCode?: string;
+
+    @IsOptional()
+    @IsString()
+    remark?: string;
 }

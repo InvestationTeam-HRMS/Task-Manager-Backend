@@ -94,30 +94,53 @@ export class TeamService {
         } = pagination;
         const skip = (page - 1) * limit;
 
+        const cleanedSearch = search?.trim();
         const where: Prisma.TeamWhereInput = {
-            AND: [
-                filter?.status ? { status: filter.status } : {},
-                filter?.clientGroupId ? { clientGroupId: filter.clientGroupId } : {},
-                filter?.companyId ? { companyId: filter.companyId } : {},
-                filter?.locationId ? { locationId: filter.locationId } : {},
-                filter?.subLocationId ? { subLocationId: filter.subLocationId } : {},
-                buildMultiValueFilter('teamName', filter?.teamName),
-                buildMultiValueFilter('teamNo', filter?.teamNo),
-                buildMultiValueFilter('remark', filter?.remark),
-                search ? {
-                    OR: [
-                        { teamName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { teamNo: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { remark: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { subLocation: { subLocationName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                        { location: { locationName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                        { company: { companyName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                        { clientGroup: { groupName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                    ]
-                } : {},
-            ].filter(condition => condition && Object.keys(condition).length > 0) as any
+            AND: []
         };
+
+        const andArray = where.AND as Array<Prisma.TeamWhereInput>;
+
+        // Handle Status Filter
+        if (filter?.status) {
+            const statusValues = typeof filter.status === 'string'
+                ? filter.status.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.status) ? filter.status : [filter.status];
+            if (statusValues.length > 0) andArray.push({ status: { in: statusValues as any } });
+        }
+
+        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
+        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+        if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
+        if (filter?.teamName) andArray.push(buildMultiValueFilter('teamName', filter.teamName));
+        if (filter?.teamNo) andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
+        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
+        if (cleanedSearch) {
+            const orConditions: Prisma.TeamWhereInput[] = [
+                { teamName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { teamNo: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { email: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { remark: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { subLocation: { subLocationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+                { location: { locationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+                { company: { companyName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+                { clientGroup: { groupName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+            ];
+
+            const searchLower = cleanedSearch.toLowerCase();
+            if ('active'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'ACTIVE' as any });
+            }
+            if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'INACTIVE' as any });
+            }
+
+            andArray.push({ OR: orConditions });
+        }
+
+        if (andArray.length === 0) delete where.AND;
 
         const [data, total] = await Promise.all([
             this.prisma.team.findMany({

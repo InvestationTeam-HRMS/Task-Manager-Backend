@@ -80,26 +80,54 @@ export class ClientLocationService {
         } = pagination;
         const skip = (page - 1) * limit;
 
+        const cleanedSearch = search?.trim();
         const where: Prisma.ClientLocationWhereInput = {
-            AND: [
-                filter?.status ? { status: filter.status } : {},
-                filter?.companyId ? { companyId: filter.companyId } : {},
-                buildMultiValueFilter('locationName', filter?.locationName),
-                buildMultiValueFilter('locationNo', filter?.locationNo),
-                buildMultiValueFilter('locationCode', filter?.locationCode),
-                buildMultiValueFilter('remark', filter?.remark),
-                search ? {
-                    OR: [
-                        { locationName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { locationCode: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { locationNo: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { address: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { remark: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { company: { companyName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                    ]
-                } : {},
-            ].filter(condition => condition && Object.keys(condition).length > 0) as any
+            AND: []
         };
+
+        const andArray = where.AND as Array<Prisma.ClientLocationWhereInput>;
+
+        // Handle Status Filter (handle possible multi-select from UI)
+        if (filter?.status) {
+            const statusValues = typeof filter.status === 'string'
+                ? filter.status.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.status) ? filter.status : [filter.status];
+
+            if (statusValues.length > 0) {
+                andArray.push({
+                    status: { in: statusValues as any }
+                });
+            }
+        }
+
+        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.locationName) andArray.push(buildMultiValueFilter('locationName', filter.locationName));
+        if (filter?.locationNo) andArray.push(buildMultiValueFilter('locationNo', filter.locationNo));
+        if (filter?.locationCode) andArray.push(buildMultiValueFilter('locationCode', filter.locationCode));
+        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
+        if (cleanedSearch) {
+            const orConditions: Prisma.ClientLocationWhereInput[] = [
+                { locationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { locationCode: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { locationNo: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { address: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { remark: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { company: { companyName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+            ];
+
+            const searchLower = cleanedSearch.toLowerCase();
+            if ('active'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'ACTIVE' as any });
+            }
+            if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
+                orConditions.push({ status: 'INACTIVE' as any });
+            }
+
+            andArray.push({ OR: orConditions });
+        }
+
+        if (andArray.length === 0) delete where.AND;
 
         const [data, total] = await Promise.all([
             this.prisma.clientLocation.findMany({

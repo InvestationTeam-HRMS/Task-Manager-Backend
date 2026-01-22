@@ -74,29 +74,57 @@ export class ProjectService {
         } = pagination;
         const skip = (page - 1) * limit;
 
+        const cleanedSearch = search?.trim();
         const where: Prisma.ProjectWhereInput = {
-            AND: [
-                filter?.status ? { status: filter.status } : {},
-                filter?.priority ? { priority: filter.priority } : {},
-                filter?.subLocationId ? { subLocationId: filter.subLocationId } : {},
-                filter?.locationId ? { subLocation: { locationId: filter.locationId } } : {},
-                filter?.companyId ? { subLocation: { location: { companyId: filter.companyId } } } : {},
-                filter?.clientGroupId ? { subLocation: { location: { company: { groupId: filter.clientGroupId } } } } : {},
-                buildMultiValueFilter('projectName', filter?.projectName),
-                buildMultiValueFilter('projectNo', filter?.projectNo),
-                buildMultiValueFilter('remark', filter?.remark),
-                search ? {
-                    OR: [
-                        { projectName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { projectNo: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { remark: { contains: search, mode: Prisma.QueryMode.insensitive } },
-                        { subLocation: { subLocationName: { contains: search, mode: Prisma.QueryMode.insensitive } } },
-                        { subLocation: { location: { locationName: { contains: search, mode: Prisma.QueryMode.insensitive } } } },
-                        { subLocation: { location: { company: { companyName: { contains: search, mode: Prisma.QueryMode.insensitive } } } } },
-                    ]
-                } : {},
-            ].filter(condition => condition && Object.keys(condition).length > 0) as any
+            AND: []
         };
+
+        const andArray = where.AND as Array<Prisma.ProjectWhereInput>;
+
+        // Handle Status Filter
+        if (filter?.status) {
+            const statusValues = typeof filter.status === 'string'
+                ? filter.status.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.status) ? filter.status : [filter.status];
+            if (statusValues.length > 0) andArray.push({ status: { in: statusValues as any } });
+        }
+
+        // Handle Priority Filter
+        if (filter?.priority) {
+            const priorityValues = typeof filter.priority === 'string'
+                ? filter.priority.split(/[,\:;]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.priority) ? filter.priority : [filter.priority];
+            if (priorityValues.length > 0) andArray.push({ priority: { in: priorityValues as any } });
+        }
+
+        if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
+        if (filter?.locationId) andArray.push({ subLocation: { locationId: filter.locationId } });
+        if (filter?.companyId) andArray.push({ subLocation: { location: { companyId: filter.companyId } } });
+        if (filter?.clientGroupId) andArray.push({ subLocation: { location: { company: { groupId: filter.clientGroupId } } } });
+        if (filter?.projectName) andArray.push(buildMultiValueFilter('projectName', filter.projectName));
+        if (filter?.projectNo) andArray.push(buildMultiValueFilter('projectNo', filter.projectNo));
+        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
+        if (cleanedSearch) {
+            const orConditions: Prisma.ProjectWhereInput[] = [
+                { projectName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { projectNo: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { remark: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } },
+                { subLocation: { subLocationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } },
+                { subLocation: { location: { locationName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } } },
+                { subLocation: { location: { company: { companyName: { contains: cleanedSearch, mode: Prisma.QueryMode.insensitive } } } } },
+            ];
+
+            const searchLower = cleanedSearch.toLowerCase();
+            if ('active'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ status: 'ACTIVE' as any });
+            if ('inactive'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ status: 'INACTIVE' as any });
+            if ('completed'.includes(searchLower) && searchLower.length >= 3) orConditions.push({ status: 'COMPLETED' as any });
+            if (('on hold'.includes(searchLower) || 'onhold'.includes(searchLower)) && searchLower.length >= 3) orConditions.push({ status: 'ON_HOLD' as any });
+
+            andArray.push({ OR: orConditions });
+        }
+
+        if (andArray.length === 0) delete where.AND;
 
         const [data, total] = await Promise.all([
             this.prisma.project.findMany({
