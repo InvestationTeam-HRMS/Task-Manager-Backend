@@ -11,11 +11,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         private configService: ConfigService,
         private prisma: PrismaService,
     ) {
-       super({
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  ignoreExpiration: false,
-  secretOrKey: configService.get<string>('JWT_ACCESS_SECRET')!,
-})
+        super({
+            jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+            ignoreExpiration: false,
+            secretOrKey: configService.get<string>('JWT_ACCESS_SECRET')!,
+        })
     }
 
     async validate(payload: any) {
@@ -32,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             },
         });
 
-        if (!user || user.status !== 'ACTIVE') {
+        if (!user || user.status !== 'Active') {
             throw new UnauthorizedException('User not found or inactive');
         }
 

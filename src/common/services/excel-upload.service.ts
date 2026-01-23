@@ -165,7 +165,7 @@ export class ExcelUploadService {
                             rowData[key] = '';
                         }
                     } else if (val !== null && val !== undefined) {
-                        rowData[key] = toTitleCase(val.toString());
+                        rowData[key] = val.toString().trim();
                     } else {
                         rowData[key] = '';
                     }
@@ -197,13 +197,18 @@ export class ExcelUploadService {
 
     validateEnum(value: string, enumObj: any, fieldName: string): string {
         const validValues = Object.values(enumObj) as string[];
-        const upperVal = value.toUpperCase().trim();
+        const trimmedVal = value.trim();
 
-        if (value && !validValues.includes(upperVal)) {
+        // Case-insensitive find
+        const match = validValues.find(
+            (v) => v.toLowerCase() === trimmedVal.toLowerCase(),
+        );
+
+        if (trimmedVal && !match) {
             throw new Error(
                 `Invalid ${fieldName}: "${value}". Allowed: ${validValues.join(', ')}`,
             );
         }
-        return upperVal;
+        return match || trimmedVal; // Return the actual enum value (with correct casing) if found
     }
 }

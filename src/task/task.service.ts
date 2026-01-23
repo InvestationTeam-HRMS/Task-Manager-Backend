@@ -127,11 +127,11 @@ export class TaskService {
                 fieldOrConditions.push({ creator: { firstName: { contains: val, mode: 'insensitive' } } });
                 fieldOrConditions.push({ worker: { firstName: { contains: val, mode: 'insensitive' } } });
 
-                if ('pending'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'PENDING' });
-                if ('success'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'SUCCESS' });
-                if ('working'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'WORKING' });
-                if ('review'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'REVIEW' });
-                if ('hold'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'HOLD' });
+                if ('pending'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'Pending' });
+                if ('success'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'Success' });
+                if ('working'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'Working' });
+                if ('review'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'Review' });
+                if ('hold'.includes(searchLower) && searchLower.length >= 3) fieldOrConditions.push({ taskStatus: 'Hold' });
 
                 searchOrConditions.push({ OR: fieldOrConditions });
             }

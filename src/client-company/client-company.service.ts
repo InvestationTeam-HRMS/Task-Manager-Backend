@@ -66,7 +66,7 @@ export class ClientCompanyService {
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 companyNo: dto.companyNo || generatedCompanyNo,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
-                status: dto.status || CompanyStatus.ACTIVE,
+                status: dto.status || CompanyStatus.Active,
                 createdBy: userId,
             },
         });
@@ -144,10 +144,10 @@ export class ClientCompanyService {
                 allSearchConditions.push({ group: { groupName: { contains: searchTitle, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -218,7 +218,7 @@ export class ClientCompanyService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterClientCompanyDto = { status: CompanyStatus.ACTIVE };
+        const filter: FilterClientCompanyDto = { status: CompanyStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -424,7 +424,7 @@ export class ClientCompanyService {
                     remark,
                     companyCode: finalCompanyCode,
                     companyNo: finalCompanyNo,
-                    status: companyDto.status || CompanyStatus.ACTIVE,
+                    status: companyDto.status || CompanyStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -568,7 +568,7 @@ export class ClientCompanyService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, CompanyStatus, 'Status') : CompanyStatus.ACTIVE;
+                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, CompanyStatus, 'Status') : CompanyStatus.Active;
 
                 const groupId = groupMap.get(row.groupName?.toLowerCase());
                 if (!groupId) {

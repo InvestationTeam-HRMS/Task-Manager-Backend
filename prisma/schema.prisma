@@ -14,7 +14,7 @@ model User {
   firstName           String           @map("first_name")
   lastName            String           @map("last_name")
   role                UserRole         @default(EMPLOYEE)
-  status              UserStatus       @default(PENDING_VERIFICATION)
+  status              UserStatus       @default(Pending_Verification)
   isEmailVerified     Boolean          @default(false) @map("is_email_verified")
   lastLoginAt         DateTime?        @map("last_login_at")
   lastLoginIp         String?          @map("last_login_ip")
@@ -100,7 +100,7 @@ model ClientGroup {
   groupName   String            @map("group_name")
   groupCode   String            @unique @map("group_code")
   country     String
-  status      ClientGroupStatus @default(ACTIVE)
+  status      ClientGroupStatus @default(Active)
   remark      String?
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
@@ -196,7 +196,7 @@ model ClientCompany {
   companyCode  String           @unique @map("company_code")
   groupId      String           @map("group_id") @db.Uuid
   address      String?
-  status       CompanyStatus    @default(ACTIVE)
+  status       CompanyStatus    @default(Active)
   remark       String?
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
@@ -228,7 +228,7 @@ model ClientLocation {
   locationCode String         @unique @map("location_code")
   companyId    String         @map("company_id") @db.Uuid
   address      String?
-  status       LocationStatus @default(ACTIVE)
+  status       LocationStatus @default(Active)
   remark       String?
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
@@ -260,7 +260,7 @@ model SubLocation {
   companyId       String            @map("company_id") @db.Uuid
   locationId      String            @map("location_id") @db.Uuid
   address         String?
-  status          SubLocationStatus @default(ACTIVE)
+  status          SubLocationStatus @default(Active)
   remark          String?
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
@@ -293,8 +293,8 @@ model Project {
   projectName   String          @map("project_name")
   subLocationId String          @map("sub_location_id") @db.Uuid
   deadline      DateTime?
-  priority      ProjectPriority @default(MEDIUM)
-  status        ProjectStatus   @default(ACTIVE)
+  priority      ProjectPriority @default(Medium)
+  status        ProjectStatus   @default(Active)
   remark        String?
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
@@ -328,7 +328,7 @@ model Team {
   companyId            String?         @map("company_id") @db.Uuid
   locationId           String?         @map("location_id") @db.Uuid
   subLocationId        String?         @map("sub_location_id") @db.Uuid
-  status               TeamStatus      @default(ACTIVE)
+  status               TeamStatus      @default(Active)
   loginMethod          LoginMethod     @default(EMAIL)
   remark               String?
   createdAt            DateTime        @default(now()) @map("created_at")
@@ -364,7 +364,7 @@ model Group {
   companyId     String?         @map("company_id") @db.Uuid
   locationId    String?         @map("location_id") @db.Uuid
   subLocationId String?         @map("sub_location_id") @db.Uuid
-  status        GroupStatus     @default(ACTIVE)
+  status        GroupStatus     @default(Active)
   remark        String?
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
@@ -417,7 +417,7 @@ model IpAddress {
   companyId     String?         @map("company_id") @db.Uuid
   locationId    String?         @map("location_id") @db.Uuid
   subLocationId String?         @map("sub_location_id") @db.Uuid
-  status        IpAddressStatus @default(ACTIVE)
+  status        IpAddressStatus @default(Active)
   remark        String?
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
@@ -449,7 +449,7 @@ model Task {
   taskNo         String     @unique @map("task_no")
   taskTitle      String     @map("task_title")
   priority       String?
-  taskStatus     TaskStatus @default(PENDING) @map("task_status")
+  taskStatus     TaskStatus @default(Pending) @map("task_status")
   additionalNote String?    @map("additional_note")
   deadline       DateTime?
   completeTime   DateTime?  @map("complete_time")
@@ -486,15 +486,15 @@ enum UserRole {
 }
 
 enum UserStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-  PENDING_VERIFICATION
+  Active
+  Inactive
+  Suspended
+  Pending_Verification
 }
 
 enum ClientGroupStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum ActivityType {
@@ -511,37 +511,37 @@ enum ActivityType {
 }
 
 enum CompanyStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum LocationStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum SubLocationStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum ProjectStatus {
-  ACTIVE
-  INACTIVE
-  COMPLETED
-  ON_HOLD
+  Active
+  Inactive
+  Completed
+  On_Hold
 }
 
 enum ProjectPriority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
+  Low
+  Medium
+  High
+  Critical
 }
 
 enum TeamStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum LoginMethod {
@@ -551,19 +551,19 @@ enum LoginMethod {
 }
 
 enum GroupStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum IpAddressStatus {
-  ACTIVE
-  INACTIVE
+  Active
+  Inactive
 }
 
 enum TaskStatus {
-  PENDING
-  SUCCESS
-  WORKING
-  REVIEW
-  HOLD
+  Pending
+  Success
+  Working
+  Review
+  Hold
 }

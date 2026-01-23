@@ -55,8 +55,8 @@ export class ProjectService {
                 deadline: dto.deadline ? new Date(dto.deadline) : null,
                 projectNo: dto.projectNo || generatedProjectNo,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
-                priority: dto.priority || ProjectPriority.MEDIUM,
-                status: dto.status || ProjectStatus.ACTIVE,
+                priority: dto.priority || ProjectPriority.Medium,
+                status: dto.status || ProjectStatus.Active,
                 createdBy: userId,
             },
         });
@@ -136,10 +136,10 @@ export class ProjectService {
                 allSearchConditions.push({ subLocation: { location: { company: { companyName: { contains: val, mode: 'insensitive' } } } } });
                 allSearchConditions.push({ subLocation: { location: { company: { companyName: { contains: searchTitle, mode: 'insensitive' } } } } });
 
-                if ('active'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'ACTIVE' as any });
-                if ('inactive'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'INACTIVE' as any });
-                if ('completed'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'COMPLETED' as any });
-                if (('on hold'.includes(searchLower) || 'onhold'.includes(searchLower)) && searchLower.length >= 3) allSearchConditions.push({ status: 'ON_HOLD' as any });
+                if ('active'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'Active' as any });
+                if ('inactive'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'Inactive' as any });
+                if ('completed'.includes(searchLower) && searchLower.length >= 3) allSearchConditions.push({ status: 'Completed' as any });
+                if (('on hold'.includes(searchLower) || 'onhold'.includes(searchLower)) && searchLower.length >= 3) allSearchConditions.push({ status: 'On_Hold' as any });
             }
 
             if (allSearchConditions.length > 0) {
@@ -222,7 +222,7 @@ export class ProjectService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterProjectDto = { status: ProjectStatus.ACTIVE };
+        const filter: FilterProjectDto = { status: ProjectStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -380,8 +380,8 @@ export class ProjectService {
                     remark,
                     projectNo: finalProjectNo,
                     deadline: projectDto.deadline ? new Date(projectDto.deadline) : null,
-                    priority: projectDto.priority || ProjectPriority.MEDIUM,
-                    status: projectDto.status || ProjectStatus.ACTIVE,
+                    priority: projectDto.priority || ProjectPriority.Medium,
+                    status: projectDto.status || ProjectStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -525,8 +525,8 @@ export class ProjectService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, ProjectStatus, 'Status') : ProjectStatus.ACTIVE;
-                const priority = row.priority ? this.excelUploadService.validateEnum(row.priority as string, ProjectPriority, 'Priority') : ProjectPriority.MEDIUM;
+                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, ProjectStatus, 'Status') : ProjectStatus.Active;
+                const priority = row.priority ? this.excelUploadService.validateEnum(row.priority as string, ProjectPriority, 'Priority') : ProjectPriority.Medium;
 
                 const subLocationId = subLocationMap.get(row.subLocationName?.toLowerCase());
                 if (!subLocationId) {

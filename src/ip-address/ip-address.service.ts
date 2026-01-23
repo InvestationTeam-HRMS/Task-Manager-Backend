@@ -71,7 +71,7 @@ export class IpAddressService {
             data: {
                 ...dto,
                 ipNo: dto.ipNo || generatedIpNo,
-                status: dto.status || IpAddressStatus.ACTIVE,
+                status: dto.status || IpAddressStatus.Active,
                 createdBy: userId,
             },
         });
@@ -152,10 +152,10 @@ export class IpAddressService {
                 allSearchConditions.push({ remark: { contains: val, mode: 'insensitive' } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -204,7 +204,7 @@ export class IpAddressService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterIpAddressDto = { status: IpAddressStatus.ACTIVE };
+        const filter: FilterIpAddressDto = { status: IpAddressStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -344,7 +344,7 @@ export class IpAddressService {
                     ...ipAddressDto,
                     ipAddressName,
                     ipNo: finalIpNo,
-                    status: ipAddressDto.status || IpAddressStatus.ACTIVE,
+                    status: ipAddressDto.status || IpAddressStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -498,7 +498,7 @@ export class IpAddressService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, IpAddressStatus, 'Status') : IpAddressStatus.ACTIVE;
+                const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, IpAddressStatus, 'Status') : IpAddressStatus.Active;
 
                 const clientGroupId = clientGroupMap.get((row as any).clientGroupName?.toLowerCase());
                 if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);

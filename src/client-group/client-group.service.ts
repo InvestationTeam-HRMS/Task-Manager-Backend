@@ -55,7 +55,7 @@ export class ClientGroupService {
                 country: toTitleCase(dto.country),
                 groupNo: dto.groupNo || generatedGroupNo,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
-                status: dto.status || ClientGroupStatus.ACTIVE,
+                status: dto.status || ClientGroupStatus.Active,
                 createdBy: userId,
             },
         });
@@ -127,10 +127,10 @@ export class ClientGroupService {
 
                 // Add status-based exact match conditions
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -187,7 +187,7 @@ export class ClientGroupService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterClientGroupDto = { status: ClientGroupStatus.ACTIVE };
+        const filter: FilterClientGroupDto = { status: ClientGroupStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -373,7 +373,7 @@ export class ClientGroupService {
                     remark,
                     groupCode: finalGroupCode,
                     groupNo: finalGroupNo,
-                    status: clientGroupDto.status || ClientGroupStatus.ACTIVE,
+                    status: clientGroupDto.status || ClientGroupStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -514,7 +514,7 @@ export class ClientGroupService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i] as any;
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(String(row.status), ClientGroupStatus, 'Status') : ClientGroupStatus.ACTIVE;
+                const status = row.status ? this.excelUploadService.validateEnum(String(row.status), ClientGroupStatus, 'Status') : ClientGroupStatus.Active;
 
                 processedData.push({
                     ...row,

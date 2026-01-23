@@ -76,7 +76,7 @@ export class TeamService {
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
                 taskAssignPermission: dto.taskAssignPermission || false,
                 loginMethod: dto.loginMethod || LoginMethod.EMAIL,
-                status: dto.status || TeamStatus.ACTIVE,
+                status: dto.status || TeamStatus.Active,
                 createdBy: userId,
             },
         });
@@ -153,10 +153,10 @@ export class TeamService {
                 allSearchConditions.push({ clientGroup: { groupName: { contains: searchTitle, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -225,7 +225,7 @@ export class TeamService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterTeamDto = { status: TeamStatus.ACTIVE };
+        const filter: FilterTeamDto = { status: TeamStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -373,7 +373,7 @@ export class TeamService {
                     remark,
                     taskAssignPermission: teamDto.taskAssignPermission || false,
                     loginMethod: teamDto.loginMethod || LoginMethod.EMAIL,
-                    status: teamDto.status || TeamStatus.ACTIVE,
+                    status: teamDto.status || TeamStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -530,7 +530,7 @@ export class TeamService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, TeamStatus, 'Status') : TeamStatus.ACTIVE;
+                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, TeamStatus, 'Status') : TeamStatus.Active;
                 const loginMethod = row.loginMethod ? this.excelUploadService.validateEnum(row.loginMethod as string, LoginMethod, 'LoginMethod') : LoginMethod.EMAIL;
 
                 if (!row.email) throw new Error(`Email is missing for ${row.teamName}`);

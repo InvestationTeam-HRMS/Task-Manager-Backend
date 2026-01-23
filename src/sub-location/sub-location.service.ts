@@ -63,7 +63,7 @@ export class SubLocationService {
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 companyId: dto.companyId || location.companyId, // Ensure companyId is set
                 subLocationNo: dto.subLocationNo || generatedSubLocationNo,
-                status: dto.status || SubLocationStatus.ACTIVE,
+                status: dto.status || SubLocationStatus.Active,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
                 createdBy: userId,
             },
@@ -144,10 +144,10 @@ export class SubLocationService {
                 allSearchConditions.push({ company: { companyName: { contains: searchTitle, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -228,7 +228,7 @@ export class SubLocationService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterSubLocationDto = { status: SubLocationStatus.ACTIVE };
+        const filter: FilterSubLocationDto = { status: SubLocationStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -418,7 +418,7 @@ export class SubLocationService {
                     remark,
                     subLocationCode: finalSubLocationCode,
                     subLocationNo: finalSubLocationNo,
-                    status: subLocationDto.status || SubLocationStatus.ACTIVE,
+                    status: subLocationDto.status || SubLocationStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -570,7 +570,7 @@ export class SubLocationService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, SubLocationStatus, 'Status') : SubLocationStatus.ACTIVE;
+                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, SubLocationStatus, 'Status') : SubLocationStatus.Active;
 
                 const companyId = companyMap.get(row.companyName?.toLowerCase());
                 if (!companyId) {

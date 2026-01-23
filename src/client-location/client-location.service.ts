@@ -63,7 +63,7 @@ export class ClientLocationService {
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 locationNo: dto.locationNo || generatedLocationNo,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
-                status: dto.status || LocationStatus.ACTIVE,
+                status: dto.status || LocationStatus.Active,
                 createdBy: userId,
             },
         });
@@ -141,10 +141,10 @@ export class ClientLocationService {
                 allSearchConditions.push({ company: { companyName: { contains: searchTitle, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -215,7 +215,7 @@ export class ClientLocationService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterClientLocationDto = { status: LocationStatus.ACTIVE };
+        const filter: FilterClientLocationDto = { status: LocationStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -401,7 +401,7 @@ export class ClientLocationService {
                     remark,
                     locationCode: finalLocationCode,
                     locationNo: finalLocationNo,
-                    status: locationDto.status || LocationStatus.ACTIVE,
+                    status: locationDto.status || LocationStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -544,7 +544,7 @@ export class ClientLocationService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, LocationStatus, 'Status') : LocationStatus.ACTIVE;
+                const status = row.status ? this.excelUploadService.validateEnum(row.status as string, LocationStatus, 'Status') : LocationStatus.Active;
 
                 const companyId = companyMap.get(row.companyName?.toLowerCase());
                 if (!companyId) {

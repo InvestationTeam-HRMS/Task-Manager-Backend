@@ -128,12 +128,12 @@ export class DemoService {
                 groupName: 'Test Corp',
                 groupCode: `TC-${testId}`,
                 country: 'India',
-                status: 'ACTIVE'
+                status: 'Active'
             },
             responseExample: {
                 id: 'uuid',
                 cgNumber: 'CG-11002',
-                status: 'ACTIVE'
+                status: 'Active'
             }
         });
 

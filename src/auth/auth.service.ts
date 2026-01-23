@@ -94,7 +94,7 @@ export class AuthService {
                 lastName: tempUser.lastName,
                 phoneNumber: tempUser.phoneNumber,
                 role: UserRole.EMPLOYEE,
-                status: UserStatus.ACTIVE,
+                status: UserStatus.Active,
                 isEmailVerified: true,
                 allowedIps: [ipAddress], // Add verification IP to allowed list (Strict Security)
             } as any,
@@ -122,7 +122,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        if (user.status !== UserStatus.ACTIVE) {
+        if (user.status !== UserStatus.Active) {
             throw new UnauthorizedException('Account is not active');
         }
 
@@ -145,7 +145,7 @@ export class AuthService {
                 const globalIp = await this.prisma.ipAddress.findFirst({
                     where: {
                         ipAddress: ipAddress,
-                        status: 'ACTIVE',
+                        status: 'Active',
                     },
                 });
                 isGloballyAllowed = !!globalIp;
@@ -214,7 +214,7 @@ export class AuthService {
             const globalIp = await this.prisma.ipAddress.findFirst({
                 where: {
                     ipAddress: ipAddress,
-                    status: 'ACTIVE',
+                    status: 'Active',
                 },
             });
             isGloballyAllowed = !!globalIp;

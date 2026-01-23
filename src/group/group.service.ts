@@ -82,7 +82,7 @@ export class GroupService {
             data: {
                 ...dto,
                 groupNo: dto.groupNo || generatedGroupNo,
-                status: dto.status || GroupStatus.ACTIVE,
+                status: dto.status || GroupStatus.Active,
                 createdBy: userId,
             },
         });
@@ -148,10 +148,10 @@ export class GroupService {
                 allSearchConditions.push({ location: { locationName: { contains: val, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'ACTIVE' as any });
+                    allSearchConditions.push({ status: 'Active' as any });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'INACTIVE' as any });
+                    allSearchConditions.push({ status: 'Inactive' as any });
                 }
             }
 
@@ -200,7 +200,7 @@ export class GroupService {
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: FilterGroupDto = { status: GroupStatus.ACTIVE };
+        const filter: FilterGroupDto = { status: GroupStatus.Active };
         return this.findAll(pagination, filter);
     }
 
@@ -391,7 +391,7 @@ export class GroupService {
                     groupName,
                     groupCode: finalGroupCode,
                     groupNo: finalGroupNo,
-                    status: groupDto.status || GroupStatus.ACTIVE,
+                    status: groupDto.status || GroupStatus.Active,
                     createdBy: userId,
                 });
             } catch (err) {
@@ -545,7 +545,7 @@ export class GroupService {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             try {
-                const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, GroupStatus, 'Status') : GroupStatus.ACTIVE;
+                const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, GroupStatus, 'Status') : GroupStatus.Active;
 
                 const clientGroupId = clientGroupMap.get((row as any).clientGroupName?.toLowerCase());
                 if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);
