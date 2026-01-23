@@ -338,6 +338,20 @@ export class TaskService {
                     // @ts-ignore
                     deadline: true,
                     // @ts-ignore
+                    attachment: true,
+                    // @ts-ignore
+                    additionalNote: true,
+                    // @ts-ignore
+                    remarkChat: true,
+                    // @ts-ignore
+                    reminderTime: true,
+                    // @ts-ignore
+                    reviewedTime: true,
+                    // @ts-ignore
+                    completeTime: true,
+                    // @ts-ignore
+                    updatedAt: true,
+                    // @ts-ignore
                     projectId: true,
                     project: {
                         select: { id: true, projectName: true, projectNo: true }
@@ -353,6 +367,9 @@ export class TaskService {
                     },
                     targetTeam: {
                         select: { id: true, teamName: true, email: true }
+                    },
+                    targetGroup: {
+                        select: { id: true, groupName: true, groupCode: true }
                     }
                 },
             }),
