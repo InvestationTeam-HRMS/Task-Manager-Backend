@@ -18,9 +18,9 @@ export class CreateTaskDto {
     @IsString()
     additionalNote?: string;
 
+    @IsOptional()
     @IsDateString()
-    @IsNotEmpty()
-    deadline: string;
+    deadline?: string;
 
     @IsOptional()
     @IsDateString()
@@ -41,6 +41,10 @@ export class CreateTaskDto {
     @IsOptional()
     @IsUUID()
     targetGroupId?: string;
+
+    @IsOptional()
+    @IsUUID()
+    targetTeamId?: string;
 }
 
 export class UpdateTaskDto {
@@ -98,6 +102,10 @@ export class UpdateTaskDto {
 
     @IsOptional()
     @IsUUID()
+    targetTeamId?: string;
+
+    @IsOptional()
+    @IsUUID()
     workingBy?: string;
 }
 
@@ -128,9 +136,32 @@ export class FilterTaskDto {
 
     @IsOptional()
     @IsUUID()
+    targetTeamId?: string;
+
+    @IsOptional()
+    @IsUUID()
     createdBy?: string;
 
     @IsOptional()
     @IsUUID()
     workingBy?: string;
+
+    @IsOptional()
+    @IsString()
+    viewMode?: TaskViewMode;
+
+    @IsOptional()
+    page?: any;
+
+    @IsOptional()
+    limit?: any;
+}
+
+export enum TaskViewMode {
+    MY_PENDING = 'MY_PENDING',
+    MY_COMPLETED = 'MY_COMPLETED',
+    TEAM_PENDING = 'TEAM_PENDING',
+    TEAM_COMPLETED = 'TEAM_COMPLETED',
+    REVIEW_PENDING_BY_ME = 'REVIEW_PENDING_BY_ME',
+    REVIEW_PENDING_BY_TEAM = 'REVIEW_PENDING_BY_TEAM',
 }

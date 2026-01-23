@@ -53,6 +53,12 @@ export class GroupController {
         return this.groupService.findActive(pagination);
     }
 
+    @Get('my-groups')
+    @UseGuards(JwtAuthGuard)
+    findMyGroups(@GetUser('id') userId: string) {
+        return this.groupService.findMyGroups(userId);
+    }
+
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     findById(@Param('id') id: string) {

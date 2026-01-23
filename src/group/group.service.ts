@@ -204,6 +204,32 @@ export class GroupService {
         return this.findAll(pagination, filter);
     }
 
+    async findMyGroups(userId: string) {
+        // Get groups where user is a member AND group is Active
+        const groupMembers = await this.prisma.groupMember.findMany({
+            where: {
+                userId,
+                group: {
+                    status: GroupStatus.Active
+                }
+            },
+            include: {
+                group: {
+                    select: {
+                        id: true,
+                        groupNo: true,
+                        groupName: true,
+                        groupCode: true,
+                        status: true,
+                    }
+                }
+            }
+        });
+
+        // @ts-ignore
+        return groupMembers.map(gm => gm.group);
+    }
+
     async findById(id: string) {
         const group = await this.prisma.group.findFirst({
             where: { id },

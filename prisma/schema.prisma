@@ -352,6 +352,7 @@ model Team {
   @@index([clientGroupId, companyId, status])
   @@index([companyId, locationId, status])
   @@index([status, createdAt])
+  tasks                Task[]          @relation("TaskToTeam")
   @@map("teams")
 }
 
@@ -462,18 +463,21 @@ model Task {
   projectId      String?    @map("project_id") @db.Uuid
   assignedTo     String?    @map("assigned_to") @db.Uuid
   targetGroupId  String?    @map("target_group_id") @db.Uuid
+  targetTeamId   String?    @map("target_team_id") @db.Uuid
   createdBy      String?    @map("created_by") @db.Uuid
   workingBy      String?    @map("working_by") @db.Uuid
   assignee       User?      @relation("TaskAssignedTo", fields: [assignedTo], references: [id])
   creator        User?      @relation("TaskCreatedBy", fields: [createdBy], references: [id])
   project        Project?   @relation(fields: [projectId], references: [id])
   targetGroup    Group?     @relation("TaskToGroup", fields: [targetGroupId], references: [id])
+  targetTeam     Team?      @relation("TaskToTeam", fields: [targetTeamId], references: [id])
   worker         User?      @relation("TaskWorkingBy", fields: [workingBy], references: [id])
 
   @@index([taskNo])
   @@index([taskStatus])
   @@index([projectId])
   @@index([assignedTo])
+  @@index([targetTeamId])
   @@map("tasks")
 }
 

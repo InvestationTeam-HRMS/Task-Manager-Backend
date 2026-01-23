@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { RedisService } from '../redis/redis.service';
-import { CreateTaskDto, UpdateTaskDto, FilterTaskDto } from './dto/task.dto';
+import { CreateTaskDto, UpdateTaskDto, FilterTaskDto, TaskViewMode } from './dto/task.dto';
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { Prisma, TaskStatus } from '@prisma/client';
@@ -56,6 +56,8 @@ export class TaskService {
                 creator: true,
                 // @ts-ignore
                 targetGroup: true,
+                // @ts-ignore
+                targetTeam: true,
             },
         });
 
@@ -81,6 +83,17 @@ export class TaskService {
             });
         }
 
+        // @ts-ignore
+        if (task.targetTeamId) {
+            // @ts-ignore
+            await this.notificationService.createNotification(task.targetTeamId, { // Placeholder logic
+                title: 'New Team Task',
+                description: `A new task "${task.taskTitle}" has been assigned to your team.`,
+                type: 'TASK',
+                metadata: { taskId: task.id, taskNo: task.taskNo },
+            }).catch(() => { });
+        }
+
         await this.invalidateCache();
         return task;
     }
@@ -95,6 +108,119 @@ export class TaskService {
 
         const andArray = where.AND as Array<Prisma.TaskWhereInput>;
         const { toTitleCase } = await import('../common/utils/string-helper');
+
+        // Handle ViewMode for specialized task views
+        if (filter.viewMode && userId) {
+            // Get user's team info for hierarchy resolution
+            const userTeam = await this.prisma.team.findFirst({
+                where: { email: (await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } }))?.email },
+                select: {
+                    id: true,
+                    clientGroupId: true,
+                    companyId: true,
+                    locationId: true,
+                    subLocationId: true,
+                }
+            });
+
+            // Get team members at same or lower hierarchy
+            let teamMemberIds: string[] = [];
+            if (userTeam) {
+                const teamMembers = await this.prisma.team.findMany({
+                    where: {
+                        AND: [
+                            { status: 'Active' },
+                            {
+                                OR: [
+                                    { clientGroupId: userTeam.clientGroupId },
+                                    { clientGroupId: null }
+                                ]
+                            },
+                            {
+                                OR: [
+                                    { companyId: userTeam.companyId },
+                                    { companyId: null }
+                                ]
+                            },
+                            {
+                                OR: [
+                                    { locationId: userTeam.locationId },
+                                    { locationId: null }
+                                ]
+                            },
+                            {
+                                OR: [
+                                    { subLocationId: userTeam.subLocationId },
+                                    { subLocationId: null }
+                                ]
+                            }
+                        ]
+                    },
+                    select: { email: true }
+                });
+
+                // Get user IDs from team emails
+                const emails = teamMembers.map(t => t.email).filter(Boolean) as string[];
+                const users = await this.prisma.user.findMany({
+                    where: { email: { in: emails } },
+                    select: { id: true }
+                });
+                teamMemberIds = users.map(u => u.id);
+            }
+
+            // Apply viewMode filters
+            switch (filter.viewMode) {
+                case 'MY_PENDING':
+                    andArray.push({
+                        assignedTo: userId,
+                        taskStatus: { in: ['Pending', 'Working', 'Hold'] }
+                    });
+                    break;
+
+                case 'MY_COMPLETED':
+                    andArray.push({
+                        assignedTo: userId,
+                        taskStatus: 'Success'
+                    });
+                    break;
+
+                case 'TEAM_PENDING':
+                    andArray.push({
+                        OR: [
+                            { assignedTo: { in: teamMemberIds } },
+                            // @ts-ignore
+                            { targetTeamId: userTeam?.id }
+                        ],
+                        taskStatus: { in: ['Pending', 'Working', 'Hold'] }
+                    });
+                    break;
+
+                case 'TEAM_COMPLETED':
+                    andArray.push({
+                        OR: [
+                            { assignedTo: { in: teamMemberIds } },
+                            // @ts-ignore
+                            { targetTeamId: userTeam?.id }
+                        ],
+                        taskStatus: 'Success'
+                    });
+                    break;
+
+                case 'REVIEW_PENDING_BY_ME':
+                    andArray.push({
+                        createdBy: userId,
+                        taskStatus: 'Review'
+                    });
+                    break;
+
+                case 'REVIEW_PENDING_BY_TEAM':
+                    andArray.push({
+                        createdBy: { in: teamMemberIds },
+                        taskStatus: 'Review'
+                    });
+                    break;
+            }
+        }
 
         if (filter.search) {
             const searchValues = filter.search.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
@@ -224,6 +350,9 @@ export class TaskService {
                     },
                     worker: {
                         select: { id: true, firstName: true, lastName: true, email: true }
+                    },
+                    targetTeam: {
+                        select: { id: true, teamName: true, email: true }
                     }
                 },
             }),
@@ -261,6 +390,8 @@ export class TaskService {
                 worker: true,
                 // @ts-ignore
                 targetGroup: true,
+                // @ts-ignore
+                targetTeam: true,
             },
         });
 
@@ -295,6 +426,8 @@ export class TaskService {
                 worker: true,
                 // @ts-ignore
                 targetGroup: true,
+                // @ts-ignore
+                targetTeam: true,
             },
         });
 
