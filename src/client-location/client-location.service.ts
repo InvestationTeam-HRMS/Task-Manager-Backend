@@ -303,16 +303,46 @@ export class ClientLocationService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const location = await this.prisma.clientLocation.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        subLocations: true,
+                        teams: true,
+                        groups: true,
+                        ipAddresses: true,
+                    }
+                }
+            }
+        });
+
+        if (!location) {
+            throw new NotFoundException('Client location not found');
+        }
+
+        const { _count } = location;
+        const childCounts = [
+            _count.subLocations > 0 && `${_count.subLocations} sub-locations`,
+            _count.teams > 0 && `${_count.teams} teams`,
+            _count.groups > 0 && `${_count.groups} groups`,
+            _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
+        ].filter(Boolean);
+
+        if (childCounts.length > 0) {
+            throw new BadRequestException(
+                `Cannot delete Client Location because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.clientLocation.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, location, null);
 
-        return { message: 'Client location and all associated data permanently deleted successfully' };
+        return { message: 'Client location deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateClientLocationDto, userId: string) {
@@ -434,6 +464,10 @@ export class ClientLocationService {
 
         await this.invalidateCache();
 
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
+
         return {
             success: results.length,
             failed: errors.length,
@@ -448,14 +482,7 @@ export class ClientLocationService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.clientLocation.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.clientLocation.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({

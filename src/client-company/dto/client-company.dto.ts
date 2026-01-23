@@ -23,8 +23,8 @@ export class CreateClientCompanyDto {
     address?: string;
 
     @IsEnum(CompanyStatus)
-    @IsOptional()
-    status?: CompanyStatus;
+    @IsNotEmpty()
+    status: CompanyStatus;
 
     @IsString()
     @IsOptional()

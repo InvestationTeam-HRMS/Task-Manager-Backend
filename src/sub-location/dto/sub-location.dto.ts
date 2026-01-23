@@ -16,8 +16,7 @@ export class CreateSubLocationDto {
 
     @IsUUID()
     @IsNotEmpty()
-    @IsOptional() // Handled by service if not provided
-    companyId?: string;
+    companyId: string;
 
     @IsUUID()
     @IsNotEmpty()
@@ -28,8 +27,8 @@ export class CreateSubLocationDto {
     address?: string;
 
     @IsEnum(SubLocationStatus)
-    @IsOptional()
-    status?: SubLocationStatus;
+    @IsNotEmpty()
+    status: SubLocationStatus;
 
     @IsString()
     @IsOptional()

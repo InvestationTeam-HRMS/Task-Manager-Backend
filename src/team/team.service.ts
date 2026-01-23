@@ -450,14 +450,7 @@ export class TeamService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.team.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.team.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -468,6 +461,10 @@ export class TeamService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,
@@ -536,17 +533,20 @@ export class TeamService {
                 const status = row.status ? this.excelUploadService.validateEnum(row.status as string, TeamStatus, 'Status') : TeamStatus.ACTIVE;
                 const loginMethod = row.loginMethod ? this.excelUploadService.validateEnum(row.loginMethod as string, LoginMethod, 'LoginMethod') : LoginMethod.EMAIL;
 
-                const clientGroupId = row.groupName ? groupMap.get(row.groupName.toLowerCase()) : undefined;
-                if (row.groupName && !clientGroupId) throw new Error(`Client Group "${row.groupName}" not found`);
+                if (!row.email) throw new Error(`Email is missing for ${row.teamName}`);
+                if (!row.phone) throw new Error(`Phone is missing for ${row.teamName}`);
 
-                const companyId = row.companyName ? companyMap.get(row.companyName.toLowerCase()) : undefined;
-                if (row.companyName && !companyId) throw new Error(`Company "${row.companyName}" not found`);
+                const clientGroupId = groupMap.get(row.groupName?.toLowerCase());
+                if (!clientGroupId) throw new Error(`Client Group "${row.groupName}" not found or missing`);
 
-                const locationId = row.locationName ? locationMap.get(row.locationName.toLowerCase()) : undefined;
-                if (row.locationName && !locationId) throw new Error(`Location "${row.locationName}" not found`);
+                const companyId = companyMap.get(row.companyName?.toLowerCase());
+                if (!companyId) throw new Error(`Company "${row.companyName}" not found or missing`);
 
-                const subLocationId = row.subLocationName ? subLocationMap.get(row.subLocationName.toLowerCase()) : undefined;
-                if (row.subLocationName && !subLocationId) throw new Error(`Sub Location "${row.subLocationName}" not found`);
+                const locationId = locationMap.get(row.locationName?.toLowerCase());
+                if (!locationId) throw new Error(`Location "${row.locationName}" not found or missing`);
+
+                const subLocationId = subLocationMap.get(row.subLocationName?.toLowerCase());
+                if (!subLocationId) throw new Error(`Sub Location "${row.subLocationName}" not found or missing`);
 
                 processedData.push({
                     teamNo: row.teamNo,
@@ -554,10 +554,10 @@ export class TeamService {
                     email: row.email,
                     phone: row.phone,
                     taskAssignPermission: String(row.taskAssignPermission).toLowerCase() === 'true',
-                    clientGroupId,
-                    companyId,
-                    locationId,
-                    subLocationId,
+                    clientGroupId: clientGroupId,
+                    companyId: companyId,
+                    locationId: locationId,
+                    subLocationId: subLocationId,
                     status: status as TeamStatus,
                     loginMethod: loginMethod as LoginMethod,
                     remark: row.remark,

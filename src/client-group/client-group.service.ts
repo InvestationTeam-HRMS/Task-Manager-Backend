@@ -273,16 +273,46 @@ export class ClientGroupService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const clientGroup = await this.prisma.clientGroup.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        companies: true,
+                        teams: true,
+                        groups: true,
+                        ipAddresses: true,
+                    }
+                }
+            }
+        });
+
+        if (!clientGroup) {
+            throw new NotFoundException('Client group not found');
+        }
+
+        const { _count } = clientGroup;
+        const childCounts = [
+            _count.companies > 0 && `${_count.companies} companies`,
+            _count.teams > 0 && `${_count.teams} teams`,
+            _count.groups > 0 && `${_count.groups} groups`,
+            _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
+        ].filter(Boolean);
+
+        if (childCounts.length > 0) {
+            throw new BadRequestException(
+                `Cannot delete Client Group because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.clientGroup.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, clientGroup, null);
 
-        return { message: 'Client group and all associated data permanently deleted successfully' };
+        return { message: 'Client group deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateClientGroupDto, userId: string) {
@@ -426,14 +456,7 @@ export class ClientGroupService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.clientGroup.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.clientGroup.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -444,6 +467,10 @@ export class ClientGroupService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,

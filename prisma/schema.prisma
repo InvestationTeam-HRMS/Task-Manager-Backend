@@ -203,7 +203,7 @@ model ClientCompany {
   createdBy    String?          @map("created_by") @db.Uuid
   updatedBy    String?          @map("updated_by") @db.Uuid
   creator      User?            @relation("CompanyCreatedByUser", fields: [createdBy], references: [id])
-  group        ClientGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group        ClientGroup      @relation(fields: [groupId], references: [id], onDelete: Restrict)
   updater      User?            @relation("CompanyUpdatedByUser", fields: [updatedBy], references: [id])
   locations    ClientLocation[]
   groups       Group[]
@@ -234,7 +234,7 @@ model ClientLocation {
   updatedAt    DateTime       @updatedAt @map("updated_at")
   createdBy    String?        @map("created_by") @db.Uuid
   updatedBy    String?        @map("updated_by") @db.Uuid
-  company      ClientCompany  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      ClientCompany  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator      User?          @relation("LocationCreatedByUser", fields: [createdBy], references: [id])
   updater      User?          @relation("LocationUpdatedByUser", fields: [updatedBy], references: [id])
   groups       Group[]
@@ -269,9 +269,9 @@ model SubLocation {
   groups          Group[]
   ipAddresses     IpAddress[]
   projects        Project[]
-  company         ClientCompany     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company         ClientCompany     @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator         User?             @relation("SubLocationCreatedByUser", fields: [createdBy], references: [id])
-  location        ClientLocation    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location        ClientLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
   updater         User?             @relation("SubLocationUpdatedByUser", fields: [updatedBy], references: [id])
   teams           Team[]
 
@@ -301,7 +301,7 @@ model Project {
   createdBy     String?         @map("created_by") @db.Uuid
   updatedBy     String?         @map("updated_by") @db.Uuid
   creator       User?           @relation("ProjectCreatedByUser", fields: [createdBy], references: [id])
-  subLocation   SubLocation     @relation(fields: [subLocationId], references: [id], onDelete: Cascade)
+  subLocation   SubLocation     @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater       User?           @relation("ProjectUpdatedByUser", fields: [updatedBy], references: [id])
   tasks         Task[]
 
@@ -335,11 +335,11 @@ model Team {
   updatedAt            DateTime        @updatedAt @map("updated_at")
   createdBy            String?         @map("created_by") @db.Uuid
   updatedBy            String?         @map("updated_by") @db.Uuid
-  clientGroup          ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Cascade)
-  company              ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientGroup          ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company              ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator              User?           @relation("TeamCreatedByUser", fields: [createdBy], references: [id])
-  location             ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  subLocation          SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Cascade)
+  location             ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  subLocation          SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater              User?           @relation("TeamUpdatedByUser", fields: [updatedBy], references: [id])
 
   @@index([teamNo])
@@ -370,11 +370,11 @@ model Group {
   updatedAt     DateTime        @updatedAt @map("updated_at")
   createdBy     String?         @map("created_by") @db.Uuid
   updatedBy     String?         @map("updated_by") @db.Uuid
-  clientGroup   ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Cascade)
-  company       ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientGroup   ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company       ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator       User?           @relation("GroupCreatedByUser", fields: [createdBy], references: [id])
-  location      ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  subLocation   SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Cascade)
+  location      ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  subLocation   SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater       User?           @relation("GroupUpdatedByUser", fields: [updatedBy], references: [id])
   members       GroupMember[]
   tasks         Task[]          @relation("TaskToGroup")
@@ -423,11 +423,11 @@ model IpAddress {
   updatedAt     DateTime        @updatedAt @map("updated_at")
   createdBy     String?         @map("created_by") @db.Uuid
   updatedBy     String?         @map("updated_by") @db.Uuid
-  clientGroup   ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Cascade)
-  company       ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientGroup   ClientGroup?    @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company       ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator       User?           @relation("IpAddressCreatedByUser", fields: [createdBy], references: [id])
-  location      ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  subLocation   SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Cascade)
+  location      ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  subLocation   SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater       User?           @relation("IpAddressUpdatedByUser", fields: [updatedBy], references: [id])
 
   @@index([ipNo])

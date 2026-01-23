@@ -19,8 +19,8 @@ export class CreateClientGroupDto {
     country: string;
 
     @IsEnum(ClientGroupStatus)
-    @IsOptional()
-    status?: ClientGroupStatus;
+    @IsNotEmpty()
+    status: ClientGroupStatus;
 
     @IsString()
     @IsOptional()

@@ -23,8 +23,8 @@ export class CreateClientLocationDto {
     address?: string;
 
     @IsEnum(LocationStatus)
-    @IsOptional()
-    status?: LocationStatus;
+    @IsNotEmpty()
+    status: LocationStatus;
 
     @IsString()
     @IsOptional()

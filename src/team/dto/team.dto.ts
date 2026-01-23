@@ -11,40 +11,40 @@ export class CreateTeamDto {
     teamName: string;
 
     @IsEmail()
-    @IsOptional()
-    email?: string;
+    @IsNotEmpty()
+    email: string;
 
     @IsString()
-    @IsOptional()
-    phone?: string;
+    @IsNotEmpty()
+    phone: string;
 
     @IsBoolean()
     @IsOptional()
     taskAssignPermission?: boolean;
 
     @IsUUID()
-    @IsOptional()
-    clientGroupId?: string;
+    @IsNotEmpty()
+    clientGroupId: string;
 
     @IsUUID()
-    @IsOptional()
-    companyId?: string;
+    @IsNotEmpty()
+    companyId: string;
 
     @IsUUID()
-    @IsOptional()
-    locationId?: string;
+    @IsNotEmpty()
+    locationId: string;
 
     @IsUUID()
-    @IsOptional()
-    subLocationId?: string;
+    @IsNotEmpty()
+    subLocationId: string;
 
     @IsEnum(TeamStatus)
-    @IsOptional()
-    status?: TeamStatus;
+    @IsNotEmpty()
+    status: TeamStatus;
 
     @IsEnum(LoginMethod)
-    @IsOptional()
-    loginMethod?: LoginMethod;
+    @IsNotEmpty()
+    loginMethod: LoginMethod;
 
     @IsString()
     @IsOptional()

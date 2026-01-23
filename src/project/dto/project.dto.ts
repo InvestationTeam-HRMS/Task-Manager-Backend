@@ -15,16 +15,16 @@ export class CreateProjectDto {
     subLocationId: string;
 
     @IsDateString()
-    @IsOptional()
-    deadline?: string;
+    @IsNotEmpty()
+    deadline: string;
 
     @IsEnum(ProjectPriority)
-    @IsOptional()
-    priority?: ProjectPriority;
+    @IsNotEmpty()
+    priority: ProjectPriority;
 
     @IsEnum(ProjectStatus)
-    @IsOptional()
-    status?: ProjectStatus;
+    @IsNotEmpty()
+    status: ProjectStatus;
 
     @IsString()
     @IsOptional()

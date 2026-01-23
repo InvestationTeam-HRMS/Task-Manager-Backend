@@ -15,24 +15,24 @@ export class CreateIpAddressDto {
     ipAddressName: string;
 
     @IsUUID()
-    @IsOptional()
-    clientGroupId?: string;
+    @IsNotEmpty()
+    clientGroupId: string;
 
     @IsUUID()
-    @IsOptional()
-    companyId?: string;
+    @IsNotEmpty()
+    companyId: string;
 
     @IsUUID()
-    @IsOptional()
-    locationId?: string;
+    @IsNotEmpty()
+    locationId: string;
 
     @IsUUID()
-    @IsOptional()
-    subLocationId?: string;
+    @IsNotEmpty()
+    subLocationId: string;
 
     @IsEnum(IpAddressStatus)
-    @IsOptional()
-    status?: IpAddressStatus;
+    @IsNotEmpty()
+    status: IpAddressStatus;
 
     @IsString()
     @IsOptional()

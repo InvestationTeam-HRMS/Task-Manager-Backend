@@ -322,16 +322,48 @@ export class ClientCompanyService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const company = await this.prisma.clientCompany.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        locations: true,
+                        subLocations: true,
+                        teams: true,
+                        groups: true,
+                        ipAddresses: true,
+                    }
+                }
+            }
+        });
+
+        if (!company) {
+            throw new NotFoundException('Client company not found');
+        }
+
+        const { _count } = company;
+        const childCounts = [
+            _count.locations > 0 && `${_count.locations} locations`,
+            _count.subLocations > 0 && `${_count.subLocations} sub-locations`,
+            _count.teams > 0 && `${_count.teams} teams`,
+            _count.groups > 0 && `${_count.groups} groups`,
+            _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
+        ].filter(Boolean);
+
+        if (childCounts.length > 0) {
+            throw new BadRequestException(
+                `Cannot delete Client Company because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.clientCompany.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, company, null);
 
-        return { message: 'Client company and all associated data permanently deleted successfully' };
+        return { message: 'Client company deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateClientCompanyDto, userId: string) {
@@ -456,6 +488,10 @@ export class ClientCompanyService {
 
         await this.invalidateCache();
 
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
+
         return {
             success: results.length,
             failed: errors.length,
@@ -470,14 +506,7 @@ export class ClientCompanyService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.clientCompany.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.clientCompany.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({

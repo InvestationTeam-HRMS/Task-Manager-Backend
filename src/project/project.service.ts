@@ -308,16 +308,35 @@ export class ProjectService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const project = await this.prisma.project.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        tasks: true,
+                    }
+                }
+            }
+        });
+
+        if (!project) {
+            throw new NotFoundException('Project not found');
+        }
+
+        if (project._count.tasks > 0) {
+            throw new BadRequestException(
+                `Cannot delete Project because it contains ${project._count.tasks} tasks. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.project.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, project, null);
 
-        return { message: 'Project permanently deleted successfully' };
+        return { message: 'Project deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateProjectDto, userId: string) {
@@ -440,14 +459,7 @@ export class ProjectService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.project.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.project.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -458,6 +470,10 @@ export class ProjectService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,

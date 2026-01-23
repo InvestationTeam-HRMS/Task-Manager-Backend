@@ -320,16 +320,46 @@ export class SubLocationService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const subLocation = await this.prisma.subLocation.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        projects: true,
+                        teams: true,
+                        groups: true,
+                        ipAddresses: true,
+                    }
+                }
+            }
+        });
+
+        if (!subLocation) {
+            throw new NotFoundException('Sub location not found');
+        }
+
+        const { _count } = subLocation;
+        const childCounts = [
+            _count.projects > 0 && `${_count.projects} projects`,
+            _count.teams > 0 && `${_count.teams} teams`,
+            _count.groups > 0 && `${_count.groups} groups`,
+            _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
+        ].filter(Boolean);
+
+        if (childCounts.length > 0) {
+            throw new BadRequestException(
+                `Cannot delete Sub Location because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.subLocation.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, subLocation, null);
 
-        return { message: 'Sub location and all associated data permanently deleted successfully' };
+        return { message: 'Sub location deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateSubLocationDto, userId: string) {
@@ -465,14 +495,7 @@ export class SubLocationService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.subLocation.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.subLocation.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -483,6 +506,10 @@ export class SubLocationService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,

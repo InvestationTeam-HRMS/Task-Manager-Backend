@@ -15,24 +15,24 @@ export class CreateGroupDto {
     groupCode: string;
 
     @IsUUID()
-    @IsOptional()
-    clientGroupId?: string;
+    @IsNotEmpty()
+    clientGroupId: string;
 
     @IsUUID()
-    @IsOptional()
-    companyId?: string;
+    @IsNotEmpty()
+    companyId: string;
 
     @IsUUID()
-    @IsOptional()
-    locationId?: string;
+    @IsNotEmpty()
+    locationId: string;
 
     @IsUUID()
-    @IsOptional()
-    subLocationId?: string;
+    @IsNotEmpty()
+    subLocationId: string;
 
     @IsEnum(GroupStatus)
-    @IsOptional()
-    status?: GroupStatus;
+    @IsNotEmpty()
+    status: GroupStatus;
 
     @IsString()
     @IsOptional()

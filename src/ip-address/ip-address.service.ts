@@ -421,14 +421,7 @@ export class IpAddressService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.ipAddress.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.ipAddress.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -439,6 +432,10 @@ export class IpAddressService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,
@@ -503,26 +500,26 @@ export class IpAddressService {
             try {
                 const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, IpAddressStatus, 'Status') : IpAddressStatus.ACTIVE;
 
-                const clientGroupId = (row as any).clientGroupName ? clientGroupMap.get((row as any).clientGroupName.toLowerCase()) : undefined;
-                if ((row as any).clientGroupName && !clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found`);
+                const clientGroupId = clientGroupMap.get((row as any).clientGroupName?.toLowerCase());
+                if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);
 
-                const companyId = (row as any).companyName ? companyMap.get((row as any).companyName.toLowerCase()) : undefined;
-                if ((row as any).companyName && !companyId) throw new Error(`Company "${(row as any).companyName}" not found`);
+                const companyId = companyMap.get((row as any).companyName?.toLowerCase());
+                if (!companyId) throw new Error(`Company "${(row as any).companyName}" not found or missing`);
 
-                const locationId = (row as any).locationName ? locationMap.get((row as any).locationName.toLowerCase()) : undefined;
-                if ((row as any).locationName && !locationId) throw new Error(`Location "${(row as any).locationName}" not found`);
+                const locationId = locationMap.get((row as any).locationName?.toLowerCase());
+                if (!locationId) throw new Error(`Location "${(row as any).locationName}" not found or missing`);
 
-                const subLocationId = (row as any).subLocationName ? subLocationMap.get((row as any).subLocationName.toLowerCase()) : undefined;
-                if ((row as any).subLocationName && !subLocationId) throw new Error(`Sub Location "${(row as any).subLocationName}" not found`);
+                const subLocationId = subLocationMap.get((row as any).subLocationName?.toLowerCase());
+                if (!subLocationId) throw new Error(`Sub Location "${(row as any).subLocationName}" not found or missing`);
 
                 processedData.push({
                     ipNo: (row as any).ipNo,
                     ipAddress: (row as any).ipAddress,
                     ipAddressName: (row as any).ipAddressName,
-                    clientGroupId,
-                    companyId,
-                    locationId,
-                    subLocationId,
+                    clientGroupId: clientGroupId,
+                    companyId: companyId,
+                    locationId: locationId,
+                    subLocationId: subLocationId,
                     status: status as IpAddressStatus,
                     remark: (row as any).remark,
                 });

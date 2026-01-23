@@ -1,13 +1,14 @@
-import { IsString, IsOptional, IsEnum, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUUID, IsDateString, IsNotEmpty } from 'class-validator';
 import { TaskStatus } from '@prisma/client';
 
 export class CreateTaskDto {
     @IsString()
+    @IsNotEmpty()
     taskTitle: string;
 
-    @IsOptional()
     @IsString()
-    priority?: string;
+    @IsNotEmpty()
+    priority: string;
 
     @IsOptional()
     @IsEnum(TaskStatus)
@@ -17,9 +18,9 @@ export class CreateTaskDto {
     @IsString()
     additionalNote?: string;
 
-    @IsOptional()
     @IsDateString()
-    deadline?: string;
+    @IsNotEmpty()
+    deadline: string;
 
     @IsOptional()
     @IsDateString()
@@ -29,9 +30,9 @@ export class CreateTaskDto {
     @IsString()
     attachment?: string;
 
-    @IsOptional()
     @IsUUID()
-    projectId?: string;
+    @IsNotEmpty()
+    projectId: string;
 
     @IsOptional()
     @IsUUID()

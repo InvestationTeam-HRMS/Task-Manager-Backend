@@ -303,16 +303,42 @@ export class GroupService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const group = await this.prisma.group.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        members: true,
+                        tasks: true,
+                    }
+                }
+            }
+        });
+
+        if (!group) {
+            throw new NotFoundException('Group not found');
+        }
+
+        const { _count } = group;
+        const childCounts = [
+            _count.members > 0 && `${_count.members} members`,
+            _count.tasks > 0 && `${_count.tasks} tasks`,
+        ].filter(Boolean);
+
+        if (childCounts.length > 0) {
+            throw new BadRequestException(
+                `Cannot delete Group because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+            );
+        }
 
         await this.prisma.group.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, group, null);
 
-        return { message: 'Group permanently deleted successfully' };
+        return { message: 'Group deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateGroupDto, userId: string) {
@@ -442,14 +468,7 @@ export class GroupService {
 
         for (const id of dto.ids) {
             try {
-                const existing = await this.prisma.group.findUnique({ where: { id } });
-                if (!existing) continue;
-
-                await this.prisma.group.delete({
-                    where: { id },
-                });
-
-                await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+                await this.delete(id, userId);
                 results.push(id);
             } catch (error) {
                 errors.push({
@@ -460,6 +479,10 @@ export class GroupService {
         }
 
         await this.invalidateCache();
+
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
 
         return {
             success: results.length,
@@ -524,26 +547,26 @@ export class GroupService {
             try {
                 const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, GroupStatus, 'Status') : GroupStatus.ACTIVE;
 
-                const clientGroupId = (row as any).clientGroupName ? clientGroupMap.get((row as any).clientGroupName.toLowerCase()) : undefined;
-                if ((row as any).clientGroupName && !clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found`);
+                const clientGroupId = clientGroupMap.get((row as any).clientGroupName?.toLowerCase());
+                if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);
 
-                const companyId = (row as any).companyName ? companyMap.get((row as any).companyName.toLowerCase()) : undefined;
-                if ((row as any).companyName && !companyId) throw new Error(`Company "${(row as any).companyName}" not found`);
+                const companyId = companyMap.get((row as any).companyName?.toLowerCase());
+                if (!companyId) throw new Error(`Company "${(row as any).companyName}" not found or missing`);
 
-                const locationId = (row as any).locationName ? locationMap.get((row as any).locationName.toLowerCase()) : undefined;
-                if ((row as any).locationName && !locationId) throw new Error(`Location "${(row as any).locationName}" not found`);
+                const locationId = locationMap.get((row as any).locationName?.toLowerCase());
+                if (!locationId) throw new Error(`Location "${(row as any).locationName}" not found or missing`);
 
-                const subLocationId = (row as any).subLocationName ? subLocationMap.get((row as any).subLocationName.toLowerCase()) : undefined;
-                if ((row as any).subLocationName && !subLocationId) throw new Error(`Sub Location "${(row as any).subLocationName}" not found`);
+                const subLocationId = subLocationMap.get((row as any).subLocationName?.toLowerCase());
+                if (!subLocationId) throw new Error(`Sub Location "${(row as any).subLocationName}" not found or missing`);
 
                 processedData.push({
                     groupNo: (row as any).groupNo,
                     groupName: (row as any).groupName,
                     groupCode: (row as any).groupCode,
-                    clientGroupId,
-                    companyId,
-                    locationId,
-                    subLocationId,
+                    clientGroupId: clientGroupId,
+                    companyId: companyId,
+                    locationId: locationId,
+                    subLocationId: subLocationId,
                     status: status as GroupStatus,
                     remark: (row as any).remark,
                 });
