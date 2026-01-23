@@ -542,6 +542,8 @@ enum ProjectPriority {
 enum TeamStatus {
   Active
   Inactive
+  Suspended
+  Pending_Verification
 }
 
 enum LoginMethod {
