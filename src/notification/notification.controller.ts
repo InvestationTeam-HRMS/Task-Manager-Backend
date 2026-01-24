@@ -1,7 +1,8 @@
-import { Controller, Get, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { Observable } from 'rxjs';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -16,6 +17,11 @@ export class NotificationController {
     @Get('unread-count')
     getUnreadCount(@GetUser('id') userId: string) {
         return this.notificationService.getUnreadCount(userId);
+    }
+
+    @Sse('stream')
+    streamNotifications(@GetUser('id') userId: string): Observable<MessageEvent> {
+        return this.notificationService.getNotificationStream(userId);
     }
 
     @Patch(':id/read')

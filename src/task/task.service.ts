@@ -219,9 +219,25 @@ export class TaskService {
         return this.sortTaskDates(task);
     }
 
-    async update(id: string, dto: UpdateTaskDto, userId: string) {
+    async update(id: string, dto: UpdateTaskDto, userId: string, files?: Express.Multer.File[]) {
         const existingTask = await this.findById(id);
         const { toTitleCase } = await import('../common/utils/string-helper');
+        const fs = await import('fs');
+        const path = await import('path');
+
+        // Handle File Update
+        let document = dto.document; // Default to existing/incoming string
+        if (files && files.length > 0) {
+            const file = files[0];
+            const taskNo = (existingTask as any).taskNo;
+            const fileName = `${taskNo}_${file.originalname}`;
+            const uploadDir = path.join(process.cwd(), 'uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+            const uploadPath = path.join(uploadDir, fileName);
+            fs.writeFileSync(uploadPath, file.buffer);
+            document = `/uploads/${fileName}`;
+        }
 
         const currentEditTime = (existingTask as any).editTime || [];
         const newEditTime = [...currentEditTime, new Date()];
@@ -246,9 +262,28 @@ export class TaskService {
                 editTime: newEditTime,
                 reminderTime: reminderTime,
                 reviewedTime: reviewedTime,
+                document: document,
+                // Handle Reassignment: If one is set, others must be null
+                assignedTo: dto.assignedTo !== undefined ? dto.assignedTo : undefined,
+                targetGroupId: dto.targetGroupId !== undefined ? dto.targetGroupId : undefined,
+                targetTeamId: dto.targetTeamId !== undefined ? dto.targetTeamId : undefined,
             },
             include: { assignee: true, creator: true, targetTeam: true }
         });
+
+        // If assignment changed, notify new assignee (Optimized to avoid duplicate notification if nothing changed)
+        // For simplicity in this quick fix, we just assume if these fields are present, it's a reassignment
+        if (dto.assignedTo || dto.targetTeamId) {
+            const newRecipient = dto.assignedTo || dto.targetTeamId;
+            if (newRecipient && newRecipient !== 'null' && newRecipient !== userId) {
+                await this.notificationService.createNotification(newRecipient, {
+                    title: 'Task Re-Assigned',
+                    description: `Task "${updated.taskTitle}" has been re-assigned to you.`,
+                    type: 'TASK',
+                    metadata: { taskId: updated.id, taskNo: updated.taskNo },
+                });
+            }
+        }
 
         await this.invalidateCache();
         return this.sortTaskDates(updated);

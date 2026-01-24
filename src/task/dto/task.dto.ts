@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsEnum, IsUUID, IsDateString, IsNotEmpty, IsArray } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { TaskStatus } from '@prisma/client';
 
 export class CreateTaskDto {
@@ -25,6 +26,7 @@ export class CreateTaskDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     document?: string;
 
     @IsUUID()
@@ -33,14 +35,17 @@ export class CreateTaskDto {
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     assignedTo?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetGroupId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetTeamId?: string;
 }
 
@@ -77,6 +82,7 @@ export class UpdateTaskDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     document?: string;
 
     @IsOptional()
@@ -85,22 +91,27 @@ export class UpdateTaskDto {
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     projectId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     assignedTo?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetGroupId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetTeamId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     workingBy?: string;
 }
 
@@ -117,26 +128,32 @@ export class FilterTaskDto extends PaginationDto {
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     projectId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     assignedTo?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetGroupId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetTeamId?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     createdBy?: string;
 
     @IsOptional()
     @IsUUID()
+    @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     workingBy?: string;
 
     @IsOptional()
