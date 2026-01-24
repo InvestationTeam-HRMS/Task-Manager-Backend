@@ -35,9 +35,12 @@ export class ClientGroupService {
     ) { }
 
     async create(dto: CreateClientGroupDto, userId: string) {
+        // Transform groupCode to uppercase
+        const groupCodeUpper = dto.groupCode.toUpperCase();
+
         // Check for duplicate group code
         const existing = await this.prisma.clientGroup.findUnique({
-            where: { groupCode: dto.groupCode },
+            where: { groupCode: groupCodeUpper },
         });
 
         if (existing) {
@@ -51,6 +54,7 @@ export class ClientGroupService {
         const clientGroup = await this.prisma.clientGroup.create({
             data: {
                 ...dto,
+                groupCode: groupCodeUpper,
                 groupName: toTitleCase(dto.groupName),
                 country: toTitleCase(dto.country),
                 groupNo: dto.groupNo || generatedGroupNo,
@@ -227,10 +231,13 @@ export class ClientGroupService {
         const existing = await this.findById(id);
         const { toTitleCase } = await import('../common/utils/string-helper');
 
+        // Transform groupCode to uppercase if provided
+        const groupCodeUpper = dto.groupCode ? dto.groupCode.toUpperCase() : undefined;
+
         // Check for duplicate group code if being updated
-        if (dto.groupCode && dto.groupCode !== existing.groupCode) {
+        if (groupCodeUpper && groupCodeUpper !== existing.groupCode) {
             const duplicate = await this.prisma.clientGroup.findUnique({
-                where: { groupCode: dto.groupCode },
+                where: { groupCode: groupCodeUpper },
             });
 
             if (duplicate) {
@@ -242,6 +249,7 @@ export class ClientGroupService {
             where: { id },
             data: {
                 ...dto,
+                groupCode: groupCodeUpper,
                 groupName: dto.groupName ? toTitleCase(dto.groupName) : undefined,
                 country: dto.country ? toTitleCase(dto.country) : undefined,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,

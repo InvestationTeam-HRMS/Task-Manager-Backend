@@ -1,4 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { LocationStatus } from '@prisma/client';
 
 export class CreateClientLocationDto {
@@ -13,6 +14,7 @@ export class CreateClientLocationDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     locationCode: string;
 
     @IsUUID()
@@ -44,6 +46,7 @@ export class UpdateClientLocationDto {
     @IsString()
     @IsOptional()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     locationCode?: string;
 
     @IsUUID()
@@ -105,6 +108,7 @@ export class FilterClientLocationDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value?.toUpperCase())
     locationCode?: string;
 
     @IsOptional()

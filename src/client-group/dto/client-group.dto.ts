@@ -1,4 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ClientGroupStatus } from '@prisma/client';
 
 export class CreateClientGroupDto {
@@ -13,6 +14,7 @@ export class CreateClientGroupDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     groupCode: string;
 
     @IsString()
@@ -40,6 +42,7 @@ export class UpdateClientGroupDto {
     @IsString()
     @IsOptional()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     groupCode?: string;
 
     @IsString()
@@ -97,6 +100,7 @@ export class FilterClientGroupDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value?.toUpperCase())
     groupCode?: string;
 
     @IsOptional()

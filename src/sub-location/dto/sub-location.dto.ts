@@ -1,4 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { SubLocationStatus } from '@prisma/client';
 
 export class CreateSubLocationDto {
@@ -13,6 +14,7 @@ export class CreateSubLocationDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     subLocationCode: string;
 
     @IsUUID()
@@ -48,6 +50,7 @@ export class UpdateSubLocationDto {
     @IsString()
     @IsOptional()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     subLocationCode?: string;
 
     @IsUUID()
@@ -117,6 +120,7 @@ export class FilterSubLocationDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value?.toUpperCase())
     subLocationCode?: string;
 
     @IsOptional()

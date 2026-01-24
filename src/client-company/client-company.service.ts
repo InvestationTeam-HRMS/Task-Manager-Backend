@@ -37,9 +37,12 @@ export class ClientCompanyService {
     ) { }
 
     async create(dto: CreateClientCompanyDto, userId: string) {
+        // Transform companyCode to uppercase
+        const companyCodeUpper = dto.companyCode.toUpperCase();
+
         // Check for duplicate company code
         const existing = await this.prisma.clientCompany.findUnique({
-            where: { companyCode: dto.companyCode },
+            where: { companyCode: companyCodeUpper },
         });
 
         if (existing) {
@@ -62,6 +65,7 @@ export class ClientCompanyService {
         const company = await this.prisma.clientCompany.create({
             data: {
                 ...dto,
+                companyCode: companyCodeUpper,
                 companyName: toTitleCase(dto.companyName),
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 companyNo: dto.companyNo || generatedCompanyNo,
@@ -265,10 +269,13 @@ export class ClientCompanyService {
         const existing = await this.findById(id);
         const { toTitleCase } = await import('../common/utils/string-helper');
 
+        // Transform companyCode to uppercase if provided
+        const companyCodeUpper = dto.companyCode ? dto.companyCode.toUpperCase() : undefined;
+
         // Check for duplicate company code if being updated
-        if (dto.companyCode && dto.companyCode !== existing.companyCode) {
+        if (companyCodeUpper && companyCodeUpper !== existing.companyCode) {
             const duplicate = await this.prisma.clientCompany.findUnique({
-                where: { companyCode: dto.companyCode },
+                where: { companyCode: companyCodeUpper },
             });
 
             if (duplicate) {
@@ -291,6 +298,7 @@ export class ClientCompanyService {
             where: { id },
             data: {
                 ...dto,
+                companyCode: companyCodeUpper,
                 companyName: dto.companyName ? toTitleCase(dto.companyName) : undefined,
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,

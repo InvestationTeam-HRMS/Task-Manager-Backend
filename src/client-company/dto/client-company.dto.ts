@@ -1,4 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { CompanyStatus } from '@prisma/client';
 
 export class CreateClientCompanyDto {
@@ -13,6 +14,7 @@ export class CreateClientCompanyDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     companyCode: string;
 
     @IsUUID()
@@ -44,6 +46,7 @@ export class UpdateClientCompanyDto {
     @IsString()
     @IsOptional()
     @MaxLength(6)
+    @Transform(({ value }) => value?.toUpperCase())
     companyCode?: string;
 
     @IsUUID()
@@ -105,6 +108,7 @@ export class FilterClientCompanyDto {
 
     @IsOptional()
     @IsString()
+    @Transform(({ value }) => value?.toUpperCase())
     companyCode?: string;
 
     @IsOptional()
