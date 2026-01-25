@@ -132,7 +132,6 @@ export class AuthService {
 
         // Skip OTP if disabled in settings OR if user is an ADMIN
         if (!otpEnabledSetting || isAdmin) {
-            // Check for explicit 'false' in case it's a string from env
             const reason = isAdmin ? 'Admin role bypass' : 'OTP disabled in settings';
             this.logger.log(`[AUTH] Skipping OTP for ${identity.email} (${reason})`);
 
@@ -156,12 +155,54 @@ export class AuthService {
                 throw new UnauthorizedException('Access denied. Unrecognized IP address.');
             }
 
-            // Return success with flag indicating OTP was skipped
+            // Create session and generate tokens for OTP bypass
+            const sessionId = uuidv4();
+            const sessionExpiry = parseInt(this.configService.get('SESSION_EXPIRATION', '2592000000')) / 1000;
+            const { accessToken, refreshToken } = await this.generateTokens(identity.id, identity.email as string, identity.role, sessionId);
+
+            await this.prisma.session.create({
+                data: {
+                    sessionId,
+                    teamId: identity.id,
+                    ipAddress,
+                    userAgent,
+                    expiresAt: new Date(Date.now() + sessionExpiry * 1000),
+                },
+            });
+
+            await this.redisService.setSession(
+                sessionId,
+                { teamId: identity.id, email: identity.email, role: identity.role },
+                sessionExpiry,
+            );
+
+            // Store last login
+            await this.prisma.team.update({
+                where: { id: identity.id },
+                data: {
+                    lastLoginAt: new Date(),
+                    lastLoginIp: ipAddress,
+                },
+            });
+
+            await this.logActivity(identity.id, 'LOGIN', `Account logged in (OTP bypassed: ${reason})`, ipAddress, true);
+
+            // Return success with flag indicating OTP was skipped AND tokens/user data
             return {
-                message: 'Login successful (OTP disabled)',
+                message: `Login successful (${reason})`,
                 email: identity.email,
                 otpSkipped: true,
-                // Generate tokens directly for response if FE expects them here (adjust based on flow) - usually verifyLogin handles this
+                accessToken,
+                refreshToken,
+                sessionId,
+                user: {
+                    id: identity.id,
+                    email: identity.email,
+                    firstName: identity.firstName,
+                    lastName: identity.lastName,
+                    role: identity.role,
+                    isTeam: true,
+                },
             };
         }
 

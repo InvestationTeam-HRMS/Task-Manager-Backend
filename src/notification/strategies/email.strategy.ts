@@ -33,14 +33,15 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
         const smtpUser = this.configService.get('SMTP_USER');
         const smtpPass = this.configService.get('SMTP_PASS');
         const smtpPort = parseInt(this.configService.get('SMTP_PORT', '587'));
-        const smtpSecure = this.configService.get('SMTP_SECURE', 'false') === 'true';
+        // Correctly handle boolean from env string
+        const smtpSecure = this.configService.get('SMTP_SECURE') === 'true' || smtpPort === 465;
 
         if (!smtpHost || !smtpUser || !smtpPass) {
             this.logger.warn('⚠️  SMTP configuration incomplete (missing SMTP_HOST, SMTP_USER, or SMTP_PASS).');
             return;
         }
 
-        this.logger.log(`📧 Initializing SMTP: ${smtpHost}:${smtpPort} (Secure: ${smtpSecure})`);
+        this.logger.log(`📧 Initializing SMTP: ${smtpHost}:${smtpPort} (Secure: ${smtpSecure}, User: ${smtpUser})`);
 
         this.transporter = nodemailer.createTransport({
             host: smtpHost,
