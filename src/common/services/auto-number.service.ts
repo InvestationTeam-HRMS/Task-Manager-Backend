@@ -91,9 +91,9 @@ export class AutoNumberService {
         return this.generateNumber(
             'team',
             'teamNo',
-            'U_NUMBER_PREFIX',
-            'U_NUMBER_START',
-            'U-',
+            'TEAM_NUMBER_PREFIX',
+            'TEAM_NUMBER_START',
+            'T-',
             '11001'
         );
     }
@@ -133,8 +133,8 @@ export class AutoNumberService {
         return this.generateNumber(
             'pendingTask',
             'taskNo',
-            'T_NUMBER_PREFIX',
-            'T_NUMBER_START',
+            'TASK_NUMBER_PREFIX',
+            'TASK_NUMBER_START',
             'T-',
             '11001'
         );
