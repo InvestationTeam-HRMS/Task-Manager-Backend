@@ -19,11 +19,15 @@ export class CreateSubLocationDto {
 
     @IsUUID()
     @IsNotEmpty()
-    companyId: string;
+    clientGroupId: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    locationId: string;
+    @IsOptional()
+    companyId?: string;
+
+    @IsUUID()
+    @IsOptional()
+    locationId?: string;
 
     @IsString()
     @IsOptional()
@@ -105,6 +109,10 @@ export class FilterSubLocationDto {
     @IsOptional()
     @IsUUID()
     companyId?: string;
+
+    @IsOptional()
+    @IsUUID()
+    clientGroupId?: string;
 
     @IsOptional()
     @IsUUID()

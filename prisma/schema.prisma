@@ -59,9 +59,12 @@ model ClientGroup {
   companies   ClientCompany[]
   creator     Team?             @relation("CreatedByTeam", fields: [createdBy], references: [id])
   updater     Team?             @relation("UpdatedByTeam", fields: [updatedBy], references: [id])
-  groups      Group[]
-  ipAddresses IpAddress[]
-  teams       Team[]
+  groups        Group[]
+  ipAddresses   IpAddress[]
+  locations     ClientLocation[]
+  projects      Project[]
+  subLocations  SubLocation[]
+  teams         Team[]
 
   @@index([groupNo])
   @@index([groupCode])
@@ -159,6 +162,7 @@ model ClientCompany {
   groups       Group[]
   ipAddresses  IpAddress[]
   subLocations SubLocation[]
+  projects     Project[]
   teams        Team[]
 
   @@index([companyNo])
@@ -172,28 +176,32 @@ model ClientCompany {
 }
 
 model ClientLocation {
-  id           String         @id @default(uuid()) @db.Uuid
-  locationNo   String         @unique @map("location_no")
-  locationName String         @map("location_name")
-  locationCode String         @unique @map("location_code")
-  companyId    String         @map("company_id") @db.Uuid
-  address      String?
-  status       LocationStatus @default(Active)
-  remark       String?
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  createdBy    String?        @map("created_by") @db.Uuid
-  updatedBy    String?        @map("updated_by") @db.Uuid
-  company      ClientCompany  @relation(fields: [companyId], references: [id])
-  creator      Team?          @relation("LocationCreatedByTeam", fields: [createdBy], references: [id])
-  updater      Team?          @relation("LocationUpdatedByTeam", fields: [updatedBy], references: [id])
-  groups       Group[]
-  ipAddresses  IpAddress[]
-  subLocations SubLocation[]
-  teams        Team[]
+  id            String         @id @default(uuid()) @db.Uuid
+  locationNo    String         @unique @map("location_no")
+  locationName  String         @map("location_name")
+  locationCode  String         @unique @map("location_code")
+  clientGroupId String         @map("client_group_id") @db.Uuid
+  companyId     String?        @map("company_id") @db.Uuid
+  address       String?
+  status        LocationStatus @default(Active)
+  remark        String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  createdBy     String?        @map("created_by") @db.Uuid
+  updatedBy     String?        @map("updated_by") @db.Uuid
+  clientGroup   ClientGroup    @relation(fields: [clientGroupId], references: [id])
+  company       ClientCompany? @relation(fields: [companyId], references: [id])
+  creator       Team?          @relation("LocationCreatedByTeam", fields: [createdBy], references: [id])
+  updater       Team?          @relation("LocationUpdatedByTeam", fields: [updatedBy], references: [id])
+  groups        Group[]
+  ipAddresses   IpAddress[]
+  subLocations  SubLocation[]
+  projects      Project[]
+  teams         Team[]
 
   @@index([locationNo])
   @@index([locationCode])
+  @@index([clientGroupId])
   @@index([companyId])
   @@index([status])
   @@index([createdAt])
@@ -207,8 +215,9 @@ model SubLocation {
   subLocationNo   String            @unique @map("sub_location_no")
   subLocationName String            @map("sub_location_name")
   subLocationCode String            @unique @map("sub_location_code")
-  companyId       String            @map("company_id") @db.Uuid
-  locationId      String            @map("location_id") @db.Uuid
+  clientGroupId   String            @map("client_group_id") @db.Uuid
+  companyId       String?           @map("company_id") @db.Uuid
+  locationId      String?           @map("location_id") @db.Uuid
   address         String?
   status          SubLocationStatus @default(Active)
   remark          String?
@@ -219,14 +228,16 @@ model SubLocation {
   groups          Group[]
   ipAddresses     IpAddress[]
   projects        Project[]
-  company         ClientCompany     @relation(fields: [companyId], references: [id])
+  clientGroup     ClientGroup       @relation(fields: [clientGroupId], references: [id])
+  company         ClientCompany?    @relation(fields: [companyId], references: [id])
   creator         Team?             @relation("SubLocationCreatedByTeam", fields: [createdBy], references: [id])
-  location        ClientLocation    @relation(fields: [locationId], references: [id])
+  location        ClientLocation?   @relation(fields: [locationId], references: [id])
   updater         Team?             @relation("SubLocationUpdatedByTeam", fields: [updatedBy], references: [id])
   teams           Team[]
 
   @@index([subLocationNo])
   @@index([subLocationCode])
+  @@index([clientGroupId])
   @@index([companyId])
   @@index([locationId])
   @@index([status])
@@ -241,7 +252,10 @@ model Project {
   id             String          @id @default(uuid()) @db.Uuid
   projectNo      String          @unique @map("project_no")
   projectName    String          @map("project_name")
-  subLocationId  String          @map("sub_location_id") @db.Uuid
+  clientGroupId  String          @map("client_group_id") @db.Uuid
+  companyId      String?         @map("company_id") @db.Uuid
+  locationId     String?         @map("location_id") @db.Uuid
+  subLocationId  String?         @map("sub_location_id") @db.Uuid
   deadline       DateTime?
   priority       ProjectPriority @default(Medium)
   status         ProjectStatus   @default(Active)
@@ -252,17 +266,23 @@ model Project {
   updatedBy      String?         @map("updated_by") @db.Uuid
   completedTasks CompletedTask[]
   pendingTasks   PendingTask[]
+  clientGroup    ClientGroup     @relation(fields: [clientGroupId], references: [id])
+  company        ClientCompany?  @relation(fields: [companyId], references: [id])
+  location       ClientLocation? @relation(fields: [locationId], references: [id])
   creator        Team?           @relation("ProjectCreatedByTeam", fields: [createdBy], references: [id])
-  subLocation    SubLocation     @relation(fields: [subLocationId], references: [id])
+  subLocation    SubLocation?    @relation(fields: [subLocationId], references: [id])
   updater        Team?           @relation("ProjectUpdatedByTeam", fields: [updatedBy], references: [id])
 
   @@index([projectNo])
+  @@index([clientGroupId])
+  @@index([companyId])
+  @@index([locationId])
   @@index([subLocationId])
   @@index([status])
   @@index([priority])
   @@index([deadline])
   @@index([createdAt])
-  @@index([subLocationId, status, priority])
+  @@index([clientGroupId, status, priority])
   @@index([status, priority, deadline])
   @@index([status, createdAt])
   @@map("projects")

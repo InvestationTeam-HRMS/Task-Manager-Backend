@@ -48,12 +48,22 @@ export class ClientLocationService {
             throw new ConflictException('Location code already exists');
         }
 
-        const company = await this.prisma.clientCompany.findFirst({
-            where: { id: dto.companyId },
+        // Validate Client Group Existence
+        const clientGroup = await this.prisma.clientGroup.findUnique({
+            where: { id: dto.clientGroupId },
         });
+        if (!clientGroup) {
+            throw new NotFoundException('Client Group not found');
+        }
 
-        if (!company) {
-            throw new NotFoundException('Client company not found');
+        // Validate Company if provided
+        if (dto.companyId) {
+            const company = await this.prisma.clientCompany.findFirst({
+                where: { id: dto.companyId },
+            });
+            if (!company) {
+                throw new NotFoundException('Client company not found');
+            }
         }
 
         const generatedLocationNo = await this.autoNumberService.generateLocationNo();
@@ -61,7 +71,7 @@ export class ClientLocationService {
 
         const location = await this.prisma.clientLocation.create({
             data: {
-                ...dto,
+                companyId: dto.companyId || undefined,
                 locationCode: locationCodeUpper,
                 locationName: toTitleCase(dto.locationName),
                 address: dto.address ? toTitleCase(dto.address) : undefined,
@@ -69,6 +79,7 @@ export class ClientLocationService {
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
                 status: dto.status || LocationStatus.Active,
                 createdBy: userId,
+                clientGroupId: dto.clientGroupId,
             },
         });
 
@@ -109,6 +120,7 @@ export class ClientLocationService {
             }
         }
 
+        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
         if (filter?.companyId) andArray.push({ companyId: filter.companyId });
         if (filter?.locationName) andArray.push(buildMultiValueFilter('locationName', toTitleCase(filter.locationName)));
         if (filter?.locationNo) andArray.push(buildMultiValueFilter('locationNo', filter.locationNo));
@@ -541,7 +553,7 @@ export class ClientLocationService {
         const companyNames = Array.from(new Set(data.filter(row => row.companyName).map(row => row.companyName)));
         const companies = await this.prisma.clientCompany.findMany({
             where: { companyName: { in: companyNames } },
-            select: { id: true, companyName: true }
+            select: { id: true, companyName: true, groupId: true }
         });
         const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c.id]));
 
@@ -559,10 +571,17 @@ export class ClientLocationService {
                     throw new Error(`Client Company not found: ${row.companyName}`);
                 }
 
+                // Fetch full company details to get groupId
+                const companyDetails = companies.find(c => c.id === companyId);
+                const clientGroupId = companyDetails?.groupId;
+
+                if (!clientGroupId) throw new Error(`Client Group not found for Company: ${row.companyName}`);
+
                 processedData.push({
                     locationNo: row.locationNo,
                     locationName: row.locationName,
                     locationCode: row.locationCode,
+                    clientGroupId: clientGroupId,
                     companyId: companyId,
                     address: row.address,
                     status: status as LocationStatus,

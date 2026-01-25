@@ -37,12 +37,22 @@ export class ProjectService {
     ) { }
 
     async create(dto: CreateProjectDto, userId: string) {
-        const subLocation = await this.prisma.subLocation.findFirst({
-            where: { id: dto.subLocationId },
+        // Validate Client Group Existence
+        const clientGroup = await this.prisma.clientGroup.findUnique({
+            where: { id: dto.clientGroupId },
         });
+        if (!clientGroup) {
+            throw new NotFoundException('Client Group not found');
+        }
 
-        if (!subLocation) {
-            throw new NotFoundException('Sub location not found');
+        // Validate SubLocation if provided
+        if (dto.subLocationId) {
+            const subLocation = await this.prisma.subLocation.findUnique({
+                where: { id: dto.subLocationId },
+            });
+            if (!subLocation) {
+                throw new NotFoundException('Sub location not found');
+            }
         }
 
         const generatedProjectNo = await this.autoNumberService.generateProjectNo();
@@ -102,9 +112,9 @@ export class ProjectService {
         }
 
         if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
-        if (filter?.locationId) andArray.push({ subLocation: { locationId: filter.locationId } });
-        if (filter?.companyId) andArray.push({ subLocation: { location: { companyId: filter.companyId } } });
-        if (filter?.clientGroupId) andArray.push({ subLocation: { location: { company: { groupId: filter.clientGroupId } } } });
+        if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
         if (filter?.projectName) andArray.push(buildMultiValueFilter('projectName', toTitleCase(filter.projectName)));
         if (filter?.projectNo) andArray.push(buildMultiValueFilter('projectNo', filter.projectNo));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
@@ -264,7 +274,7 @@ export class ProjectService {
         const { toTitleCase } = await import('../common/utils/string-helper');
 
         if (dto.subLocationId) {
-            const subLocation = await this.prisma.subLocation.findFirst({
+            const subLocation = await this.prisma.subLocation.findUnique({
                 where: { id: dto.subLocationId },
             });
 
@@ -512,13 +522,29 @@ export class ProjectService {
             throw new BadRequestException('No valid data found to import. Please check file format and column names.');
         }
 
-        // 1. Resolve all subLocationNames to subLocationIds
+        // 1. Resolve all subLocationNames to subLocationIds and Hierarchy
         const subLocationNames = Array.from(new Set(data.filter(row => row.subLocationName).map(row => row.subLocationName)));
-        const subLocations = await this.prisma.subLocation.findMany({
+        const detailedSubLocations = await this.prisma.subLocation.findMany({
             where: { subLocationName: { in: subLocationNames } },
-            select: { id: true, subLocationName: true }
+            select: {
+                id: true,
+                subLocationName: true,
+                location: {
+                    select: {
+                        id: true,
+                        company: {
+                            select: {
+                                id: true,
+                                group: {
+                                    select: { id: true }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         });
-        const subLocationMap = new Map(subLocations.map(s => [s.subLocationName.toLowerCase(), s.id]));
+        const subLocationMap = new Map(detailedSubLocations.map(s => [s.subLocationName.toLowerCase(), s.id]));
 
         // 2. Build processing data
         const processedData: CreateProjectDto[] = [];
@@ -535,9 +561,29 @@ export class ProjectService {
                     throw new Error(`Sub Location not found: ${row.subLocationName}`);
                 }
 
+                // We need to fetch the full hierarchy for the subLocation to populate other fields
+                // Since subLocationMap only has ID, we might need a better map or fetch here.
+                // Improving step 1 to fetch more details.
+                // HOWEVER, for optimization, finding from map is better.
+                // Let's refactor step 1 to include hierarchy.
+
+                // Note: The previous logic relied on creating project with subLocationId and Prisma/DB handling relations? 
+                // No, previous DTO only had subLocationId.
+                // Now DTO requires clientGroupId.
+                // We must look up the clientGroupId for this subLocation.
+
+                const fullSubLocation = detailedSubLocations.find(s => s.id === subLocationId);
+
+                if (!fullSubLocation?.location?.company?.group?.id) {
+                    throw new Error(`Client Group not found for Sub Location: ${row.subLocationName}`);
+                }
+
                 processedData.push({
                     projectNo: row.projectNo,
                     projectName: row.projectName,
+                    clientGroupId: fullSubLocation.location.company.group.id,
+                    companyId: fullSubLocation.location.company?.id,
+                    locationId: fullSubLocation.location?.id,
                     subLocationId: subLocationId,
                     deadline: row.deadline,
                     priority: priority as ProjectPriority,

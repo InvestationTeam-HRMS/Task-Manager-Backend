@@ -19,7 +19,11 @@ export class CreateClientLocationDto {
 
     @IsUUID()
     @IsNotEmpty()
-    companyId: string;
+    clientGroupId: string;
+
+    @IsUUID()
+    @IsOptional()
+    companyId?: string;
 
     @IsString()
     @IsOptional()
@@ -97,6 +101,10 @@ export class FilterClientLocationDto {
     @IsOptional()
     @IsUUID()
     companyId?: string;
+
+    @IsOptional()
+    @IsUUID()
+    clientGroupId?: string;
 
     @IsOptional()
     @IsString()

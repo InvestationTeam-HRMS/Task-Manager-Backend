@@ -150,9 +150,11 @@ export class AuthService {
                 isGloballyAllowed = !!globalIp;
             }
 
-            if (!isUserAllowed && !isGloballyAllowed) {
+            const isSuperAdmin = identity.role === UserRole.SUPER_ADMIN;
+
+            if (!isUserAllowed && !isGloballyAllowed && !isSuperAdmin) {
                 this.logger.warn(`Blocked login attempt for ${identity.email} from unauthorized IP: ${ipAddress}`);
-                throw new UnauthorizedException('Access denied. Unrecognized IP address.');
+                throw new UnauthorizedException(`Access denied. Unrecognized IP address (${ipAddress}).`);
             }
 
             // Create session and generate tokens for OTP bypass
@@ -265,9 +267,11 @@ export class AuthService {
             isGloballyAllowed = !!globalIp;
         }
 
-        if (!isUserAllowed && !isGloballyAllowed) {
+        const isSuperAdmin = identity.role === UserRole.SUPER_ADMIN;
+
+        if (!isUserAllowed && !isGloballyAllowed && !isSuperAdmin) {
             this.logger.warn(`Blocked login attempt for ${identity.email} from unauthorized IP: ${ipAddress}`);
-            throw new UnauthorizedException('Access denied. Unrecognized IP address.');
+            throw new UnauthorizedException(`Access denied. Unrecognized IP address (${ipAddress}).`);
         }
 
         // Create session

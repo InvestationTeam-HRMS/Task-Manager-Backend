@@ -12,7 +12,19 @@ export class CreateProjectDto {
 
     @IsUUID()
     @IsNotEmpty()
-    subLocationId: string;
+    clientGroupId: string;
+
+    @IsUUID()
+    @IsOptional()
+    companyId?: string;
+
+    @IsUUID()
+    @IsOptional()
+    locationId?: string;
+
+    @IsUUID()
+    @IsOptional()
+    subLocationId?: string;
 
     @IsDateString()
     @IsNotEmpty()
@@ -39,6 +51,18 @@ export class UpdateProjectDto {
     @IsString()
     @IsOptional()
     projectName?: string;
+
+    @IsUUID()
+    @IsOptional()
+    clientGroupId?: string;
+
+    @IsUUID()
+    @IsOptional()
+    companyId?: string;
+
+    @IsUUID()
+    @IsOptional()
+    locationId?: string;
 
     @IsUUID()
     @IsOptional()
