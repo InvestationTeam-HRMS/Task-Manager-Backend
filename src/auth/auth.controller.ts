@@ -58,6 +58,8 @@ export class AuthController {
             const { accessToken, refreshToken, ...userPart } = result;
             return {
                 ...userPart,
+                accessToken, // Return for FE persistence
+                refreshToken, // Return for FE persistence
                 otpSkipped: true
             };
         }
@@ -78,9 +80,13 @@ export class AuthController {
 
         this.setCookies(res, result.accessToken, result.refreshToken);
 
-        // Don't send tokens in body anymore
-        const { accessToken, refreshToken, ...userPart } = result;
-        return userPart;
+        const { ...userPart } = result;
+        // Return tokens in body too (Hybrid approach for localStorage support)
+        return {
+            ...userPart,
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+        };
     }
 
     @Post('refresh')
