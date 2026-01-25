@@ -33,6 +33,8 @@ export class NotificationService {
     }
 
     async createNotification(teamId: string, data: { title: string; description: string; type?: string; metadata?: any }) {
+        console.log('🔔 [NOTIFICATION-START] Creating notification for teamId:', teamId, 'Title:', data.title);
+        
         const notification = await this.prisma.notification.create({
             data: {
                 teamId,
@@ -40,22 +42,24 @@ export class NotificationService {
                 description: data.description,
                 type: data.type || 'SYSTEM',
                 metadata: data.metadata || {},
-                isRead: false, // IMPORTANT: Set as unread
+                isRead: false,
             },
         });
 
+        console.log('✅ [NOTIFICATION-SAVED] DB saved:', notification.id);
 
-        // Emit event for real-time notification
-        console.log('🔔 Creating notification for teamId:', teamId, 'Title:', data.title);
+        // Emit event for real-time notification - IMMEDIATELY after DB save
         this.eventEmitter.emit('notification.created', { teamId, notification });
-        console.log('📡 Event emitted: notification.created');
+        console.log('📡 [EVENT-EMITTED] Event emitted for teamId:', teamId);
 
-        // Send push notification for background
-        this.sendPushNotification(teamId, {
-            title: data.title,
-            body: data.description,
-            data: { id: notification.id, ...data.metadata }
-        }).catch(err => this.logger.error(`Push fail: ${err.message}`));
+        // Send push notification for background (async, don't wait)
+        setImmediate(() => {
+            this.sendPushNotification(teamId, {
+                title: data.title,
+                body: data.description,
+                data: { id: notification.id, ...data.metadata }
+            }).catch(err => this.logger.error(`Push fail: ${err.message}`));
+        });
 
         return notification;
     }

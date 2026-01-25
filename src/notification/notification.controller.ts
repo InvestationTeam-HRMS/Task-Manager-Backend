@@ -16,14 +16,17 @@ export class NotificationController {
     }
 
     @Get('unread-count')
-    getUnreadCount(@GetUser('id') userId: string) {
-        return this.notificationService.getUnreadCount(userId);
+    async getUnreadCount(@GetUser('id') userId: string) {
+        const count = await this.notificationService.getUnreadCount(userId);
+        return { count };
     }
 
     @Sse('stream')
     streamNotifications(@GetUser('id') userId: string): Observable<MessageEvent> {
-        console.log('🌊 SSE ENDPOINT HIT! UserId:', userId);
-        return this.notificationService.getNotificationStream(userId);
+        console.log('🌊 [SSE-CONNECT] SSE ENDPOINT HIT! UserId:', userId, 'Time:', new Date().toISOString());
+        const stream = this.notificationService.getNotificationStream(userId);
+        console.log('📺 [SSE-STREAM] Stream created and returning to client');
+        return stream;
     }
 
     @Patch(':id/read')

@@ -72,7 +72,7 @@ export class TaskService {
             },
         });
 
-        // Send notifications to Assignee or Target Team members
+        // Send notifications to Assignee or Target Team
         const recipients = new Set<string>();
         
         // If assigned to individual user
@@ -80,14 +80,8 @@ export class TaskService {
             recipients.add(task.assignedTo);
         }
         
-        // If assigned to target team, notify all team members
+        // If assigned to target team (which is actually a single user/team entity)
         if (task.targetTeamId) {
-            const teamMembers = await this.prisma.team.findMany({
-                where: { teamId: task.targetTeamId },
-                select: { id: true }
-            });
-            teamMembers.forEach(member => recipients.add(member.id));
-            // Also notify the team lead/manager
             recipients.add(task.targetTeamId);
         }
         
