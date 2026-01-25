@@ -541,6 +541,7 @@ export class SubLocationService {
             subLocationNo: ['sublocationno', 'sublocationnumber', 'no', 'number'],
             subLocationName: ['sublocationname', 'name', 'sname', 'sublocation'],
             subLocationCode: ['sublocationcode', 'code', 'scode'],
+            clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
             locationName: ['locationname', 'clientlocationname', 'location', 'clientlocation'],
             companyName: ['companyname', 'clientcompanyname', 'company', 'clientcompany'],
             address: ['address', 'physicaladdress', 'street', 'sublocationaddress', 'addr'],
@@ -548,7 +549,7 @@ export class SubLocationService {
             remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
         };
 
-        const requiredColumns = ['subLocationName', 'subLocationCode', 'locationName', 'companyName'];
+        const requiredColumns = ['subLocationName', 'subLocationCode'];
 
         const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
             file,
@@ -560,23 +561,32 @@ export class SubLocationService {
             throw new BadRequestException('No valid data found to import. Please check file format and column names.');
         }
 
-        // 1. Resolve all companyNames to companyIds
+        // 1. Resolve all relations
         const companyNames = Array.from(new Set(data.filter(row => row.companyName).map(row => row.companyName)));
-        const companies = await this.prisma.clientCompany.findMany({
-            where: { companyName: { in: companyNames } },
-            select: { id: true, companyName: true, groupId: true }
-        });
-        const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c.id]));
-
-        // 2. Resolve all locationNames to locationIds (grouped by company)
         const locationNames = Array.from(new Set(data.filter(row => row.locationName).map(row => row.locationName)));
-        const locations = await this.prisma.clientLocation.findMany({
-            where: { locationName: { in: locationNames } },
-            select: { id: true, locationName: true, companyId: true }
-        });
-        const locationMap = new Map(locations.map(l => [`${l.companyId}_${l.locationName.toLowerCase()}`, l.id]));
+        const clientGroupNames = Array.from(new Set(data.filter(row => row.clientGroupName).map(row => row.clientGroupName)));
 
-        // 3. Build processing data
+        const [companies, locations, clientGroups] = await Promise.all([
+            this.prisma.clientCompany.findMany({
+                where: { companyName: { in: companyNames } },
+                select: { id: true, companyName: true, groupId: true }
+            }),
+            this.prisma.clientLocation.findMany({
+                where: { locationName: { in: locationNames } },
+                select: { id: true, locationName: true, companyId: true, clientGroupId: true }
+            }),
+            this.prisma.clientGroup.findMany({
+                where: { groupName: { in: clientGroupNames } },
+                select: { id: true, groupName: true }
+            })
+        ]);
+
+        const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c]));
+        const groupMap = new Map(clientGroups.map(g => [g.groupName.toLowerCase(), g.id]));
+        // Note: locationMap needs to handle potential duplicates if same name exists in diff companies, but simplified for now
+        const locationMap = new Map(locations.map(l => [l.locationName.toLowerCase(), l]));
+
+        // 2. Build processing data
         const processedData: CreateSubLocationDto[] = [];
         const processingErrors: any[] = [];
 
@@ -585,35 +595,46 @@ export class SubLocationService {
             try {
                 const status = row.status ? this.excelUploadService.validateEnum(row.status as string, SubLocationStatus, 'Status') : SubLocationStatus.Active;
 
-                const companyId = companyMap.get(row.companyName?.toLowerCase());
-                if (!companyId) {
-                    throw new Error(`Client Company not found: ${row.companyName}`);
+                let companyId: string | undefined;
+                let locationId: string | undefined;
+                let clientGroupId: string | undefined;
+
+                if (row.companyName) {
+                    const company = companyMap.get(row.companyName.toLowerCase());
+                    if (!company) throw new Error(`Client Company not found: ${row.companyName}`);
+                    companyId = company.id;
+                    clientGroupId = company.groupId;
                 }
 
-                const locationId = locationMap.get(`${companyId}_${row.locationName?.toLowerCase()}`);
+                if (row.locationName) {
+                    const location = locationMap.get(row.locationName.toLowerCase());
+                    if (!location) throw new Error(`Client Location not found: ${row.locationName}`);
+                    locationId = location.id;
 
-                // We need to fetch the company's group ID to populate clientGroupId
-                // Since this is bulk import, fetching one by one is slow. map should contain it.
-                // Improving step 1 to include groupId
+                    if (clientGroupId && clientGroupId !== location.clientGroupId) {
+                        throw new Error(`Location "${row.locationName}" does not belong to the same Group as Company`);
+                    }
+                    clientGroupId = location.clientGroupId;
 
-                // For now, let's fetch company details to get groupId
-                const companyDetails = companies.find(c => c.id === companyId);
-                const clientGroupId = companyDetails?.groupId; // Accessing existing groupId field on ClientCompany? 
-
-                // Wait, ClientCompany model needs to be checked if it has groupId. Yes it does.
-                // But previous 'companies' fetch only selected id and companyName.
-                // I need to update 'companies' fetch query just above.
-
-                if (!locationId && !row.locationName) {
-                    // Optional location? logic
+                    if (companyId && location.companyId && companyId !== location.companyId) {
+                        throw new Error(`Location "${row.locationName}" belongs to a different Company`);
+                    }
+                    if (!companyId) companyId = location.companyId || undefined;
                 }
 
-                // For simplified fix without refactoring the whole function too much:
-                // I will update the query above first. But I cannot in this replacement chunk easily.
-                // Actually, I can navigate to 'companies' fetch line in next step.
-                // Here I will placeholder logic assuming I will fix the fetch.
+                if (row.clientGroupName) {
+                    const gid = groupMap.get(row.clientGroupName.toLowerCase());
+                    if (!gid) throw new Error(`Client Group not found: ${row.clientGroupName}`);
 
-                if (!clientGroupId) throw new Error(`Client Group not found for Company: ${row.companyName}`);
+                    if (clientGroupId && clientGroupId !== gid) {
+                        throw new Error(`Resolved Group does not match "Client Group Name" provided`);
+                    }
+                    clientGroupId = gid;
+                }
+
+                if (!clientGroupId) {
+                    throw new Error(`Client Group could not be resolved from Company, Location, or Group Name`);
+                }
 
                 processedData.push({
                     subLocationNo: row.subLocationNo,
@@ -621,8 +642,7 @@ export class SubLocationService {
                     subLocationCode: row.subLocationCode,
                     clientGroupId: clientGroupId,
                     companyId: companyId,
-                    locationId: locationId || '', // TODO: this might fail if locationId is optional but here we force it? 
-                    // Original code forced locationId. If we want optional, we check if row.locationName is empty.
+                    locationId: locationId,
                     address: row.address,
                     status: status as SubLocationStatus,
                     remark: row.remark,

@@ -579,13 +579,8 @@ export class GroupService {
                 if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);
 
                 const companyId = companyMap.get((row as any).companyName?.toLowerCase());
-                if (!companyId) throw new Error(`Company "${(row as any).companyName}" not found or missing`);
-
                 const locationId = locationMap.get((row as any).locationName?.toLowerCase());
-                if (!locationId) throw new Error(`Location "${(row as any).locationName}" not found or missing`);
-
                 const subLocationId = subLocationMap.get((row as any).subLocationName?.toLowerCase());
-                if (!subLocationId) throw new Error(`Sub Location "${(row as any).subLocationName}" not found or missing`);
 
                 processedData.push({
                     groupNo: (row as any).groupNo,

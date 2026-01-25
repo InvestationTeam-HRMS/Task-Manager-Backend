@@ -23,20 +23,20 @@ export class CreateTeamDto {
     taskAssignPermission?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    clientGroupId: string;
+    @IsOptional()
+    clientGroupId?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    companyId: string;
+    @IsOptional()
+    companyId?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    locationId: string;
+    @IsOptional()
+    locationId?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    subLocationId: string;
+    @IsOptional()
+    subLocationId?: string;
 
     @IsEnum(TeamStatus)
     @IsNotEmpty()

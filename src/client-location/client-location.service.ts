@@ -531,13 +531,14 @@ export class ClientLocationService {
             locationNo: ['locationno', 'locationnumber', 'no', 'number'],
             locationName: ['locationname', 'name', 'lname', 'location'],
             locationCode: ['locationcode', 'code', 'lcode'],
+            clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
             companyName: ['companyname', 'clientcompanyname', 'company', 'clientcompany'],
             address: ['address', 'physicaladdress', 'street', 'locationaddress', 'addr'],
             status: ['status', 'state', 'active'],
             remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
         };
 
-        const requiredColumns = ['locationName', 'locationCode', 'companyName'];
+        const requiredColumns = ['locationName', 'locationCode'];
 
         const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
             file,
@@ -549,13 +550,23 @@ export class ClientLocationService {
             throw new BadRequestException('No valid data found to import. Please check file format and column names.');
         }
 
-        // 1. Resolve all companyNames to companyIds
+        // 1. Resolve all companyNames and clientGroupNames
         const companyNames = Array.from(new Set(data.filter(row => row.companyName).map(row => row.companyName)));
-        const companies = await this.prisma.clientCompany.findMany({
-            where: { companyName: { in: companyNames } },
-            select: { id: true, companyName: true, groupId: true }
-        });
-        const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c.id]));
+        const clientGroupNames = Array.from(new Set(data.filter(row => row.clientGroupName).map(row => row.clientGroupName)));
+
+        const [companies, clientGroups] = await Promise.all([
+            this.prisma.clientCompany.findMany({
+                where: { companyName: { in: companyNames } },
+                select: { id: true, companyName: true, groupId: true }
+            }),
+            this.prisma.clientGroup.findMany({
+                where: { groupName: { in: clientGroupNames } },
+                select: { id: true, groupName: true }
+            })
+        ]);
+
+        const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c]));
+        const groupMap = new Map(clientGroups.map(g => [g.groupName.toLowerCase(), g.id]));
 
         // 2. Build processing data
         const processedData: CreateClientLocationDto[] = [];
@@ -566,16 +577,29 @@ export class ClientLocationService {
             try {
                 const status = row.status ? this.excelUploadService.validateEnum(row.status as string, LocationStatus, 'Status') : LocationStatus.Active;
 
-                const companyId = companyMap.get(row.companyName?.toLowerCase());
-                if (!companyId) {
-                    throw new Error(`Client Company not found: ${row.companyName}`);
+                let companyId: string | undefined;
+                let clientGroupId: string | undefined;
+
+                if (row.companyName) {
+                    const company = companyMap.get(row.companyName.toLowerCase());
+                    if (!company) throw new Error(`Client Company not found: ${row.companyName}`);
+                    companyId = company.id;
+                    clientGroupId = company.groupId;
                 }
 
-                // Fetch full company details to get groupId
-                const companyDetails = companies.find(c => c.id === companyId);
-                const clientGroupId = companyDetails?.groupId;
+                if (row.clientGroupName) {
+                    const gid = groupMap.get(row.clientGroupName.toLowerCase());
+                    if (!gid) throw new Error(`Client Group not found: ${row.clientGroupName}`);
 
-                if (!clientGroupId) throw new Error(`Client Group not found for Company: ${row.companyName}`);
+                    if (clientGroupId && clientGroupId !== gid) {
+                        throw new Error(`Company "${row.companyName}" does not belong to Group "${row.clientGroupName}"`);
+                    }
+                    clientGroupId = gid;
+                }
+
+                if (!clientGroupId) {
+                    throw new Error(`Either "Company Name" or "Client Group Name" is required to resolve Client Group`);
+                }
 
                 processedData.push({
                     locationNo: row.locationNo,

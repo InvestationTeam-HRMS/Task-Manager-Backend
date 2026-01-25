@@ -22,16 +22,16 @@ export class CreateGroupDto {
     clientGroupId: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    companyId: string;
+    @IsOptional()
+    companyId?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    locationId: string;
+    @IsOptional()
+    locationId?: string;
 
     @IsUUID()
-    @IsNotEmpty()
-    subLocationId: string;
+    @IsOptional()
+    subLocationId?: string;
 
     @IsEnum(GroupStatus)
     @IsNotEmpty()
