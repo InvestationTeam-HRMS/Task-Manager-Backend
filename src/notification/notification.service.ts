@@ -34,7 +34,7 @@ export class NotificationService {
 
     async createNotification(teamId: string, data: { title: string; description: string; type?: string; metadata?: any }) {
         console.log('🔔 [NOTIFICATION-START] Creating notification for teamId:', teamId, 'Title:', data.title);
-        
+
         const notification = await this.prisma.notification.create({
             data: {
                 teamId,
@@ -125,16 +125,41 @@ export class NotificationService {
             });
 
             // Listen for new notifications for this user
-            const listener = (payload: any) => {
+            const listener = async (payload: any) => {
                 console.log('🎯 Event received - Target teamId:', payload.teamId, 'Listening teamId:', teamId);
                 if (payload.teamId === teamId) {
-                    console.log('✅ TeamId MATCH! Sending notification to client');
-                    observer.next({
-                        data: JSON.stringify({
+                    console.log('✅ TeamId MATCH! Sending notification and updated count to client');
+
+                    try {
+                        // Fetch fresh count with explicit error handling
+                        console.log('📊 Fetching unread count for teamId:', teamId);
+                        const count = await this.getUnreadCount(teamId);
+                        console.log('📊 Fetched count:', count, 'Type:', typeof count);
+
+                        // Ensure count is a number
+                        const finalCount = typeof count === 'number' ? count : 0;
+                        console.log('📊 Final count to send:', finalCount);
+
+                        const eventData = {
                             type: 'new-notification',
-                            notification: payload.notification
-                        })
-                    } as MessageEvent);
+                            notification: payload.notification,
+                            count: finalCount // Send updated count
+                        };
+                        console.log('📤 Sending SSE event:', JSON.stringify(eventData));
+
+                        observer.next({
+                            data: JSON.stringify(eventData)
+                        } as MessageEvent);
+                    } catch (error) {
+                        console.error('❌ Error fetching count, sending notification without count:', error);
+                        // Send notification without count as fallback
+                        observer.next({
+                            data: JSON.stringify({
+                                type: 'new-notification',
+                                notification: payload.notification
+                            })
+                        } as MessageEvent);
+                    }
                 } else {
                     console.log('❌ TeamId MISMATCH! Not sending to this client');
                 }
