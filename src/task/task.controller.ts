@@ -112,6 +112,15 @@ export class TaskController {
         return this.taskService.finalizeCompletion(id, remark, userId);
     }
 
+    @Patch(':id/reminder')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    sendReminder(
+        @Param('id') id: string,
+        @GetUser('id') userId: string,
+    ) {
+        return this.taskService.sendReminder(id, userId);
+    }
+
     @Delete(':id')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     delete(

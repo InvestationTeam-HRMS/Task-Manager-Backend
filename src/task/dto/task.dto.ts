@@ -1,10 +1,11 @@
-import { IsString, IsOptional, IsEnum, IsUUID, IsDateString, IsNotEmpty, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUUID, IsDateString, IsNotEmpty, IsArray, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { TaskStatus } from '@prisma/client';
 
 export class CreateTaskDto {
     @IsString()
     @IsNotEmpty()
+    @MaxLength(80)
     taskTitle: string;
 
     @IsString()
@@ -52,6 +53,7 @@ export class CreateTaskDto {
 export class UpdateTaskDto {
     @IsOptional()
     @IsString()
+    @MaxLength(80)
     taskTitle?: string;
 
     @IsOptional()

@@ -74,17 +74,17 @@ export class TaskService {
 
         // Send notifications to Assignee or Target Team
         const recipients = new Set<string>();
-        
+
         // If assigned to individual user
         if (task.assignedTo) {
             recipients.add(task.assignedTo);
         }
-        
+
         // If assigned to target team (which is actually a single user/team entity)
         if (task.targetTeamId) {
             recipients.add(task.targetTeamId);
         }
-        
+
         // Don't notify the creator
         recipients.delete(userId);
 
@@ -402,6 +402,46 @@ export class TaskService {
             }
         });
         return task;
+    }
+
+    async sendReminder(id: string, userId: string) {
+        const task = await this.findById(id);
+        if (!task) throw new NotFoundException('Task not found');
+
+        // Check permission: Creator only
+        if ((task as any).createdBy !== userId) {
+            throw new ForbiddenException('Only the task creator can send a reminder.');
+        }
+
+        const recipients = new Set<string>();
+        if ((task as any).assignedTo) recipients.add((task as any).assignedTo);
+        if ((task as any).targetTeamId) recipients.add((task as any).targetTeamId);
+
+        recipients.delete(userId);
+
+        if (recipients.size === 0) {
+            throw new BadRequestException('No recipients found to send reminder to.');
+        }
+
+        for (const recipientId of recipients) {
+            await this.notificationService.createNotification(recipientId, {
+                title: 'Task Reminder 🔔',
+                description: `Reminder for task: "${(task as any).taskTitle}". Please check and update.`,
+                type: 'TASK',
+                metadata: { taskId: task.id, taskNo: (task as any).taskNo, type: 'REMINDER' },
+            });
+        }
+
+        const model: any = (task as any).taskStatus === TaskStatus.Completed ? this.prisma.completedTask : this.prisma.pendingTask;
+
+        await model.update({
+            where: { id },
+            data: {
+                reminderTime: { push: new Date() }
+            }
+        });
+
+        return { message: 'Reminder sent successfully' };
     }
 
     async delete(id: string, userId: string, role: string) {
