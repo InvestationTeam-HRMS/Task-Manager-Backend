@@ -25,7 +25,34 @@ export class RoleService {
 
     async findAll() {
         const roles = await this.prisma.role.findMany();
-        return roles.map(role => ({
+
+        const rolesSortPriority: Record<string, number> = {
+            'Super Admin': 1,
+            'Admin': 2,
+            'HR Manager': 3,
+            'Hr Manager': 3,
+            'HR': 4,
+            'Recruiter': 5,
+            'Project Head': 6,
+            'Supervisor': 7,
+            'Support': 8,
+            'Auditor': 9,
+            'Staff / Employee': 10,
+            'User': 11,
+            'Guest': 12
+        };
+
+        const sortedRoles = roles.sort((a, b) => {
+            const priorityA = rolesSortPriority[a.name] || 100;
+            const priorityB = rolesSortPriority[b.name] || 100;
+
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+        return sortedRoles.map(role => ({
             ...role,
             users: [], // TODO: Link with Team/User if needed
             accessRight: (role.permissions as any) || {}
