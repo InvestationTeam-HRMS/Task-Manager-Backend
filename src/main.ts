@@ -23,13 +23,13 @@ async function bootstrap() {
         scriptSrc: ["'self'", "'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https:", "http://localhost:*"],
+        connectSrc: ["'self'", "https:", "http://localhost:*", "ws:", "wss:"],
       },
     },
     crossOriginEmbedderPolicy: false,
   }));
 
-  // Trust Proxy for secure cookies behind load balancers (Vercel/Render/Heroku)
+  // Trust Proxy for secure cookies behind load balancers (Vercel/Render/Heroku/Nginx)
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
 
@@ -41,8 +41,9 @@ async function bootstrap() {
   app.use(cookieParser(configService.get('COOKIE_SECRET', 'hrms-secret')));
 
   // CORS Configuration
+  const corsOrigins = configService.get('CORS_ORIGIN')?.split(',').map(origin => origin.trim()) || ['http://localhost:5173'];
   app.enableCors({
-    origin: configService.get('CORS_ORIGIN')?.split(',') || ['http://localhost:5173'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
