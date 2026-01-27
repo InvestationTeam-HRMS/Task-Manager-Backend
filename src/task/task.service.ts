@@ -636,7 +636,7 @@ export class TaskService {
         let cursor: string | undefined = undefined;
         const BATCH_SIZE = 5000;
 
-        // Note: For 1 crore rows, we stream both Pending and Completed tasks
+        // Optimization: Large scale dataset streaming for Pending and Completed tasks
         // This is a simplified version of the filter logic for streaming
         const baseWhere: any = {
             OR: [

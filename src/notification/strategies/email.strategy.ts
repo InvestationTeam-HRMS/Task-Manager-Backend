@@ -77,11 +77,9 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
 
     async sendOtp(recipient: string, otp: string): Promise<boolean> {
         const startTime = Date.now();
-        // FORCE 'onboarding@resend.dev' for testing to avoid "Domain not verified" errors.
-        // In production, you would use this.configService.get('SMTP_FROM');
-        const fromEmail = 'onboarding@resend.dev';
+        const fromEmail = this.configService.get('SMTP_FROM') || 'no-reply@missionhrms.com';
 
-        this.logger.debug(`[EMAIL_Mode] Using testing sender: ${fromEmail} (No DNS/Domain required)`);
+        this.logger.debug(`[EMAIL_Mode] Sender configured: ${fromEmail}`);
 
         const subject = '🔐 Your HRMS Verification Code';
         const html = this.getEmailHtml(otp);
@@ -126,10 +124,9 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
 
     async sendInvitation(recipient: string, teamName: string, token: string): Promise<boolean> {
         const startTime = Date.now();
-        // FORCE 'onboarding@resend.dev' for testing
-        const fromEmail = 'onboarding@resend.dev';
+        const fromEmail = this.configService.get('SMTP_FROM') || 'no-reply@missionhrms.com';
 
-        this.logger.debug(`[EMAIL_Mode] Using testing sender: ${fromEmail} (No DNS/Domain required)`);
+        this.logger.debug(`[EMAIL_Mode] Sender configured: ${fromEmail}`);
 
         const frontendUrl = this.configService.get('FRONTEND_URL', 'http://localhost:3000');
         const invitationLink = `${frontendUrl}/set-password?token=${token}&email=${recipient}`;

@@ -151,8 +151,6 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response
     ) {
         const ipAddress = req.ip || req.socket.remoteAddress || '';
-        // Note: setPassword in auth.service doesn't return tokens yet,
-        // but it could. For now we just let them log in manually after setting password.
         return this.authService.setPassword(dto, ipAddress);
     }
 

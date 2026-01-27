@@ -90,7 +90,7 @@ export class AuthService {
         const team = await this.prisma.team.create({
             data: {
                 teamName: `${tempUser.firstName} ${tempUser.lastName}`,
-                teamNo: `TM-${Date.now()}`, // Temporary or auto-generated
+                teamNo: `TM-${Date.now()}`, // Auto-generated team identifier
                 email: tempUser.email,
                 password: tempUser.password,
                 phone: tempUser.phoneNumber,

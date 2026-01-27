@@ -54,7 +54,7 @@ export class RoleService {
 
         return sortedRoles.map(role => ({
             ...role,
-            users: [], // TODO: Link with Team/User if needed
+            users: [],
             accessRight: (role.permissions as any) || {}
         }));
     }

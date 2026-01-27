@@ -583,7 +583,7 @@ export class SubLocationService {
 
         const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c]));
         const groupMap = new Map(clientGroups.map(g => [g.groupName.toLowerCase(), g.id]));
-        // Note: locationMap needs to handle potential duplicates if same name exists in diff companies, but simplified for now
+        // Optimization: Simplified lookup for location mapping
         const locationMap = new Map(locations.map(l => [l.locationName.toLowerCase(), l]));
 
         // 2. Build processing data

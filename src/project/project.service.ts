@@ -567,11 +567,7 @@ export class ProjectService {
                 // HOWEVER, for optimization, finding from map is better.
                 // Let's refactor step 1 to include hierarchy.
 
-                // Note: The previous logic relied on creating project with subLocationId and Prisma/DB handling relations? 
-                // No, previous DTO only had subLocationId.
-                // Now DTO requires clientGroupId.
-                // We must look up the clientGroupId for this subLocation.
-
+                // Ensure the client group hierarchy is correctly linked during creation
                 const fullSubLocation = detailedSubLocations.find(s => s.id === subLocationId);
 
                 if (!fullSubLocation?.location?.company?.group?.id) {
