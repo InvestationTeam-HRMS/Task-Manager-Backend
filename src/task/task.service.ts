@@ -229,8 +229,16 @@ export class TaskService {
         return this.sortTaskDates(task);
     }
 
-    async update(id: string, dto: UpdateTaskDto, userId: string, files?: Express.Multer.File[]) {
+    async update(id: string, dto: UpdateTaskDto, userId: string, role: string, files?: Express.Multer.File[]) {
         const existingTask = await this.findById(id);
+
+        // Permission Check: Only Admin/SuperAdmin can update tasks
+        // (Per user request: "admin ne hr ko task assign kia toh sirf admin edit kar skta hai")
+        const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+        if (!isAdmin) {
+            throw new ForbiddenException('Only Admins can edit tasks.');
+        }
+
         const { toTitleCase } = await import('../common/utils/string-helper');
         const fs = await import('fs');
         const path = await import('path');
@@ -479,6 +487,10 @@ export class TaskService {
     }
 
     async delete(id: string, userId: string, role: string) {
+        // User requested to remove delete logic completely for tasks
+        throw new ForbiddenException('Task deletion is disabled.');
+
+        /* 
         const existing = await this.findById(id);
 
         // Security Check: Only ADMIN/SUPER_ADMIN or the Creator can delete
@@ -493,6 +505,7 @@ export class TaskService {
         const deleted = await model.delete({ where: { id } });
         await this.invalidateCache();
         return deleted;
+        */
     }
 
     private async invalidateCache() {

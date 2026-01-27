@@ -83,13 +83,15 @@ export class TaskController {
 
     @Patch(':id')
     @UseInterceptors(FilesInterceptor('files'))
+
     update(
         @Param('id') id: string,
         @Body() dto: UpdateTaskDto,
         @GetUser('id') userId: string,
+        @GetUser('role') role: UserRole,
         @UploadedFiles() files?: Express.Multer.File[],
     ) {
-        return this.taskService.update(id, dto, userId, files);
+        return this.taskService.update(id, dto, userId, role, files);
     }
 
     @Patch(':id/submit-review')
