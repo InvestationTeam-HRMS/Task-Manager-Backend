@@ -5,7 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateTaskDto, UpdateTaskDto, FilterTaskDto, TaskViewMode, UpdateTaskAcceptanceDto } from './dto/task.dto';
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { Prisma, TaskStatus, AcceptanceStatus } from '@prisma/client';
+import { Prisma, TaskStatus, AcceptanceStatus, UserRole } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 const csvParser = require('csv-parser');
 import * as fs from 'fs';
@@ -237,119 +237,19 @@ export class TaskService {
         const skip = (page - 1) * limit;
         const { toTitleCase } = await import('../common/utils/string-helper');
 
-        // Identify which "database" (table) to query
         const isCompletedView = filter.viewMode === TaskViewMode.MY_COMPLETED ||
             filter.viewMode === TaskViewMode.TEAM_COMPLETED ||
             (Array.isArray(filter.taskStatus)
                 ? filter.taskStatus.includes(TaskStatus.Completed)
                 : filter.taskStatus === TaskStatus.Completed);
+
         const model: any = isCompletedView ? this.prisma.completedTask : this.prisma.pendingTask;
+        const andArray: any[] = [];
+        const isAdmin = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN || role === UserRole.HR || role === UserRole.MANAGER;
 
-        const where: any = {
-            AND: []
-        };
-
-        // Global Security Rule: User must be involved in the task (unless Admin/HR/Manager)
-        const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'HR' || role === 'MANAGER';
-        if (!isAdmin && userId) {
-            where.AND.push({
-                OR: [
-                    { assignedTo: userId },
-                    { targetTeamId: userId },
-                    { createdBy: userId },
-                    { workingBy: userId },
-                    {
-                        targetGroup: { members: { some: { userId } } },
-                        ...(isCompletedView ? {} : {
-                            assignedTo: null,
-                            taskAcceptances: { none: { userId, status: 'REJECTED' } }
-                        })
-                    }
-                ]
-            });
-        }
-        const andArray = where.AND;
-
-        // Specific View Mode Filters
-        if (filter.viewMode && userId) {
-            switch (filter.viewMode) {
-                case TaskViewMode.MY_PENDING:
-                    // Only tasks explicitly assigned to me
-                    andArray.push({
-                        taskStatus: TaskStatus.Pending,
-                        OR: [
-                            { assignedTo: userId },
-                            { targetTeamId: userId }
-                        ]
-                    });
-                    break;
-                case TaskViewMode.TEAM_PENDING:
-                    // Tasks I created for others OR unassigned group tasks for my team
-                    if (isAdmin) {
-                        andArray.push({
-                            taskStatus: TaskStatus.Pending,
-                            OR: [
-                                { createdBy: userId, NOT: { assignedTo: userId } },
-                                { assignedTo: { not: userId } },
-                                { assignedTo: null }
-                            ]
-                        });
-                    } else {
-                        // Regular user sees what they created for others
-                        andArray.push({
-                            taskStatus: TaskStatus.Pending,
-                            createdBy: userId,
-                            NOT: { assignedTo: userId }
-                        });
-                    }
-                    break;
-                case TaskViewMode.REVIEW_PENDING_BY_ME:
-                    // I created it, waiting for me to approve
-                    andArray.push({ createdBy: userId, taskStatus: TaskStatus.ReviewPending });
-                    break;
-                case TaskViewMode.REVIEW_PENDING_BY_TEAM:
-                    // I submitted it, waiting for someone else to review
-                    if (isAdmin) {
-                        // Admin sees everything in review that THEY didn't create
-                        andArray.push({
-                            taskStatus: TaskStatus.ReviewPending,
-                            NOT: { createdBy: userId }
-                        });
-                    } else {
-                        andArray.push({
-                            OR: [{ assignedTo: userId }, { targetTeamId: userId }],
-                            createdBy: { not: userId },
-                            taskStatus: TaskStatus.ReviewPending
-                        });
-                    }
-                    break;
-                case TaskViewMode.MY_COMPLETED:
-                    // Tasks I personally finished
-                    andArray.push({ workingBy: userId });
-                    break;
-                case TaskViewMode.TEAM_COMPLETED:
-                    // Always exclude tasks I personally finished from the 'Team' view to avoid duplication
-                    andArray.push({
-                        NOT: { workingBy: userId }
-                    });
-
-                    if (isAdmin) {
-                        // Admin: Show everything else (delegated work, other team members' work)
-                    } else {
-                        // Regular user: Show only what they created (that others finished)
-                        andArray.push({
-                            createdBy: userId
-                        });
-                    }
-                    break;
-            }
-        }
-
-        console.log(`[TaskService] ===== FIND ALL DEBUG =====`);
-        console.log(`[TaskService] User: ${userId}, Role: ${role}, ViewMode: ${filter.viewMode}`);
-        console.log(`[TaskService] Using Model: ${isCompletedView ? 'CompletedTask' : 'PendingTask'}`);
-        console.log(`[TaskService] Filter Conditions:`, JSON.stringify(where, null, 2));
-
+        // 1. Priority Filters (Project, Priority, Search)
+        if (filter.projectId) andArray.push({ projectId: filter.projectId });
+        if (filter.priority) andArray.push({ priority: filter.priority });
         if (filter.search) {
             const val = filter.search;
             const searchTitle = toTitleCase(val);
@@ -363,15 +263,102 @@ export class TaskService {
             });
         }
 
-        console.log(`[TaskService] findAll query:`, {
-            viewMode: filter.viewMode,
-            model: isCompletedView ? 'CompletedTask' : 'PendingTask',
-            isAdmin,
-            userId,
-            where: JSON.stringify(where, null, 2)
-        });
+        // 2. View Mode Logic
+        if (filter.viewMode && userId) {
+            // Helper for "NOT ME" (Matches where I am NOT the assignee/worker, including NULLs)
+            const isNotMeAssigned = {
+                AND: [
+                    { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
+                    { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
+                ]
+            };
 
-        console.log(`[TaskService] Executing query with skip: ${skip}, limit: ${limit}`);
+            const iAmInvolved = {
+                OR: [
+                    { createdBy: userId },
+                    { targetGroup: { members: { some: { userId } } } }
+                ]
+            };
+
+            switch (filter.viewMode) {
+                case TaskViewMode.MY_PENDING:
+                    andArray.push({
+                        taskStatus: TaskStatus.Pending,
+                        OR: [{ assignedTo: userId }, { targetTeamId: userId }]
+                    });
+                    break;
+
+                case TaskViewMode.TEAM_PENDING:
+                    andArray.push({ taskStatus: TaskStatus.Pending });
+                    // Must be involved (Creator/Member) AND NOT assigned to me personally
+                    // (Unless Admin, who sees everything in Team except their own tasks)
+                    andArray.push(isNotMeAssigned);
+                    if (!isAdmin) {
+                        andArray.push(iAmInvolved);
+                    }
+                    break;
+
+                case TaskViewMode.MY_COMPLETED:
+                    // Task I personally completed
+                    andArray.push({ workingBy: userId });
+                    break;
+
+                case TaskViewMode.TEAM_COMPLETED:
+                    // Task completed by someone else (including NULL if applicable, but workingBy is usually set)
+                    andArray.push({ OR: [{ workingBy: { not: userId } }, { workingBy: null }] });
+                    // Involved but not the worker
+                    if (!isAdmin) {
+                        andArray.push({
+                            OR: [
+                                { createdBy: userId },
+                                { targetGroup: { members: { some: { userId } } } },
+                                { targetTeamId: userId },
+                                { assignedTo: userId } // Assigned to me but someone else did it (escalated or reassigned)
+                            ]
+                        });
+                    }
+                    break;
+
+                case TaskViewMode.REVIEW_PENDING_BY_ME:
+                    andArray.push({ createdBy: userId, taskStatus: TaskStatus.ReviewPending });
+                    break;
+
+                case TaskViewMode.REVIEW_PENDING_BY_TEAM:
+                    andArray.push({
+                        taskStatus: TaskStatus.ReviewPending,
+                        OR: [{ createdBy: { not: userId } }, { createdBy: null }]
+                    });
+                    if (!isAdmin) {
+                        andArray.push({
+                            OR: [
+                                { assignedTo: userId },
+                                { targetTeamId: userId },
+                                { workingBy: userId },
+                                { targetGroup: { members: { some: { userId } } } }
+                            ]
+                        });
+                    }
+                    break;
+            }
+        } else {
+            // Fallback: Use direct DTO filters (Legacy support)
+            if (!isAdmin && userId) {
+                andArray.push({
+                    OR: [
+                        { createdBy: userId },
+                        { assignedTo: userId },
+                        { workingBy: userId },
+                        { targetTeamId: userId },
+                        { targetGroup: { members: { some: { userId } } } }
+                    ]
+                });
+            }
+            if (filter.assignedTo) andArray.push({ assignedTo: filter.assignedTo });
+            if (filter.workingBy) andArray.push({ workingBy: filter.workingBy });
+            if (filter.taskStatus) andArray.push({ taskStatus: filter.taskStatus });
+        }
+
+        const where = { AND: andArray };
 
         const [data, total] = await Promise.all([
             model.findMany({
@@ -390,8 +377,6 @@ export class TaskService {
             }),
             model.count({ where }),
         ]);
-
-        console.log(`[TaskService] findAll result count: ${data.length} for ${isCompletedView ? 'Completed' : 'Pending'} view`);
 
         return {
             data: data.map(task => this.sortTaskDates(task)),
