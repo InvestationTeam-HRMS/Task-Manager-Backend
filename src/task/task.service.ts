@@ -289,8 +289,10 @@ export class TaskService {
                     break;
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
                     // Show tasks user submitted for review (user is assignee)
+                    // But EXCLUDE those created by me (they should only show in REVIEW_PENDING_BY_ME)
                     andArray.push({
                         OR: [{ assignedTo: userId }, { targetTeamId: userId }],
+                        createdBy: { not: userId },
                         taskStatus: TaskStatus.ReviewPending
                     });
                     break;
@@ -300,19 +302,17 @@ export class TaskService {
                             { assignedTo: userId },
                             { targetTeamId: userId },
                             { workingBy: userId },
-                            { createdBy: userId }, // Also see tasks you created that are now complete
-                        ],
-                        taskStatus: TaskStatus.Completed
+                            { createdBy: userId },
+                        ]
                     });
                     break;
                 case TaskViewMode.TEAM_COMPLETED:
                     if (isAdmin) {
                         // Admins/HR/Managers see all completed tasks in Team Completed
-                        andArray.push({ taskStatus: TaskStatus.Completed });
+                        // No additional filtering needed as we're already querying completedTask table
                     } else {
-                        // Others see tasks where they were Creator, Assignee, or Worker
+                        // Others see tasks where they were involved
                         andArray.push({
-                            taskStatus: TaskStatus.Completed,
                             OR: [
                                 { createdBy: userId },
                                 { assignedTo: userId },
