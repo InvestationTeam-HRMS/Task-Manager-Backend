@@ -129,9 +129,18 @@ export class TaskService {
         console.log(`[TaskService] Notifying recipients for Task ${task.taskNo}:`, Array.from(recipients));
 
         for (const recipientId of recipients) {
+            let description = `A new task "${task.taskTitle}" has been assigned to you.`
+
+            // If it's a group assignment and the user is NOT the primary individual assignee
+            if (task.targetGroupId &&
+                recipientId !== task.assignedTo &&
+                recipientId !== task.targetTeamId) {
+                description = `A new task "${task.taskTitle}" has been assigned to your group.`
+            }
+
             await this.notificationService.createNotification(recipientId, {
                 title: 'New Task Assigned',
-                description: `A new task "${task.taskTitle}" has been assigned to your group or you.`,
+                description,
                 type: 'TASK',
                 metadata: { taskId: task.id, taskNo: task.taskNo },
             });
@@ -249,6 +258,7 @@ export class TaskService {
                     { targetTeamId: userId },
                     { createdBy: userId },
                     { workingBy: userId },
+                    { targetGroup: { members: { some: { userId } } } }
                 ]
             });
         }
@@ -265,7 +275,12 @@ export class TaskService {
                             {
                                 AND: [
                                     { targetGroupId: { not: null } },
-                                    { taskAcceptances: { some: { userId: userId, status: 'ACCEPTED' } } }
+                                    {
+                                        OR: [
+                                            { taskAcceptances: { some: { userId: userId, status: 'ACCEPTED' } } },
+                                            { targetGroup: { members: { some: { userId } } } }
+                                        ]
+                                    }
                                 ]
                             }
                         ],
@@ -303,6 +318,7 @@ export class TaskService {
                             { targetTeamId: userId },
                             { workingBy: userId },
                             { createdBy: userId },
+                            { targetGroup: { members: { some: { userId } } } }
                         ]
                     });
                     break;
@@ -317,7 +333,8 @@ export class TaskService {
                                 { createdBy: userId },
                                 { assignedTo: userId },
                                 { workingBy: userId },
-                                { targetTeamId: userId }
+                                { targetTeamId: userId },
+                                { targetGroup: { members: { some: { userId } } } }
                             ]
                         });
                     }
