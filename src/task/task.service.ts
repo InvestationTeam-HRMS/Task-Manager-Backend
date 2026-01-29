@@ -274,65 +274,67 @@ export class TaskService {
         if (filter.viewMode && userId) {
             switch (filter.viewMode) {
                 case TaskViewMode.MY_PENDING:
+                    // Only tasks explicitly assigned to me
                     andArray.push({
-                        OR: [
-                            { assignedTo: userId },
-                            { targetTeamId: userId },
-                            {
-                                targetGroup: { members: { some: { userId } } },
-                                assignedTo: null,
-                                taskAcceptances: { none: { userId, status: 'REJECTED' } }
-                            }
-                        ],
-                        taskStatus: TaskStatus.Pending
-                    });
-                    break;
-                case TaskViewMode.TEAM_PENDING:
-                    andArray.push({
-                        createdBy: userId,
                         taskStatus: TaskStatus.Pending,
-                        // Not assigned to me (could be someone else or no one)
-                        AND: [
-                            { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
-                            { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
-                        ]
-                    });
-                    break;
-                case TaskViewMode.REVIEW_PENDING_BY_ME:
-                    // Show tasks waiting for user to review (user is creator)
-                    andArray.push({ createdBy: userId, taskStatus: TaskStatus.ReviewPending });
-                    break;
-                case TaskViewMode.REVIEW_PENDING_BY_TEAM:
-                    // Show tasks user submitted for review (user is assignee)
-                    // But EXCLUDE those created by me (they should only show in REVIEW_PENDING_BY_ME)
-                    andArray.push({
-                        OR: [{ assignedTo: userId }, { targetTeamId: userId }],
-                        createdBy: { not: userId },
-                        taskStatus: TaskStatus.ReviewPending
-                    });
-                    break;
-                case TaskViewMode.MY_COMPLETED:
-                    andArray.push({
                         OR: [
                             { assignedTo: userId },
-                            { workingBy: userId },
                             { targetTeamId: userId }
                         ]
                     });
                     break;
+                case TaskViewMode.TEAM_PENDING:
+                    // Tasks I created for others OR unassigned group tasks for my team
+                    if (isAdmin) {
+                        andArray.push({
+                            taskStatus: TaskStatus.Pending,
+                            OR: [
+                                { createdBy: userId, NOT: { assignedTo: userId } },
+                                { assignedTo: { not: userId } },
+                                { assignedTo: null }
+                            ]
+                        });
+                    } else {
+                        // Regular user sees what they created for others
+                        andArray.push({
+                            taskStatus: TaskStatus.Pending,
+                            createdBy: userId,
+                            NOT: { assignedTo: userId }
+                        });
+                    }
+                    break;
+                case TaskViewMode.REVIEW_PENDING_BY_ME:
+                    // I created it, waiting for me to approve
+                    andArray.push({ createdBy: userId, taskStatus: TaskStatus.ReviewPending });
+                    break;
+                case TaskViewMode.REVIEW_PENDING_BY_TEAM:
+                    // I submitted it, waiting for someone else to review
+                    if (isAdmin) {
+                        // Admin sees everything in review that THEY didn't create
+                        andArray.push({
+                            taskStatus: TaskStatus.ReviewPending,
+                            NOT: { createdBy: userId }
+                        });
+                    } else {
+                        andArray.push({
+                            OR: [{ assignedTo: userId }, { targetTeamId: userId }],
+                            createdBy: { not: userId },
+                            taskStatus: TaskStatus.ReviewPending
+                        });
+                    }
+                    break;
+                case TaskViewMode.MY_COMPLETED:
+                    // Tasks I personally finished
+                    andArray.push({ workingBy: userId });
+                    break;
                 case TaskViewMode.TEAM_COMPLETED:
                     if (isAdmin) {
-                        // Admins/HR/Managers see all completed tasks in Team Completed
-                        // No additional filtering needed as we're already querying completedTask table
+                        // Admin: Show EVERYTHING completed in the system
                     } else {
-                        // Others see tasks where they were involved
+                        // Regular user: What I created that others finished
                         andArray.push({
-                            OR: [
-                                { createdBy: userId },
-                                { assignedTo: userId },
-                                { workingBy: userId },
-                                { targetTeamId: userId }
-                            ]
+                            createdBy: userId,
+                            NOT: { workingBy: userId }
                         });
                     }
                     break;
@@ -582,25 +584,9 @@ export class TaskService {
         }
 
         try {
-            console.log(`[TaskService] ===== FINALIZE COMPLETION START =====`);
-            console.log(`[TaskService] Task ID: ${id}, Task No: ${task.taskNo}, Current Status: ${task.taskStatus}`);
-            console.log(`[TaskService] Worker: ${task.workingBy}, Assignee: ${task.assignedTo}, Creator: ${task.createdBy}`);
-            console.log(`[TaskService] Accepting User: ${userId}`);
-
-            // Check if already completed (Prevents unique constraint failure on taskNo)
-            const alreadyCompleted = await this.prisma.completedTask.findUnique({
-                where: { taskNo: task.taskNo }
-            });
-
-            if (alreadyCompleted) {
-                console.log(`[TaskService] Task ${task.taskNo} already exists in CompletedTask. Deleting from PendingTask.`);
-                await this.prisma.pendingTask.delete({ where: { id: task.id } });
-                await this.invalidateCache();
-                return this.sortTaskDates(alreadyCompleted);
-            }
+            console.log(`[TaskService] Starting completion process for ${task.taskNo}...`);
 
             const completedTask = await this.prisma.$transaction(async (tx) => {
-                console.log(`[TaskService] Starting finalization transaction for Task ${task.taskNo}`);
                 const completedData: any = {
                     id: task.id,
                     taskNo: task.taskNo,
@@ -611,65 +597,53 @@ export class TaskService {
                     deadline: task.deadline,
                     completeTime: new Date(),
                     completedAt: new Date(),
-                    reviewedTime: [...(task.reviewedTime || []), new Date()],
+                    reviewedTime: Array.isArray(task.reviewedTime) ? [...task.reviewedTime, new Date()] : [new Date()],
                     reminderTime: task.reminderTime || [],
                     document: document,
                     remarkChat: remark || task.remarkChat,
                     createdTime: task.createdTime,
                     editTime: task.editTime || [],
+                    projectId: task.projectId || null,
+                    assignedTo: task.assignedTo || null,
+                    targetGroupId: task.targetGroupId || null,
+                    targetTeamId: task.targetTeamId || null,
+                    createdBy: task.createdBy || null,
+                    workingBy: task.workingBy || userId,
                 };
 
-                // Only add non-null foreign keys
-                if (task.projectId) completedData.projectId = task.projectId;
-                if (task.assignedTo) completedData.assignedTo = task.assignedTo;
-                if (task.targetGroupId) completedData.targetGroupId = task.targetGroupId;
-                if (task.targetTeamId) completedData.targetTeamId = task.targetTeamId;
-                if (task.createdBy) completedData.createdBy = task.createdBy;
-
-                // Set workingBy - prefer original worker, fallback to current user
-                completedData.workingBy = task.workingBy || userId;
-
-                console.log(`[TaskService] Creating CompletedTask with data:`, JSON.stringify(completedData, null, 2));
-
+                // Create the completed task
                 const completed = await tx.completedTask.create({
                     data: completedData
                 });
 
-                console.log(`[TaskService] Created CompletedTask record for ${task.taskNo} with ID ${completed.id}`);
-
-                // 2. Delete from PendingTask
+                // Delete from pending table (Cascade handles children like TaskAcceptance)
                 await tx.pendingTask.delete({
                     where: { id: task.id }
                 });
 
-                console.log(`[TaskService] Deleted PendingTask record for ${task.taskNo}`);
-
                 return completed;
             });
 
-            console.log(`[TaskService] Task finalization successful for ${task.taskNo}`);
-
-            // Notify Worker/Assignee
-            const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-            if (workerId && workerId !== userId) {
-                console.log(`[TaskService] Sending finalization notification to user: ${workerId}`);
-                await this.notificationService.createNotification(workerId, {
-                    title: 'Task Completed & Approved',
-                    description: `Your work on task "${task.taskTitle}" has been approved and marked as completed.`,
-                    type: 'TASK',
-                    metadata: { taskId: completedTask.id, taskNo: task.taskNo, status: 'Completed' },
-                });
-            }
-
+            console.log(`[TaskService] SAVE SUCCESS: Task ${task.taskNo} moved to CompletedTask table.`);
             await this.invalidateCache();
             return this.sortTaskDates(completedTask);
+
         } catch (error: any) {
-            console.error('[TaskService] CRITICAL Error in finalizeCompletion:');
-            console.error('Message:', error.message);
-            console.error('Stack:', error.stack);
-            if (error.code) console.error('Prisma Error Code:', error.code);
-            if (error.meta) console.error('Prisma Meta:', error.meta);
-            throw error;
+            console.error(`[TaskService] SAVE FAILED for Task ${task.taskNo}`);
+            console.error(`[TaskService] Error Detail:`, error.message);
+
+            // Check for record already in CompletedTask (Idempotency)
+            if (error.code === 'P2002') {
+                const alreadyCompleted = await this.prisma.completedTask.findUnique({
+                    where: { taskNo: task.taskNo }
+                });
+                if (alreadyCompleted) {
+                    // If it's already there, just clean up Pending if it still exists
+                    await this.prisma.pendingTask.deleteMany({ where: { taskNo: task.taskNo } }).catch(() => { });
+                    return this.sortTaskDates(alreadyCompleted);
+                }
+            }
+            throw new BadRequestException(`Save Failed: ${error.message || 'Database error'}`);
         }
     }
 
