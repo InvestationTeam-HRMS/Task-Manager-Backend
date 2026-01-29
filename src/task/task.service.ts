@@ -328,13 +328,17 @@ export class TaskService {
                     andArray.push({ workingBy: userId });
                     break;
                 case TaskViewMode.TEAM_COMPLETED:
+                    // Always exclude tasks I personally finished from the 'Team' view to avoid duplication
+                    andArray.push({
+                        NOT: { workingBy: userId }
+                    });
+
                     if (isAdmin) {
-                        // Admin: Show EVERYTHING completed in the system
+                        // Admin: Show everything else (delegated work, other team members' work)
                     } else {
-                        // Regular user: What I created that others finished
+                        // Regular user: Show only what they created (that others finished)
                         andArray.push({
-                            createdBy: userId,
-                            NOT: { workingBy: userId }
+                            createdBy: userId
                         });
                     }
                     break;
