@@ -107,15 +107,15 @@ export class FilterSubLocationDto {
     status?: SubLocationStatus;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     companyId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     clientGroupId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     locationId?: string;
 
     @IsOptional()

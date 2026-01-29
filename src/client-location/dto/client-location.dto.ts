@@ -99,11 +99,11 @@ export class FilterClientLocationDto {
     status?: LocationStatus;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     companyId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     clientGroupId?: string;
 
     @IsOptional()

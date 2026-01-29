@@ -118,9 +118,26 @@ export class SubLocationService {
             }
         }
 
-        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
-        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
-        if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+        if (filter?.clientGroupId) {
+            const groupIds = typeof filter.clientGroupId === 'string'
+                ? filter.clientGroupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.clientGroupId) ? filter.clientGroupId : [filter.clientGroupId];
+            if (groupIds.length > 0) andArray.push({ clientGroupId: { in: groupIds } });
+        }
+
+        if (filter?.companyId) {
+            const companyIds = typeof filter.companyId === 'string'
+                ? filter.companyId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.companyId) ? filter.companyId : [filter.companyId];
+            if (companyIds.length > 0) andArray.push({ companyId: { in: companyIds } });
+        }
+
+        if (filter?.locationId) {
+            const locationIds = typeof filter.locationId === 'string'
+                ? filter.locationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.locationId) ? filter.locationId : [filter.locationId];
+            if (locationIds.length > 0) andArray.push({ locationId: { in: locationIds } });
+        }
         if (filter?.subLocationName) andArray.push(buildMultiValueFilter('subLocationName', toTitleCase(filter.subLocationName)));
         if (filter?.subLocationNo) andArray.push(buildMultiValueFilter('subLocationNo', filter.subLocationNo));
         if (filter?.subLocationCode) andArray.push(buildMultiValueFilter('subLocationCode', filter.subLocationCode));

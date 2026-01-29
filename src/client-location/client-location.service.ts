@@ -120,8 +120,19 @@ export class ClientLocationService {
             }
         }
 
-        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
-        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.clientGroupId) {
+            const groupIds = typeof filter.clientGroupId === 'string'
+                ? filter.clientGroupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.clientGroupId) ? filter.clientGroupId : [filter.clientGroupId];
+            if (groupIds.length > 0) andArray.push({ clientGroupId: { in: groupIds } });
+        }
+
+        if (filter?.companyId) {
+            const companyIds = typeof filter.companyId === 'string'
+                ? filter.companyId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.companyId) ? filter.companyId : [filter.companyId];
+            if (companyIds.length > 0) andArray.push({ companyId: { in: companyIds } });
+        }
         if (filter?.locationName) andArray.push(buildMultiValueFilter('locationName', toTitleCase(filter.locationName)));
         if (filter?.locationNo) andArray.push(buildMultiValueFilter('locationNo', filter.locationNo));
         if (filter?.locationCode) andArray.push(buildMultiValueFilter('locationCode', filter.locationCode));

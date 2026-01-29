@@ -112,7 +112,17 @@ export class ClientCompanyService {
             }
         }
 
-        if (filter?.groupId) andArray.push({ groupId: filter.groupId });
+        if (filter?.groupId) {
+            const groupIds = typeof filter.groupId === 'string'
+                ? filter.groupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.groupId) ? filter.groupId : [filter.groupId];
+
+            if (groupIds.length > 0) {
+                andArray.push({
+                    groupId: { in: groupIds }
+                });
+            }
+        }
         if (filter?.companyName) andArray.push(buildMultiValueFilter('companyName', toTitleCase(filter.companyName)));
         if (filter?.companyNo) andArray.push(buildMultiValueFilter('companyNo', filter.companyNo));
         if (filter?.companyCode) andArray.push(buildMultiValueFilter('companyCode', filter.companyCode));

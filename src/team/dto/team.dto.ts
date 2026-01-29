@@ -176,19 +176,19 @@ export class FilterTeamDto {
     status?: TeamStatus;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     clientGroupId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     companyId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     locationId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     subLocationId?: string;
 
     @IsOptional()

@@ -95,7 +95,7 @@ export class FilterClientCompanyDto {
     status?: CompanyStatus;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     groupId?: string;
 
     @IsOptional()

@@ -169,12 +169,33 @@ export class TeamService {
         andArray.push({ status: { in: statusValues as any } });
     }
 
-    if (filter?.clientGroupId)
-      andArray.push({ clientGroupId: filter.clientGroupId });
-    if (filter?.companyId) andArray.push({ companyId: filter.companyId });
-    if (filter?.locationId) andArray.push({ locationId: filter.locationId });
-    if (filter?.subLocationId)
-      andArray.push({ subLocationId: filter.subLocationId });
+    if (filter?.clientGroupId) {
+      const groupIds = typeof filter.clientGroupId === 'string'
+        ? filter.clientGroupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(filter.clientGroupId) ? filter.clientGroupId : [filter.clientGroupId];
+      if (groupIds.length > 0) andArray.push({ clientGroupId: { in: groupIds } });
+    }
+
+    if (filter?.companyId) {
+      const companyIds = typeof filter.companyId === 'string'
+        ? filter.companyId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(filter.companyId) ? filter.companyId : [filter.companyId];
+      if (companyIds.length > 0) andArray.push({ companyId: { in: companyIds } });
+    }
+
+    if (filter?.locationId) {
+      const locationIds = typeof filter.locationId === 'string'
+        ? filter.locationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(filter.locationId) ? filter.locationId : [filter.locationId];
+      if (locationIds.length > 0) andArray.push({ locationId: { in: locationIds } });
+    }
+
+    if (filter?.subLocationId) {
+      const subLocationIds = typeof filter.subLocationId === 'string'
+        ? filter.subLocationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(filter.subLocationId) ? filter.subLocationId : [filter.subLocationId];
+      if (subLocationIds.length > 0) andArray.push({ subLocationId: { in: subLocationIds } });
+    }
     if (filter?.teamName)
       andArray.push(
         buildMultiValueFilter('teamName', toTitleCase(filter.teamName)),
