@@ -497,6 +497,7 @@ model PendingTask {
   targetTeamId   String?    @map("target_team_id") @db.Uuid
   createdBy      String?    @map("created_by") @db.Uuid
   workingBy      String?    @map("working_by") @db.Uuid
+  isSelfTask     Boolean    @default(false) @map("is_self_task")
   assignee       Team?      @relation("PendingTaskAssignedToTeam", fields: [assignedTo], references: [id])
   creator        Team?      @relation("PendingTaskCreatedByTeam", fields: [createdBy], references: [id])
   project        Project?   @relation(fields: [projectId], references: [id])
@@ -510,6 +511,7 @@ model PendingTask {
   @@index([projectId])
   @@index([assignedTo])
   @@index([targetTeamId])
+  @@index([isSelfTask])
   @@map("pending_tasks")
 }
 
@@ -536,6 +538,7 @@ model CompletedTask {
   targetTeamId   String?    @map("target_team_id") @db.Uuid
   createdBy      String?    @map("created_by") @db.Uuid
   workingBy      String?    @map("working_by") @db.Uuid
+  isSelfTask     Boolean    @default(false) @map("is_self_task")
   assignee       Team?      @relation("CompletedTaskAssignedToTeam", fields: [assignedTo], references: [id])
   creator        Team?      @relation("CompletedTaskCreatedByTeam", fields: [createdBy], references: [id])
   project        Project?   @relation(fields: [projectId], references: [id])
@@ -546,6 +549,7 @@ model CompletedTask {
   @@index([taskNo])
   @@index([projectId])
   @@index([assignedTo])
+  @@index([isSelfTask])
   @@map("completed_tasks")
 }
 

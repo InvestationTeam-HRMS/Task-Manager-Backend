@@ -60,6 +60,7 @@ export class TaskService {
                 document,
                 reminderTime: dto.reminderTime ? [...new Set(dto.reminderTime)].sort().map(d => new Date(d)) : [],
                 editTime: [new Date()],
+                isSelfTask: (dto.assignedTo === userId && !dto.targetGroupId && !dto.targetTeamId) || false,
                 assignedTo: dto.assignedTo && dto.assignedTo !== 'null' ? dto.assignedTo : null,
                 targetGroupId: dto.targetGroupId && dto.targetGroupId !== 'null' ? dto.targetGroupId : null,
                 targetTeamId: dto.targetTeamId && dto.targetTeamId !== 'null' ? dto.targetTeamId : null,
@@ -276,7 +277,8 @@ export class TaskService {
             const iAmInvolved = {
                 OR: [
                     { createdBy: userId },
-                    { targetGroup: { members: { some: { userId } } } }
+                    { targetGroup: { members: { some: { userId } } } },
+                    { targetTeamId: userId }
                 ]
             };
 
@@ -289,13 +291,10 @@ export class TaskService {
                     break;
 
                 case TaskViewMode.TEAM_PENDING:
-                    andArray.push({ taskStatus: TaskStatus.Pending });
-                    // Must be involved (Creator/Member) AND NOT assigned to me personally
-                    // (Unless Admin, who sees everything in Team except their own tasks)
+                    andArray.push({ taskStatus: TaskStatus.Pending, isSelfTask: false });
+                    // Must be involved (Creator/Member/Team) AND NOT assigned to me personally
                     andArray.push(isNotMeAssigned);
-                    if (!isAdmin) {
-                        andArray.push(iAmInvolved);
-                    }
+                    andArray.push(iAmInvolved);
                     break;
 
                 case TaskViewMode.MY_COMPLETED:
@@ -306,17 +305,9 @@ export class TaskService {
                 case TaskViewMode.TEAM_COMPLETED:
                     // Task completed by someone else (including NULL if applicable, but workingBy is usually set)
                     andArray.push({ OR: [{ workingBy: { not: userId } }, { workingBy: null }] });
+                    andArray.push({ isSelfTask: false });
                     // Involved but not the worker
-                    if (!isAdmin) {
-                        andArray.push({
-                            OR: [
-                                { createdBy: userId },
-                                { targetGroup: { members: { some: { userId } } } },
-                                { targetTeamId: userId },
-                                { assignedTo: userId } // Assigned to me but someone else did it (escalated or reassigned)
-                            ]
-                        });
-                    }
+                    andArray.push(iAmInvolved);
                     break;
 
                 case TaskViewMode.REVIEW_PENDING_BY_ME:
@@ -326,18 +317,11 @@ export class TaskService {
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
                     andArray.push({
                         taskStatus: TaskStatus.ReviewPending,
+                        isSelfTask: false,
                         OR: [{ createdBy: { not: userId } }, { createdBy: null }]
                     });
-                    if (!isAdmin) {
-                        andArray.push({
-                            OR: [
-                                { assignedTo: userId },
-                                { targetTeamId: userId },
-                                { workingBy: userId },
-                                { targetGroup: { members: { some: { userId } } } }
-                            ]
-                        });
-                    }
+                    // Only see reviews for tasks you are involved in
+                    andArray.push(iAmInvolved);
                     break;
             }
         } else {
@@ -596,6 +580,7 @@ export class TaskService {
                     targetTeamId: task.targetTeamId || null,
                     createdBy: task.createdBy || null,
                     workingBy: task.workingBy || userId,
+                    isSelfTask: (task as any).isSelfTask || false,
                 };
 
                 // Create the completed task
