@@ -57,7 +57,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
 
         // Get permissions from custom role if assigned, otherwise empty
-        const permissions = identity.customRole?.permissions || {};
+        const permissions: any = identity.customRole?.permissions || {};
+
+        if (identity.role === 'SUPER_ADMIN') {
+            permissions.isSuperAdmin = true;
+        }
 
         return {
             ...identity,

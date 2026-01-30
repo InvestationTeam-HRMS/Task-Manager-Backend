@@ -530,7 +530,13 @@ export class AuthService {
             return null;
         }
 
-        const permissions = user.customRole?.permissions || {};
+        const permissions: any = user.customRole?.permissions || {};
+
+        // Add isSuperAdmin flag if user has SUPER_ADMIN role
+        if (user.role === UserRole.SUPER_ADMIN) {
+            permissions.isSuperAdmin = true;
+        }
+
         const roleName = user.customRole?.name || user.role;
 
         return {
