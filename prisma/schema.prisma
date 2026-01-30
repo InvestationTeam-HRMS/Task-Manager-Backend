@@ -291,6 +291,7 @@ model Team {
   email                  String             @unique
   phone                  String?            @unique
   role                   UserRole           @default(EMPLOYEE)
+  roleId                 String?            @map("role_id") @db.Uuid
   taskAssignPermission   String?            @map("task_assign_permission")
   clientGroupId          String?            @map("client_group_id") @db.Uuid
   companyId              String?            @map("company_id") @db.Uuid
@@ -356,12 +357,14 @@ model Team {
   subLocation            SubLocation?       @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater                Team?              @relation("TeamUpdatedByTeam", fields: [updatedBy], references: [id])
   updatedTeams           Team[]             @relation("TeamUpdatedByTeam")
+  customRole             Role?              @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   @@index([teamNo])
   @@index([clientGroupId])
   @@index([companyId])
   @@index([locationId])
   @@index([subLocationId])
+  @@index([roleId])
   @@index([status])
   @@index([createdAt])
   @@index([clientGroupId, companyId, status])
@@ -560,6 +563,7 @@ model Role {
   permissions Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  teams       Team[]
 
   @@map("roles")
 }

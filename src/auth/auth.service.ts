@@ -192,6 +192,9 @@ export class AuthService {
 
             await this.logActivity(identity.id, 'LOGIN', `Account logged in (OTP bypassed: ${reason})`, ipAddress, true);
 
+            // Fetch user with permissions
+            const userWithPermissions = await this.getUserWithPermissions(identity.id);
+
             // Return success with flag indicating OTP was skipped AND tokens/user data
             return {
                 message: `Login successful (${reason})`,
@@ -200,14 +203,7 @@ export class AuthService {
                 accessToken,
                 refreshToken,
                 sessionId,
-                user: {
-                    id: identity.id,
-                    email: identity.email,
-                    firstName: identity.firstName,
-                    lastName: identity.lastName,
-                    role: identity.role,
-                    isTeam: true,
-                },
+                user: userWithPermissions,
             };
         }
 
@@ -331,18 +327,14 @@ export class AuthService {
         const loginMethod = (otpEnabledSetting && !isAdmin) ? 'OTP' : 'Direct (OTP disabled/Admin bypass)';
         await this.logActivity(identity.id, 'LOGIN', `Account logged in via ${loginMethod}`, ipAddress, true);
 
+        // Fetch user with permissions
+        const userWithPermissions = await this.getUserWithPermissions(identity.id);
+
         return {
             accessToken,
             refreshToken,
             sessionId,
-            user: {
-                id: identity.id,
-                email: identity.email,
-                firstName: identity.firstName,
-                lastName: identity.lastName,
-                role: identity.role,
-                isTeam: true,
-            },
+            user: userWithPermissions,
         };
     }
 
@@ -518,6 +510,47 @@ export class AuthService {
                 ipAddress,
             },
         });
+    }
+
+    async getUserWithPermissions(userId: string) {
+        const user = await this.prisma.team.findUnique({
+            where: { id: userId },
+            include: {
+                customRole: {
+                    select: {
+                        id: true,
+                        name: true,
+                        permissions: true,
+                    },
+                },
+            },
+        });
+
+        if (!user) {
+            return null;
+        }
+
+        const permissions = user.customRole?.permissions || {};
+        const roleName = user.customRole?.name || user.role;
+
+        return {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            roleId: user.roleId,
+            roleName,
+            permissions,
+            avatar: user.avatar,
+            phone: user.phone,
+            address: user.address,
+            city: user.city,
+            postcode: user.postcode,
+            country: user.country,
+            teamName: user.teamName,
+            isTeam: true,
+        };
     }
 
     async setPassword(dto: any, ipAddress: string) {

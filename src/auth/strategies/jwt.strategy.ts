@@ -30,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
                 id: true,
                 email: true,
                 role: true,
+                roleId: true,
                 status: true,
                 isEmailVerified: true,
                 firstName: true,
@@ -41,6 +42,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
                 postcode: true,
                 country: true,
                 teamName: true,
+                customRole: {
+                    select: {
+                        id: true,
+                        name: true,
+                        permissions: true,
+                    },
+                },
             },
         });
 
@@ -48,9 +56,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             throw new UnauthorizedException('Account not found or inactive');
         }
 
+        // Get permissions from custom role if assigned, otherwise empty
+        const permissions = identity.customRole?.permissions || {};
+
         return {
             ...identity,
-            sessionId: payload.sid
+            sessionId: payload.sid,
+            permissions,
+            roleName: identity.customRole?.name || identity.role,
         };
     }
 }

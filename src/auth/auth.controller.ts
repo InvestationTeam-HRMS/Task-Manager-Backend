@@ -214,4 +214,10 @@ export class AuthController {
         const ipAddress = req.ip || req.socket.remoteAddress || '';
         return this.authService.updateProfile(userId, dto, ipAddress);
     }
+
+    @Get('refresh-permissions')
+    @UseGuards(JwtAuthGuard)
+    async refreshPermissions(@GetUser('id') userId: string) {
+        return this.authService.getUserWithPermissions(userId);
+    }
 }

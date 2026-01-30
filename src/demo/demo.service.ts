@@ -89,22 +89,24 @@ export class DemoService {
                 this.logger.log(`Testing Login Verification (Step 2) with OTP: ${loginOtp}...`);
                 const verifyLoginResult = await this.authService.verifyLogin({ email, otp: loginOtp }, ip);
 
-                userId = verifyLoginResult.user.id;
-                token = verifyLoginResult.accessToken;
+                if (verifyLoginResult.user) {
+                    userId = verifyLoginResult.user.id;
+                    token = verifyLoginResult.accessToken;
 
-                authSection.apis.push({
-                    name: 'Verify Login OTP (Step 2)',
-                    endpoint: '/api/v1/auth/verify-login',
-                    method: 'POST',
-                    description: 'Complete Login & Get Tokens',
-                    authRequired: false,
-                    requestExample: { email, otp: loginOtp },
-                    responseExample: {
-                        accessToken: '********',
-                        refreshToken: '********',
-                        user: verifyLoginResult.user
-                    }
-                });
+                    authSection.apis.push({
+                        name: 'Verify Login OTP (Step 2)',
+                        endpoint: '/api/v1/auth/verify-login',
+                        method: 'POST',
+                        description: 'Complete Login & Get Tokens',
+                        authRequired: false,
+                        requestExample: { email, otp: loginOtp },
+                        responseExample: {
+                            accessToken: '********',
+                            refreshToken: '********',
+                            user: verifyLoginResult.user
+                        }
+                    });
+                }
             }
 
         } catch (error) {
