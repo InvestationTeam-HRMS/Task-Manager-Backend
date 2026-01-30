@@ -573,8 +573,6 @@ export class TaskService {
         }
 
         try {
-            console.log(`[TaskService] Starting completion process for ${task.taskNo}...`);
-
             const completedTask = await this.prisma.$transaction(async (tx) => {
                 const completedData: any = {
                     id: task.id,
@@ -613,7 +611,6 @@ export class TaskService {
                 return completed;
             });
 
-            console.log(`[TaskService] SAVE SUCCESS: Task ${task.taskNo} moved to CompletedTask table.`);
             await this.invalidateCache();
             return this.sortTaskDates(completedTask);
 

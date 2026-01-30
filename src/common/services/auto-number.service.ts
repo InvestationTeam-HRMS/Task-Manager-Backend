@@ -128,10 +128,11 @@ export class AutoNumberService {
 
     /**
      * Generate next number for Task (T-11001, T-11002, etc.)
+     * Checks BOTH Pending and Completed tables to prevent reuse
      */
     async generateTaskNo(): Promise<string> {
         return this.generateNumber(
-            'pendingTask',
+            ['pendingTask', 'completedTask'], // Check both tables
             'taskNo',
             'TASK_NUMBER_PREFIX',
             'TASK_NUMBER_START',
@@ -142,7 +143,7 @@ export class AutoNumberService {
 
     /**
      * Generic number generator
-     * @param modelName - Prisma model name (e.g., 'clientGroup')
+     * @param modelNames - Prisma model name(s) (e.g., 'clientGroup' or ['pendingTask', 'completedTask'])
      * @param fieldName - Field name for the number (e.g., 'groupNo')
      * @param prefixEnvKey - Environment variable key for prefix
      * @param startEnvKey - Environment variable key for start number
@@ -150,7 +151,7 @@ export class AutoNumberService {
      * @param defaultStart - Default start number if env not set
      */
     private async generateNumber(
-        modelName: string,
+        modelNames: string | string[],
         fieldName: string,
         prefixEnvKey: string,
         startEnvKey: string,
@@ -162,20 +163,23 @@ export class AutoNumberService {
             this.configService.get(startEnvKey, defaultStart),
         );
 
-        // Fetch all records starting with prefix to find the TRUE maximum
-        // This is safe for typical table sizes and handles string-sorting anomalies
-        const existingRecords = await (this.prisma as any)[modelName].findMany({
-            where: { [fieldName]: { startsWith: prefix, mode: 'insensitive' } },
-            select: { [fieldName]: true }
-        });
-
+        const models = Array.isArray(modelNames) ? modelNames : [modelNames];
         let maxNum = startNumber - 1;
-        for (const rec of existingRecords) {
-            const raw = rec[fieldName].toString();
-            const numPart = raw.replace(new RegExp(prefix, 'i'), '');
-            const parsed = parseInt(numPart);
-            if (!isNaN(parsed) && parsed > maxNum) {
-                maxNum = parsed;
+
+        for (const modelName of models) {
+            // Fetch all records starting with prefix to find the TRUE maximum
+            const existingRecords = await (this.prisma as any)[modelName].findMany({
+                where: { [fieldName]: { startsWith: prefix, mode: 'insensitive' } },
+                select: { [fieldName]: true }
+            });
+
+            for (const rec of existingRecords) {
+                const raw = rec[fieldName].toString();
+                const numPart = raw.replace(new RegExp(prefix, 'i'), '');
+                const parsed = parseInt(numPart);
+                if (!isNaN(parsed) && parsed > maxNum) {
+                    maxNum = parsed;
+                }
             }
         }
 
@@ -184,17 +188,20 @@ export class AutoNumberService {
 
         // --- FINAL SAFETY VERIFICATION ---
         // Even after finding max, we double check to handle gaps or race conditions
-        let exists = await (this.prisma as any)[modelName].findFirst({
-            where: { [fieldName]: { equals: finalNo, mode: 'insensitive' } },
-        });
+        const checkExists = async (val: string) => {
+            for (const modelName of models) {
+                const exists = await (this.prisma as any)[modelName].findFirst({
+                    where: { [fieldName]: { equals: val, mode: 'insensitive' } },
+                });
+                if (exists) return true;
+            }
+            return false;
+        };
 
         let safetyCounter = 0;
-        while (exists && safetyCounter < 100) {
+        while ((await checkExists(finalNo)) && safetyCounter < 100) {
             nextNum++;
             finalNo = `${prefix}${nextNum}`;
-            exists = await (this.prisma as any)[modelName].findFirst({
-                where: { [fieldName]: { equals: finalNo, mode: 'insensitive' } },
-            });
             safetyCounter++;
         }
 
