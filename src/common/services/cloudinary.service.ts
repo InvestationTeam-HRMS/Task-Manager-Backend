@@ -13,13 +13,26 @@ export class CloudinaryService {
         });
     }
 
-    async uploadFile(file: Express.Multer.File): Promise<UploadApiResponse | UploadApiErrorResponse> {
+    async uploadFile(file: Express.Multer.File, customFileName?: string): Promise<UploadApiResponse | UploadApiErrorResponse> {
         return new Promise((resolve, reject) => {
+            const uploadOptions: any = {
+                folder: 'hrms/tasks',
+                resource_type: 'auto',
+            };
+
+            if (customFileName) {
+                // Sanitize filename for Cloudinary public_id
+                // Remove extension as Cloudinary adds it back or handles it via resource_type
+                const nameWithoutExt = customFileName.split('.').slice(0, -1).join('.');
+                const sanitizedName = (nameWithoutExt || customFileName).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                uploadOptions.public_id = sanitizedName;
+                uploadOptions.use_filename = true;
+                uploadOptions.unique_filename = true; // Still keeps a random suffix if name collides, but keeps our prefix
+            }
+
             const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: 'hrms/tasks',
-                    resource_type: 'auto', // Detects PDF, Excel, Images automatically
-                },
+                uploadOptions,
                 (error, result) => {
                     if (error) return reject(error);
                     if (!result) return reject(new Error('Cloudinary upload failed: Empty result'));

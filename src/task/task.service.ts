@@ -39,7 +39,10 @@ export class TaskService {
             const savedUrls: string[] = [];
 
             for (const file of files) {
-                const result = await this.cloudinaryService.uploadFile(file);
+                const timestamp = Date.now();
+                const customName = `${taskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${taskNo}`;
+                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -506,7 +509,10 @@ export class TaskService {
         if (files && files.length > 0) {
             const savedUrls: string[] = [];
             for (const file of files) {
-                const result = await this.cloudinaryService.uploadFile(file);
+                const timestamp = Date.now();
+                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${task.taskNo}`;
+                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -554,7 +560,10 @@ export class TaskService {
         if (files && files.length > 0) {
             const savedUrls: string[] = [];
             for (const file of files) {
-                const result = await this.cloudinaryService.uploadFile(file);
+                const timestamp = Date.now();
+                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${task.taskNo}`;
+                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -745,7 +754,10 @@ export class TaskService {
         if (files && files.length > 0) {
             const savedUrls: string[] = [];
             for (const file of files) {
-                const result = await this.cloudinaryService.uploadFile(file);
+                const timestamp = Date.now();
+                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${task.taskNo}`;
+                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
