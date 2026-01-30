@@ -227,6 +227,25 @@ export class TaskService {
                 type: 'TASK',
                 metadata: { taskId: updated.pendingTask.id, taskNo: updated.pendingTask.taskNo },
             });
+
+            // ALSO NOTIFY Group Members if it's a group task, so their lists refresh and remove the task
+            if (updated.pendingTask.targetGroupId) {
+                const members = await this.prisma.groupMember.findMany({
+                    where: { groupId: updated.pendingTask.targetGroupId },
+                    select: { userId: true }
+                });
+
+                for (const member of members) {
+                    if (member.userId !== userId) { // Don't notify the one who just accepted
+                        await this.notificationService.createNotification(member.userId, {
+                            title: 'Task Accepted by Peer',
+                            description: `The task "${updated.pendingTask.taskTitle}" has been accepted by someone else in your group.`,
+                            type: 'TASK',
+                            metadata: { taskId: updated.pendingTask.id, taskNo: updated.pendingTask.taskNo },
+                        });
+                    }
+                }
+            }
         }
 
         await this.invalidateCache();
@@ -595,6 +614,17 @@ export class TaskService {
 
                 return completed;
             });
+
+            // Notify Worker/Assignee about completion
+            const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
+            if (workerId && workerId !== userId) {
+                await this.notificationService.createNotification(workerId, {
+                    title: 'Task Completed',
+                    description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
+                    type: 'TASK',
+                    metadata: { taskId: completedTask.id, taskNo: task.taskNo, status: 'Completed' },
+                });
+            }
 
             await this.invalidateCache();
             return this.sortTaskDates(completedTask);
