@@ -35,14 +35,14 @@ export class ProjectController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.projectService.findAll(query, query);
     }
@@ -61,7 +61,7 @@ export class ProjectController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     update(
         @Param('id') id: string,
         @Body() dto: UpdateProjectDto,
@@ -72,7 +72,7 @@ export class ProjectController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -83,28 +83,28 @@ export class ProjectController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.projectService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkCreate(@Body() dto: BulkCreateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkUpdate(@Body() dto: BulkUpdateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkDelete(dto, userId);
     }
@@ -115,7 +115,6 @@ export class ProjectController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
         UserRole.ADMIN,
-        UserRole.SUPER_ADMIN,
         UserRole.HR,
         UserRole.EMPLOYEE,
         UserRole.MANAGER,

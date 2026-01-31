@@ -23,8 +23,8 @@ export class PermissionsGuard implements CanActivate {
             return false;
         }
 
-        // Super Admin or Admin check
-        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) {
+        // Admin check
+        if (user.role === UserRole.ADMIN) {
             return true;
         }
 

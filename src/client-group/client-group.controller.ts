@@ -38,14 +38,14 @@ export class ClientGroupController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateClientGroupDto, @GetUser('id') userId: string) {
         return this.clientGroupService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.clientGroupService.findAll(query, query);
     }
@@ -70,7 +70,7 @@ export class ClientGroupController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientGroupDto,
@@ -81,7 +81,7 @@ export class ClientGroupController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -92,28 +92,28 @@ export class ClientGroupController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientGroupService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkCreate(@Body() dto: BulkCreateClientGroupDto, @GetUser('id') userId: string) {
         return this.clientGroupService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkUpdate(@Body() dto: BulkUpdateClientGroupDto, @GetUser('id') userId: string) {
         return this.clientGroupService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteClientGroupDto, @GetUser('id') userId: string) {
         console.log('API HIT: Bulk Delete Records', dto.ids?.length);
         return this.clientGroupService.bulkDelete(dto, userId);
@@ -123,7 +123,7 @@ export class ClientGroupController {
 
     @Post('upload/excel')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE, UserRole.MANAGER)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE, UserRole.MANAGER)
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,

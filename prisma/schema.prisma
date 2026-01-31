@@ -595,7 +595,6 @@ model PushSubscription {
 }
 
 enum UserRole {
-  SUPER_ADMIN
   ADMIN
   MANAGER
   EMPLOYEE

@@ -35,14 +35,14 @@ export class GroupController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.groupService.findAll(query, query);
     }
@@ -67,7 +67,7 @@ export class GroupController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     update(
         @Param('id') id: string,
         @Body() dto: UpdateGroupDto,
@@ -78,7 +78,7 @@ export class GroupController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -89,28 +89,28 @@ export class GroupController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.groupService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkCreate(@Body() dto: BulkCreateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkUpdate(@Body() dto: BulkUpdateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkDelete(dto, userId);
     }
@@ -121,7 +121,6 @@ export class GroupController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
         UserRole.ADMIN,
-        UserRole.SUPER_ADMIN,
         UserRole.HR,
         UserRole.EMPLOYEE,
         UserRole.MANAGER,

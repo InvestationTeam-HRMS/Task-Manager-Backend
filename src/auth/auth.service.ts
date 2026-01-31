@@ -92,6 +92,8 @@ export class AuthService {
         const team = await this.prisma.team.create({
             data: {
                 teamName: `${tempUser.firstName} ${tempUser.lastName}`,
+                firstName: tempUser.firstName,
+                lastName: tempUser.lastName,
                 teamNo: `TM-${Date.now()}`, // Auto-generated team identifier
                 email: tempUser.email,
                 password: tempUser.password,
@@ -131,8 +133,8 @@ export class AuthService {
         }
 
         const loginMethod = identity.loginMethod;
-        const isAdmin = identity.role === UserRole.ADMIN || identity.role === UserRole.SUPER_ADMIN;
-        const isSuperAdmin = identity.role === UserRole.SUPER_ADMIN;
+        const isAdmin = identity.role === UserRole.ADMIN;
+        const isSuperAdmin = identity.role === UserRole.ADMIN;
 
         // 1. IP Check for methods requiring it (Ip_address, Ip_Otp)
         const requiresIpCheck = loginMethod === 'Ip_address' || loginMethod === 'Ip_Otp';
@@ -238,8 +240,8 @@ export class AuthService {
         }
 
         const loginMethod = identity.loginMethod;
-        const isAdmin = identity.role === UserRole.ADMIN || identity.role === UserRole.SUPER_ADMIN;
-        const isSuperAdmin = identity.role === UserRole.SUPER_ADMIN;
+        const isAdmin = identity.role === UserRole.ADMIN;
+        const isSuperAdmin = identity.role === UserRole.ADMIN;
 
         // 1. Double check IP for methods requiring it (Ip_address, Ip_Otp)
         const requiresIpCheck = loginMethod === 'Ip_address' || loginMethod === 'Ip_Otp';
@@ -541,12 +543,30 @@ export class AuthService {
 
         const permissions: any = user.customRole?.permissions || {};
 
-        // Add isSuperAdmin flag if user has SUPER_ADMIN role
-        if (user.role === UserRole.SUPER_ADMIN) {
+        console.log(`[AuthService] User: ${user.email}, Role: ${user.role}, CustomRole: ${user.customRole?.name || 'None'}`);
+        console.log(`[AuthService] Initial Permissions:`, JSON.stringify(permissions, null, 2));
+
+        // Fallback: If no custom role permissions, assign default based on ENUM role
+        if (Object.keys(permissions).length === 0) {
+            if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER || user.role === UserRole.HR) {
+                console.log(`[AuthService] Assigning default permissions for role: ${user.role}`);
+                permissions['organization'] = ['add', 'view', 'edit', 'delete']
+                permissions['project'] = ['add', 'view', 'edit', 'delete']
+                permissions['task'] = ['add', 'view', 'edit', 'delete']
+                permissions['users'] = ['add', 'view', 'edit', 'delete']
+                permissions['group'] = ['add', 'view', 'edit', 'delete']
+                permissions['ip_address'] = ['add', 'view', 'edit', 'delete']
+            }
+        }
+
+        // Add isSuperAdmin flag if user has ADMIN role
+        if (user.role === UserRole.ADMIN) {
             permissions.isSuperAdmin = true;
         }
 
         const roleName = user.customRole?.name || user.role;
+
+        console.log(`[AuthService] Final Permissions:`, JSON.stringify(permissions, null, 2))
 
         return {
             id: user.id,
@@ -613,12 +633,16 @@ export class AuthService {
             }
         }
 
+        const updateData: any = { ...dto, avatar: avatarUrl };
+        if (dto.firstName || dto.lastName) {
+            const firstName = dto.firstName ?? team.firstName ?? '';
+            const lastName = dto.lastName ?? team.lastName ?? '';
+            updateData.teamName = `${firstName} ${lastName}`.trim();
+        }
+
         const updated = await this.prisma.team.update({
             where: { id: userId },
-            data: {
-                ...dto,
-                avatar: avatarUrl,
-            },
+            data: updateData,
         });
 
         await this.logActivity(userId, 'UPDATE', 'Profile updated', ipAddress, true);

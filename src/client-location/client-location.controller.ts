@@ -35,14 +35,14 @@ export class ClientLocationController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.clientLocationService.findAll(query, query);
     }
@@ -61,7 +61,7 @@ export class ClientLocationController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientLocationDto,
@@ -72,7 +72,7 @@ export class ClientLocationController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -83,28 +83,28 @@ export class ClientLocationController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientLocationService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkCreate(@Body() dto: BulkCreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkUpdate(@Body() dto: BulkUpdateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkDelete(dto, userId);
     }
@@ -115,7 +115,6 @@ export class ClientLocationController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
         UserRole.ADMIN,
-        UserRole.SUPER_ADMIN,
         UserRole.HR,
         UserRole.EMPLOYEE,
         UserRole.MANAGER,

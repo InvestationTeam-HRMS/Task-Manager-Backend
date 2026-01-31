@@ -266,7 +266,7 @@ export class TaskService {
 
         const model: any = isCompletedView ? this.prisma.completedTask : this.prisma.pendingTask;
         const andArray: any[] = [];
-        const isAdmin = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN || role === UserRole.HR || role === UserRole.MANAGER;
+        const isAdmin = role === UserRole.ADMIN || role === UserRole.ADMIN || role === UserRole.HR || role === UserRole.MANAGER;
 
         // 1. Priority Filters (Project, Priority, Search)
         if (filter.projectId) andArray.push({ projectId: filter.projectId });
@@ -411,7 +411,7 @@ export class TaskService {
 
         // Permission Check: Only Admin/SuperAdmin can update tasks
         // (Per user request: "admin ne hr ko task assign kia toh sirf admin edit kar skta hai")
-        const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+        const isAdmin = role === 'ADMIN' || role === 'ADMIN';
         if (!isAdmin) {
             throw new ForbiddenException('Only Admins can edit tasks.');
         }
@@ -799,9 +799,9 @@ export class TaskService {
         /* 
         const existing = await this.findById(id);
 
-        // Security Check: Only ADMIN/SUPER_ADMIN or the Creator can delete
+        // Security Check: Only ADMIN or the Creator can delete
         const isOwner = (existing as any).createdBy === userId;
-        const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+        const isAdmin = role === 'ADMIN' || role === 'ADMIN';
 
         if (!isOwner && !isAdmin) {
             throw new ForbiddenException('You do not have permission to delete this task. Only the creator or an admin can delete tasks.');

@@ -36,14 +36,14 @@ export class ClientCompanyController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     create(@Body() dto: CreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.clientCompanyService.findAll(query, query);
     }
@@ -68,7 +68,7 @@ export class ClientCompanyController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientCompanyDto,
@@ -79,7 +79,7 @@ export class ClientCompanyController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -90,28 +90,28 @@ export class ClientCompanyController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientCompanyService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkCreate(@Body() dto: BulkCreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+    @Roles(UserRole.ADMIN, UserRole.HR)
     bulkUpdate(@Body() dto: BulkUpdateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkDelete(dto, userId);
     }
@@ -122,7 +122,6 @@ export class ClientCompanyController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
         UserRole.ADMIN,
-        UserRole.SUPER_ADMIN,
         UserRole.HR,
         UserRole.EMPLOYEE,
         UserRole.MANAGER,

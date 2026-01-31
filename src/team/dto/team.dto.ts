@@ -68,6 +68,10 @@ export class CreateTeamDto {
     @IsOptional()
     role?: UserRole;
 
+    @IsUUID()
+    @IsOptional()
+    roleId?: string;
+
     @IsArray()
     @IsString({ each: true })
     @IsOptional()
@@ -140,6 +144,10 @@ export class UpdateTeamDto {
     @IsEnum(UserRole)
     @IsOptional()
     role?: UserRole;
+
+    @IsUUID()
+    @IsOptional()
+    roleId?: string;
 
     @IsArray()
     @IsString({ each: true })

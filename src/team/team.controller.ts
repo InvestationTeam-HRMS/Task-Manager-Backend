@@ -35,14 +35,14 @@ export class TeamController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+  @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
   create(@Body() dto: CreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.create(dto, userId);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+  @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
   findAll(@Query() query: any) {
     return this.teamService.findAll(query, query);
   }
@@ -61,7 +61,7 @@ export class TeamController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+  @Roles(UserRole.ADMIN, UserRole.HR)
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTeamDto,
@@ -72,7 +72,7 @@ export class TeamController {
 
   @Patch(':id/status')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+  @Roles(UserRole.ADMIN, UserRole.HR)
   changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeStatusDto,
@@ -83,35 +83,35 @@ export class TeamController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN)
   delete(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.delete(id, userId);
   }
 
   @Post('bulk/create')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+  @Roles(UserRole.ADMIN, UserRole.HR)
   bulkCreate(@Body() dto: BulkCreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkCreate(dto, userId);
   }
 
   @Put('bulk/update')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+  @Roles(UserRole.ADMIN, UserRole.HR)
   bulkUpdate(@Body() dto: BulkUpdateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkUpdate(dto, userId);
   }
 
   @Post('bulk/delete-records')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN)
   bulkDelete(@Body() dto: BulkDeleteTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkDelete(dto, userId);
   }
 
   @Post(':id/resend-invitation')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.HR)
+  @Roles(UserRole.ADMIN, UserRole.HR)
   resendInvitation(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.resendInvitation(id, userId);
   }
@@ -120,7 +120,6 @@ export class TeamController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     UserRole.ADMIN,
-    UserRole.SUPER_ADMIN,
     UserRole.HR,
     UserRole.EMPLOYEE,
     UserRole.MANAGER,

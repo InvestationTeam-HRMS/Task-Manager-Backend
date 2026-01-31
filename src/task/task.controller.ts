@@ -31,7 +31,7 @@ export class TaskController {
     constructor(private readonly taskService: TaskService) { }
 
     @Post()
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     @UseInterceptors(FilesInterceptor('files'))
     async create(
         @UploadedFiles() files: Express.Multer.File[],
@@ -52,7 +52,7 @@ export class TaskController {
     }
 
     @Post('bulk-upload')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER)
     @UseInterceptors(FilesInterceptor('file', 1)) // 'file' matches the frontend key
     bulkUpload(
         @UploadedFiles() files: Express.Multer.File[],
@@ -63,7 +63,7 @@ export class TaskController {
     }
 
     @Get('download')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER)
     async download(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
@@ -112,7 +112,7 @@ export class TaskController {
     }
 
     @Patch(':id/submit-review')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     @UseInterceptors(FilesInterceptor('attachments'))
     async submitReview(
         @Param('id') id: string,
@@ -125,7 +125,7 @@ export class TaskController {
     }
 
     @Patch(':id/finalize-complete')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     @UseInterceptors(FilesInterceptor('attachments'))
     async finalizeComplete(
         @Param('id') id: string,
@@ -138,7 +138,7 @@ export class TaskController {
     }
 
     @Patch(':id/reminder')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     sendReminder(
         @Param('id') id: string,
         @GetUser('id') userId: string,
@@ -147,7 +147,7 @@ export class TaskController {
     }
 
     @Patch(':id/reject')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     @UseInterceptors(FilesInterceptor('attachments'))
     async rejectTask(
         @Param('id') id: string,
@@ -160,7 +160,7 @@ export class TaskController {
     }
 
     @Delete(':id')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     delete(
         @Param('id') id: string,
         @GetUser('id') userId: string,
