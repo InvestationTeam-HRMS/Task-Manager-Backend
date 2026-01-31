@@ -33,10 +33,11 @@ export class TaskController {
     @Get('logs')
     async getActivityLogs(
         @GetUser('id') userId: string,
+        @GetUser('role') role: string,
         @Query('activityIndex') activityIndex: number = 1,
         @Query('taskNo') taskNo?: string,
     ) {
-        return this.taskService.getActivityLogs(userId, activityIndex, taskNo);
+        return this.taskService.getActivityLogs(userId, activityIndex, taskNo, role);
     }
 
     @Post()

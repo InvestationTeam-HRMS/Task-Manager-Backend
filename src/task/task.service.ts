@@ -172,7 +172,7 @@ export class TaskService {
                 pendingTask: {
                     include: {
                         project: { select: { projectName: true } },
-                        creator: { select: { firstName: true, lastName: true } }
+                        creator: { select: { firstName: true, lastName: true, userName: true } }
                     }
                 },
                 group: { select: { groupName: true } }
@@ -1018,39 +1018,47 @@ export class TaskService {
     /**
      * Get activity logs for task-related notifications
      */
-    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string) {
+    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string, role?: string) {
         const PAGE_SIZE = 20;
         const skip = (activityIndex - 1) * PAGE_SIZE;
 
-        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}`);
+        const isAdmin = role === 'ADMIN' || role === 'HR';
 
-        // Get all notifications for this user
-        const where: Prisma.NotificationWhereInput = {
-            teamId: userId,
-        };
+        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}`);
 
-        // If taskNo filter is provided, filter by metadata or description
+        const where: Prisma.NotificationWhereInput = {};
+
         if (taskNo) {
+            const cleanNo = taskNo.replace(/^#/, '').replace(/^T-/, '');
+            // Search globally for any notification mentionining this taskNo
             where.OR = [
+                { description: { contains: cleanNo, mode: 'insensitive' } },
+                { title: { contains: cleanNo, mode: 'insensitive' } },
+                { description: { contains: taskNo, mode: 'insensitive' } },
+                { title: { contains: taskNo, mode: 'insensitive' } },
                 { metadata: { path: ['taskNo'], equals: taskNo } },
-                { description: { contains: taskNo } },
+                { metadata: { path: ['taskNo'], equals: cleanNo } },
+                { metadata: { path: ['taskNo'], equals: `T-${cleanNo}` } },
             ];
+        } else if (!isAdmin) {
+            // For regular users (non-admin/non-hr), only show their own notifications
+            where.teamId = userId;
         }
+        // For Admins/HR, 'where' stays empty if no taskNo, showing ALL notifications globally.
 
         const notifications = await this.prisma.notification.findMany({
             where,
             orderBy: { createdAt: 'desc' },
             skip,
             take: PAGE_SIZE + 1, // Fetch one extra to check if there are more
+            include: {
+                team: {
+                    select: { firstName: true, lastName: true, avatar: true }
+                }
+            }
         });
 
         this.logger.log(`[ActivityLogs] Found ${notifications.length} notifications`);
-
-        // Get user info for display
-        const user = await this.prisma.team.findUnique({
-            where: { id: userId },
-            select: { firstName: true, lastName: true, avatar: true }
-        });
 
         const hasMore = notifications.length > PAGE_SIZE;
         const items = hasMore ? notifications.slice(0, PAGE_SIZE) : notifications;
@@ -1077,8 +1085,8 @@ export class TaskService {
                 dateTime: Math.floor(notification.createdAt.getTime() / 1000),
                 taskNo: metadata.taskNo || '',
                 status: metadata.status || 'Pending',
-                userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'System' : 'System',
-                userImg: user?.avatar || '',
+                userName: notification.team ? `${notification.team.firstName || ''} ${notification.team.lastName || ''}`.trim() || 'System' : 'System',
+                userImg: (notification.team as any)?.avatar || '',
                 comment: notification.description,
                 notificationType: notification.type,
                 title: notification.title,
