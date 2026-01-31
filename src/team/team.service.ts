@@ -326,7 +326,39 @@ export class TeamService {
   }
 
   async delete(id: string, userId: string) {
-    const team = await this.findById(id);
+    const team = await this.prisma.team.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            createdPendingTasks: true,
+            assignedPendingTasks: true,
+            createdCompletedTasks: true,
+            assignedCompletedTasks: true,
+            groupMembers: true,
+          }
+        }
+      }
+    });
+
+    if (!team) {
+      throw new NotFoundException('Team member not found');
+    }
+
+    const { _count } = team;
+    const childCounts = [
+      _count.createdPendingTasks > 0 && `${_count.createdPendingTasks} created pending tasks`,
+      _count.assignedPendingTasks > 0 && `${_count.assignedPendingTasks} assigned pending tasks`,
+      _count.createdCompletedTasks > 0 && `${_count.createdCompletedTasks} created completed tasks`,
+      _count.assignedCompletedTasks > 0 && `${_count.assignedCompletedTasks} assigned completed tasks`,
+      _count.groupMembers > 0 && `${_count.groupMembers} group memberships`,
+    ].filter(Boolean);
+
+    if (childCounts.length > 0) {
+      throw new BadRequestException(
+        `Cannot delete Team Member because they have: ${childCounts.join(', ')}. Please reassign or remove them first.`
+      );
+    }
 
     await this.prisma.team.delete({
       where: { id },
