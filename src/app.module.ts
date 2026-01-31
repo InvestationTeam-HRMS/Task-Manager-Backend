@@ -40,7 +40,7 @@ import { AppService } from './app.service';
     MulterModule.register({
       storage: multer.memoryStorage(),
       limits: {
-        fileSize: 20 * 1024 * 1024, // 20MB max file size
+        fileSize: 50 * 1024 * 1024, // 50MB max file size
       },
     }),
 

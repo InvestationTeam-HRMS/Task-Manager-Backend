@@ -64,7 +64,8 @@ async function bootstrap() {
   // Port
   const port = configService.get('PORT', 3000);
 
-  await app.listen(port);
+  const server = await app.listen(port);
+  server.setTimeout(600000); // 10 Minutes timeout for large uploads
 
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
   logger.log(`📚 API Version: v1 (Manual Prefix)`);
