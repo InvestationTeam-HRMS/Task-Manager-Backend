@@ -41,6 +41,12 @@ export class TaskService {
             const sanitizedTaskNo = taskNo.replace(/[^a-zA-Z0-9_-]/g, '');
 
             for (const file of files) {
+                // Skip empty files (size 0 or no buffer)
+                if (!file.size || file.size === 0 || !file.buffer || file.buffer.length === 0) {
+                    console.log(`[TaskService] Skipping empty file: ${file.originalname}`);
+                    continue;
+                }
+                
                 try {
                     const timestamp = Date.now();
                     const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
@@ -53,10 +59,13 @@ export class TaskService {
                     }
                 } catch (uploadError) {
                     console.error(`[TaskService] File upload error:`, uploadError);
-                    throw uploadError;
+                    // Don't throw for upload errors - just skip the file and continue
+                    console.log(`[TaskService] Skipping file due to upload error: ${file.originalname}`);
                 }
             }
-            document = savedUrls.join(',');
+            if (savedUrls.length > 0) {
+                document = savedUrls.join(',');
+            }
         }
 
         const task = await this.prisma.pendingTask.create({
@@ -172,7 +181,7 @@ export class TaskService {
                 pendingTask: {
                     include: {
                         project: { select: { projectName: true } },
-                        creator: { select: { firstName: true, lastName: true, userName: true } }
+                        creator: { select: { teamName: true, firstName: true, lastName: true, email: true } }
                     }
                 },
                 group: { select: { groupName: true } }
