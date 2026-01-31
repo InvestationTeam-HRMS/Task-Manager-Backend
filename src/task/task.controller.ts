@@ -30,6 +30,15 @@ import { UpdateTaskAcceptanceDto } from './dto/task-acceptance.dto';
 export class TaskController {
     constructor(private readonly taskService: TaskService) { }
 
+    @Get('logs')
+    async getActivityLogs(
+        @GetUser('id') userId: string,
+        @Query('activityIndex') activityIndex: number = 1,
+        @Query('taskNo') taskNo?: string,
+    ) {
+        return this.taskService.getActivityLogs(userId, activityIndex, taskNo);
+    }
+
     @Post()
     @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
     @UseInterceptors(FilesInterceptor('files'))

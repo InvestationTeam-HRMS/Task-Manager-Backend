@@ -1014,4 +1014,89 @@ export class TaskService {
             this.logger.error('Failed to invalidate cache', error);
         }
     }
+
+    /**
+     * Get activity logs for task-related notifications
+     */
+    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string) {
+        const PAGE_SIZE = 20;
+        const skip = (activityIndex - 1) * PAGE_SIZE;
+
+        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}`);
+
+        // Get all notifications for this user
+        const where: Prisma.NotificationWhereInput = {
+            teamId: userId,
+        };
+
+        // If taskNo filter is provided, filter by metadata or description
+        if (taskNo) {
+            where.OR = [
+                { metadata: { path: ['taskNo'], equals: taskNo } },
+                { description: { contains: taskNo } },
+            ];
+        }
+
+        const notifications = await this.prisma.notification.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: PAGE_SIZE + 1, // Fetch one extra to check if there are more
+        });
+
+        this.logger.log(`[ActivityLogs] Found ${notifications.length} notifications`);
+
+        // Get user info for display
+        const user = await this.prisma.team.findUnique({
+            where: { id: userId },
+            select: { firstName: true, lastName: true, avatar: true }
+        });
+
+        const hasMore = notifications.length > PAGE_SIZE;
+        const items = hasMore ? notifications.slice(0, PAGE_SIZE) : notifications;
+
+        // Group by date
+        const groupedByDate = new Map<string, any[]>();
+
+        items.forEach(notification => {
+            const dateKey = notification.createdAt.toISOString().split('T')[0];
+
+            if (!groupedByDate.has(dateKey)) {
+                groupedByDate.set(dateKey, []);
+            }
+
+            // Map notification type to activity event type
+            let eventType = 'UPDATE_TASK';
+            if (notification.type === 'TASK_ASSIGNED') eventType = 'ASSIGN_TASK';
+            else if (notification.type === 'TASK') eventType = 'UPDATE_TASK';
+
+            const metadata = notification.metadata as any || {};
+
+            groupedByDate.get(dateKey)!.push({
+                type: eventType,
+                dateTime: Math.floor(notification.createdAt.getTime() / 1000),
+                taskNo: metadata.taskNo || '',
+                status: metadata.status || 'Pending',
+                userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'System' : 'System',
+                userImg: user?.avatar || '',
+                comment: notification.description,
+                notificationType: notification.type,
+                title: notification.title,
+            });
+        });
+
+        // Convert to array format expected by frontend
+        const data = Array.from(groupedByDate.entries()).map(([dateKey, events]) => ({
+            id: dateKey,
+            date: Math.floor(new Date(dateKey).getTime() / 1000),
+            events: events.sort((a, b) => b.dateTime - a.dateTime), // Sort by time descending within day
+        }));
+
+        this.logger.log(`[ActivityLogs] Returning ${data.length} date groups`);
+
+        return {
+            data,
+            loadable: hasMore,
+        };
+    }
 }
