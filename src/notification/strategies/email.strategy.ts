@@ -19,7 +19,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
                 // Verify connection on startup to catch config issues early
                 await Promise.race([
                     this.transporter.verify(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP Verification Timeout')), 10000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP Verification Timeout')), 30000))
                 ]);
                 this.logger.log(`✅ SMTP delivery channel verified (${this.configService.get('SMTP_HOST')})`);
             } catch (error) {

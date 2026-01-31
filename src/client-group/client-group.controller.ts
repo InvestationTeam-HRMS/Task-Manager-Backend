@@ -13,7 +13,9 @@ import {
     UploadedFile,
     UsePipes,
     ValidationPipe,
+    Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ClientGroupService } from './client-group.service';
 import {
@@ -48,6 +50,17 @@ export class ClientGroupController {
     @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.clientGroupService.findAll(query, query);
+    }
+
+    @Get('download')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR)
+    async download(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response,
+    ) {
+        return this.clientGroupService.downloadExcel(query, userId, res);
     }
 
     @Get('active')

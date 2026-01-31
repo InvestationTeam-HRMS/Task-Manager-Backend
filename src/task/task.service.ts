@@ -7,12 +7,15 @@ import { CreateTaskDto, UpdateTaskDto, FilterTaskDto, TaskViewMode, UpdateTaskAc
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { Prisma, TaskStatus, AcceptanceStatus, UserRole } from '@prisma/client';
+import { toTitleCase } from '../common/utils/string-helper';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import * as ExcelJS from 'exceljs';
-const csvParser = require('csv-parser');
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { pipeline, Readable } from 'stream';
+
+const csvParser = require('csv-parser');
 
 const pipelineAsync = promisify(pipeline);
 
@@ -28,11 +31,11 @@ export class TaskService {
         private redisService: RedisService,
         private notificationService: NotificationService,
         private cloudinaryService: CloudinaryService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateTaskDto, userId: string, files?: Express.Multer.File[]) {
         const taskNo = await this.autoNumberService.generateTaskNo();
-        const { toTitleCase } = await import('../common/utils/string-helper');
 
         let document = dto.document;
         if (files && files.length > 0) {
@@ -41,26 +44,18 @@ export class TaskService {
             const sanitizedTaskNo = taskNo.replace(/[^a-zA-Z0-9_-]/g, '');
 
             for (const file of files) {
-                // Skip empty files (size 0 or no buffer)
-                if (!file.size || file.size === 0 || !file.buffer || file.buffer.length === 0) {
-                    console.log(`[TaskService] Skipping empty file: ${file.originalname}`);
-                    continue;
-                }
-                
+                if (!file.size || file.size === 0 || !file.buffer || file.buffer.length === 0) continue;
+
                 try {
                     const timestamp = Date.now();
                     const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
                     const folder = `hrms/tasks/${sanitizedTaskNo}`;
-                    console.log(`[TaskService] Uploading file: ${file.originalname}, size: ${file.size}, mimetype: ${file.mimetype}`);
                     const result = await this.cloudinaryService.uploadFile(file, folder, customName);
-                    console.log(`[TaskService] Cloudinary upload result:`, result?.secure_url ? 'SUCCESS' : 'FAILED');
                     if (result.secure_url) {
                         savedUrls.push(result.secure_url);
                     }
                 } catch (uploadError) {
-                    console.error(`[TaskService] File upload error:`, uploadError);
-                    // Don't throw for upload errors - just skip the file and continue
-                    console.log(`[TaskService] Skipping file due to upload error: ${file.originalname}`);
+                    this.logger.error(`[TaskService] File upload error: ${uploadError.message}`);
                 }
             }
             if (savedUrls.length > 0) {
@@ -113,16 +108,8 @@ export class TaskService {
                 where: { groupId: task.targetGroupId }
             });
 
-            console.log(`[TaskService] Found ${members.length} members for Group ${task.targetGroupId}`);
-
             if (members.length > 0) {
-                console.log(`[TaskService] Filtering creator (${userId}) from ${members.length} members`);
-                // Filter out the creator so they don't get the acceptance popup
-                const membersToNotify = members.filter(m => {
-                    const isCreator = m.userId === userId;
-                    if (isCreator) console.log(`[TaskService] Successfully filtered out creator: ${userId}`);
-                    return !isCreator;
-                });
+                const membersToNotify = members.filter(m => m.userId !== userId);
 
                 if (membersToNotify.length > 0) {
                     const acceptanceData = membersToNotify.map(m => ({
@@ -137,16 +124,12 @@ export class TaskService {
                         skipDuplicates: true
                     });
 
-                    console.log(`[TaskService] Created ${acceptanceData.length} TaskAcceptance records (excluded creator)`);
                     membersToNotify.forEach(m => recipients.add(m.userId));
-                } else {
-                    console.log(`[TaskService] No other members to notify besides the creator.`);
                 }
             }
         }
 
         recipients.delete(userId);
-        console.log(`[TaskService] Notifying recipients for Task ${task.taskNo}:`, Array.from(recipients));
 
         for (const recipientId of recipients) {
             let description = `A new task "${task.taskTitle}" has been assigned to you.`
@@ -171,8 +154,7 @@ export class TaskService {
     }
 
     async getPendingAcceptances(userId: string) {
-        console.log(`[TaskService] Fetching pending acceptances for userId: ${userId}`);
-        const acceptances = await (this.prisma as any).taskAcceptance.findMany({
+        return await (this.prisma as any).taskAcceptance.findMany({
             where: {
                 userId,
                 status: 'PENDING'
@@ -187,8 +169,6 @@ export class TaskService {
                 group: { select: { groupName: true } }
             }
         });
-        console.log(`[TaskService] Found ${acceptances.length} acceptances for userId: ${userId}`);
-        return acceptances;
     }
 
     async updateAcceptanceStatus(id: string, dto: UpdateTaskAcceptanceDto, userId: string) {
@@ -942,29 +922,7 @@ export class TaskService {
     }
 
     async downloadExcel(filter: FilterTaskDto, userId: string, res: any) {
-        // ... existing downloadExcel implementation ...
-        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-            stream: res,
-            useStyles: true,
-            useSharedStrings: true
-        });
-
-        const sheet = workbook.addWorksheet('Tasks');
-
-        sheet.columns = [
-            { header: 'Task No', key: 'taskNo', width: 15 },
-            { header: 'Title', key: 'taskTitle', width: 30 },
-            { header: 'Priority', key: 'priority', width: 10 },
-            { header: 'Status', key: 'taskStatus', width: 15 },
-            { header: 'Created Time', key: 'createdTime', width: 25 },
-            { header: 'Deadline', key: 'deadline', width: 20 },
-        ];
-
-        let cursor: string | undefined = undefined;
-        const BATCH_SIZE = 5000;
-
-        // Optimization: Large scale dataset streaming for Pending and Completed tasks
-        // This is a simplified version of the filter logic for streaming
+        // Optimization: For formatted output with auto-width, we fetch and map
         const baseWhere: any = {
             OR: [
                 { assignedTo: userId },
@@ -974,45 +932,54 @@ export class TaskService {
             ]
         };
 
-        const processTable = async (model: any) => {
-            let hasMore = true;
-            let lastId: string | undefined = undefined;
-
-            while (hasMore) {
-                const data = await model.findMany({
-                    where: baseWhere,
-                    take: BATCH_SIZE,
-                    skip: lastId ? 1 : 0,
-                    cursor: lastId ? { id: lastId } : undefined,
-                    orderBy: { id: 'asc' }
-                });
-
-                if (data.length === 0) {
-                    hasMore = false;
-                    continue;
+        const [pendingTasks, completedTasks] = await Promise.all([
+            this.prisma.pendingTask.findMany({
+                where: baseWhere,
+                include: {
+                    project: { select: { projectName: true } },
+                    assignee: { select: { firstName: true, lastName: true } },
+                    worker: { select: { firstName: true, lastName: true } },
                 }
-
-                for (const task of data) {
-                    sheet.addRow({
-                        taskNo: task.taskNo,
-                        taskTitle: task.taskTitle,
-                        priority: task.priority,
-                        taskStatus: task.taskStatus,
-                        createdTime: task.createdTime,
-                        deadline: task.deadline,
-                    }).commit();
+            }),
+            this.prisma.completedTask.findMany({
+                where: baseWhere,
+                include: {
+                    project: { select: { projectName: true } },
+                    assignee: { select: { firstName: true, lastName: true } },
+                    worker: { select: { firstName: true, lastName: true } },
                 }
+            })
+        ]);
 
-                lastId = data[data.length - 1].id;
-                if (data.length < BATCH_SIZE) hasMore = false;
-            }
-        };
+        const allTasks = [...pendingTasks, ...completedTasks];
 
-        // Stream from both tables
-        await processTable(this.prisma.pendingTask);
-        await processTable(this.prisma.completedTask);
+        const mappedData = allTasks.map((task, index) => ({
+            srNo: index + 1,
+            taskNo: task.taskNo,
+            taskTitle: task.taskTitle,
+            priority: task.priority,
+            taskStatus: task.taskStatus,
+            project: task.project?.projectName || 'N/A',
+            assignee: task.assignee ? `${task.assignee.firstName} ${task.assignee.lastName}` : 'N/A',
+            worker: task.worker ? `${task.worker.firstName} ${task.worker.lastName}` : 'N/A',
+            createdTime: task.createdTime ? new Date(task.createdTime).toLocaleString() : 'N/A',
+            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : 'N/A',
+        }));
 
-        await workbook.commit();
+        const columns = [
+            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: 'Task No', key: 'taskNo', width: 15 },
+            { header: 'Title', key: 'taskTitle', width: 35 },
+            { header: 'Priority', key: 'priority', width: 12 },
+            { header: 'Status', key: 'taskStatus', width: 15 },
+            { header: 'Project', key: 'project', width: 25 },
+            { header: 'Assignee', key: 'assignee', width: 25 },
+            { header: 'Worker', key: 'worker', width: 25 },
+            { header: 'Created Time', key: 'createdTime', width: 25 },
+            { header: 'Deadline', key: 'deadline', width: 25 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'tasks_export.xlsx', 'Tasks');
     }
 
     private async invalidateCache() {

@@ -11,7 +11,9 @@ import {
     UseGuards,
     UseInterceptors,
     UploadedFile,
+    Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProjectService } from './project.service';
 import {
@@ -45,6 +47,17 @@ export class ProjectController {
     @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.projectService.findAll(query, query);
+    }
+
+    @Get('download')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR)
+    async download(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response,
+    ) {
+        return this.projectService.downloadExcel(query, userId, res);
     }
 
     @Get('active')

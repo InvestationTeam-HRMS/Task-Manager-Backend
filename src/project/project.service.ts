@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateProjectDto,
     UpdateProjectDto,
@@ -34,6 +35,7 @@ export class ProjectService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateProjectDto, userId: string) {
@@ -229,6 +231,36 @@ export class ProjectService {
         }
 
         return response;
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            projectNo: item.projectNo,
+            projectName: item.projectName,
+            company: item.companyName,
+            location: item.locationName,
+            subLocation: item.subLocationName,
+            priority: item.priority,
+            status: item.status,
+            deadline: item.deadline ? new Date(item.deadline).toLocaleDateString() : 'N/A',
+        }));
+
+        const columns = [
+            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: 'Project No', key: 'projectNo', width: 15 },
+            { header: 'Project Name', key: 'projectName', width: 30 },
+            { header: 'Company', key: 'company', width: 25 },
+            { header: 'Location', key: 'location', width: 25 },
+            { header: 'Sub Location', key: 'subLocation', width: 25 },
+            { header: 'Priority', key: 'priority', width: 12 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Deadline', key: 'deadline', width: 15 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'projects.xlsx', 'Projects');
     }
 
     async findActive(pagination: PaginationDto) {

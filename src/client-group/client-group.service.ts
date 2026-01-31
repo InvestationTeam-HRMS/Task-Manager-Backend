@@ -19,6 +19,7 @@ import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { buildMultiValueFilter } from '../common/utils/prisma-helper';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 
 @Injectable()
 export class ClientGroupService {
@@ -32,6 +33,7 @@ export class ClientGroupService {
         private configService: ConfigService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateClientGroupDto, userId: string) {
@@ -188,6 +190,32 @@ export class ClientGroupService {
         }
 
         return response;
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            groupNo: item.groupNo,
+            groupName: item.groupName,
+            groupCode: item.groupCode,
+            country: item.country,
+            status: item.status,
+            remark: item.remark || 'N/A',
+        }));
+
+        const columns = [
+            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: 'Group No', key: 'groupNo', width: 15 },
+            { header: 'Group Name', key: 'groupName', width: 25 },
+            { header: 'Group Code', key: 'groupCode', width: 15 },
+            { header: 'Country', key: 'country', width: 15 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'client_groups.xlsx', 'Client Groups');
     }
 
     async findActive(pagination: PaginationDto) {
