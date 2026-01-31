@@ -128,7 +128,6 @@ export class ClientGroupController {
     @UseGuards(JwtAuthGuard)
     @Roles(UserRole.ADMIN)
     bulkDelete(@Body() dto: BulkDeleteClientGroupDto, @GetUser('id') userId: string) {
-        console.log('API HIT: Bulk Delete Records', dto.ids?.length);
         return this.clientGroupService.bulkDelete(dto, userId);
     }
 

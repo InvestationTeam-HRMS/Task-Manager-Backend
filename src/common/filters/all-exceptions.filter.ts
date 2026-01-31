@@ -51,13 +51,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const apiResponse = ApiResponse.error(message, error);
         apiResponse.path = request.url;
 
-        if (status === 403) {
-            console.log(`[AUTH_DEBUG] 403 Forbidden at ${request.url}`);
-            console.log(`[AUTH_DEBUG] Authorization Header: ${request.headers.authorization}`);
-            (apiResponse as any).debug_message = message;
-            (apiResponse as any).debug_exception = exception;
-        }
-
         response.status(status).json(apiResponse);
     }
 }

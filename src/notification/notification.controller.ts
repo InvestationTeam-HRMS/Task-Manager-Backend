@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, Post, Body, Delete } from '@nestjs/common';
+import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, Post, Body, Delete, Logger } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -8,6 +8,7 @@ import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationController {
+    private readonly logger = new Logger(NotificationController.name);
     constructor(private readonly notificationService: NotificationService) { }
 
     @Get()
@@ -25,10 +26,8 @@ export class NotificationController {
     streamNotifications(
         @GetUser('id') userId: string,
     ): Observable<MessageEvent> {
-        console.log('🌊 [SSE-CONNECT] SSE ENDPOINT HIT! UserId:', userId, 'Time:', new Date().toISOString());
-        const stream = this.notificationService.getNotificationStream(userId);
-        console.log('📺 [SSE-STREAM] Stream created and returning to client');
-        return stream;
+        this.logger.log(`🌊 SSE Connected! UserId: ${userId}`);
+        return this.notificationService.getNotificationStream(userId);
     }
 
     @Patch(':id/read')

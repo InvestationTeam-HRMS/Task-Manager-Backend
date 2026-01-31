@@ -543,13 +543,9 @@ export class AuthService {
 
         const permissions: any = user.customRole?.permissions || {};
 
-        console.log(`[AuthService] User: ${user.email}, Role: ${user.role}, CustomRole: ${user.customRole?.name || 'None'}`);
-        console.log(`[AuthService] Initial Permissions:`, JSON.stringify(permissions, null, 2));
-
         // Fallback: If no custom role permissions, assign default based on ENUM role
         if (Object.keys(permissions).length === 0) {
             if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER || user.role === UserRole.HR) {
-                console.log(`[AuthService] Assigning default permissions for role: ${user.role}`);
                 permissions['organization'] = ['add', 'view', 'edit', 'delete']
                 permissions['project'] = ['add', 'view', 'edit', 'delete']
                 permissions['task'] = ['add', 'view', 'edit', 'delete']
@@ -565,8 +561,6 @@ export class AuthService {
         }
 
         const roleName = user.customRole?.name || user.role;
-
-        console.log(`[AuthService] Final Permissions:`, JSON.stringify(permissions, null, 2))
 
         return {
             id: user.id,

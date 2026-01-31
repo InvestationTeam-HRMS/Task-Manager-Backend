@@ -59,13 +59,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // Get permissions from custom role if assigned, otherwise empty
         const permissions: any = identity.customRole?.permissions || {};
 
-        console.log(`[JwtStrategy] User: ${identity.email}, Role: ${identity.role}, CustomRole: ${identity.customRole?.name || 'None'}`);
-        console.log(`[JwtStrategy] Initial Permissions:`, JSON.stringify(permissions, null, 2));
-
         // Fallback: If no custom role permissions, assign default based on ENUM role
         if (Object.keys(permissions).length === 0) {
             if (identity.role === 'ADMIN' || identity.role === 'MANAGER' || identity.role === 'HR') {
-                console.log(`[JwtStrategy] Assigning default permissions for role: ${identity.role}`);
                 permissions['organization'] = ['add', 'view', 'edit', 'delete']
                 permissions['project'] = ['add', 'view', 'edit', 'delete']
                 permissions['task'] = ['add', 'view', 'edit', 'delete']
@@ -78,8 +74,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         if (identity.role === 'ADMIN') {
             permissions.isSuperAdmin = true;
         }
-
-        console.log(`[JwtStrategy] Final Permissions:`, JSON.stringify(permissions, null, 2));
 
         return {
             ...identity,

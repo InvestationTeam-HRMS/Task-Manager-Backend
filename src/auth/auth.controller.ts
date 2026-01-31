@@ -165,7 +165,6 @@ export class AuthController {
             maxAge: 30 * 24 * 60 * 60 * 1000,
             path: '/',
         };
-        console.log(`[AUTH] Setting cookies. Prod: ${isProduction}, Secure: ${cookieOptions.secure}, SameSite: ${cookieOptions.sameSite}, Domain: ${domain}`);
 
         // Only set domain if it's NOT localhost to avoid issues on subdomains
         if (domain !== 'localhost') {
