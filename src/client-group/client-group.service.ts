@@ -287,6 +287,9 @@ export class ClientGroupService {
                 _count: {
                     select: {
                         companies: true,
+                        locations: true,
+                        subLocations: true,
+                        projects: true,
                         teams: true,
                         ipAddresses: true,
                     }
@@ -301,6 +304,9 @@ export class ClientGroupService {
         const { _count } = clientGroup;
         const childCounts = [
             _count.companies > 0 && `${_count.companies} companies`,
+            _count.locations > 0 && `${_count.locations} locations`,
+            _count.subLocations > 0 && `${_count.subLocations} sub-locations`,
+            _count.projects > 0 && `${_count.projects} projects`,
             _count.teams > 0 && `${_count.teams} teams`,
             _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
         ].filter(Boolean);

@@ -345,6 +345,7 @@ export class ClientCompanyService {
                     select: {
                         locations: true,
                         subLocations: true,
+                        projects: true,
                         teams: true,
                         ipAddresses: true,
                     }
@@ -360,6 +361,7 @@ export class ClientCompanyService {
         const childCounts = [
             _count.locations > 0 && `${_count.locations} locations`,
             _count.subLocations > 0 && `${_count.subLocations} sub-locations`,
+            _count.projects > 0 && `${_count.projects} projects`,
             _count.teams > 0 && `${_count.teams} teams`,
             _count.ipAddresses > 0 && `${_count.ipAddresses} IP addresses`,
         ].filter(Boolean);

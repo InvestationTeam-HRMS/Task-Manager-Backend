@@ -155,7 +155,7 @@ model ClientCompany {
   createdBy    String?          @map("created_by") @db.Uuid
   updatedBy    String?          @map("updated_by") @db.Uuid
   creator      Team?            @relation("CompanyCreatedByTeam", fields: [createdBy], references: [id])
-  group        ClientGroup      @relation(fields: [groupId], references: [id])
+  group        ClientGroup      @relation(fields: [groupId], references: [id], onDelete: Restrict)
   updater      Team?            @relation("CompanyUpdatedByTeam", fields: [updatedBy], references: [id])
   locations    ClientLocation[]
   ipAddresses  IpAddress[]
@@ -187,8 +187,8 @@ model ClientLocation {
   updatedAt     DateTime       @updatedAt @map("updated_at")
   createdBy     String?        @map("created_by") @db.Uuid
   updatedBy     String?        @map("updated_by") @db.Uuid
-  clientGroup   ClientGroup    @relation(fields: [clientGroupId], references: [id])
-  company       ClientCompany? @relation(fields: [companyId], references: [id])
+  clientGroup   ClientGroup    @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company       ClientCompany? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator       Team?          @relation("LocationCreatedByTeam", fields: [createdBy], references: [id])
   updater       Team?          @relation("LocationUpdatedByTeam", fields: [updatedBy], references: [id])
   ipAddresses   IpAddress[]
@@ -224,10 +224,10 @@ model SubLocation {
   updatedBy       String?           @map("updated_by") @db.Uuid
   ipAddresses     IpAddress[]
   projects        Project[]
-  clientGroup     ClientGroup       @relation(fields: [clientGroupId], references: [id])
-  company         ClientCompany?    @relation(fields: [companyId], references: [id])
+  clientGroup     ClientGroup       @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company         ClientCompany?    @relation(fields: [companyId], references: [id], onDelete: Restrict)
   creator         Team?             @relation("SubLocationCreatedByTeam", fields: [createdBy], references: [id])
-  location        ClientLocation?   @relation(fields: [locationId], references: [id])
+  location        ClientLocation?   @relation(fields: [locationId], references: [id], onDelete: Restrict)
   updater         Team?             @relation("SubLocationUpdatedByTeam", fields: [updatedBy], references: [id])
   teams           Team[]
 
@@ -262,11 +262,11 @@ model Project {
   updatedBy      String?         @map("updated_by") @db.Uuid
   completedTasks CompletedTask[]
   pendingTasks   PendingTask[]
-  clientGroup    ClientGroup     @relation(fields: [clientGroupId], references: [id])
-  company        ClientCompany?  @relation(fields: [companyId], references: [id])
-  location       ClientLocation? @relation(fields: [locationId], references: [id])
+  clientGroup    ClientGroup     @relation(fields: [clientGroupId], references: [id], onDelete: Restrict)
+  company        ClientCompany?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  location       ClientLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   creator        Team?           @relation("ProjectCreatedByTeam", fields: [createdBy], references: [id])
-  subLocation    SubLocation?    @relation(fields: [subLocationId], references: [id])
+  subLocation    SubLocation?    @relation(fields: [subLocationId], references: [id], onDelete: Restrict)
   updater        Team?           @relation("ProjectUpdatedByTeam", fields: [updatedBy], references: [id])
 
   @@index([projectNo])
