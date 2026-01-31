@@ -967,7 +967,7 @@ export class TaskService {
         }));
 
         const columns = [
-            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: '#', key: 'srNo', width: 10 },
             { header: 'Task No', key: 'taskNo', width: 15 },
             { header: 'Title', key: 'taskTitle', width: 35 },
             { header: 'Priority', key: 'priority', width: 12 },

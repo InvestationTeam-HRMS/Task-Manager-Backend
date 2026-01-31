@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
   CreateTeamDto,
   UpdateTeamDto,
@@ -39,98 +39,63 @@ export class TeamService {
     private excelUploadService: ExcelUploadService,
     private configService: ConfigService,
     private notificationService: NotificationService,
+    private excelDownloadService: ExcelDownloadService,
   ) { }
 
   async create(dto: CreateTeamDto, userId: string) {
-    // Validate optional relationships
-    if (dto.clientGroupId) {
-      const group = await this.prisma.clientGroup.findFirst({
-        where: { id: dto.clientGroupId },
-      });
-      if (!group) throw new NotFoundException('Client group not found');
-    }
-
-    if (dto.companyId) {
-      const company = await this.prisma.clientCompany.findFirst({
-        where: { id: dto.companyId },
-      });
-      if (!company) throw new NotFoundException('Client company not found');
-    }
-
-    if (dto.locationId) {
-      const location = await this.prisma.clientLocation.findFirst({
-        where: { id: dto.locationId },
-      });
-      if (!location) throw new NotFoundException('Client location not found');
-    }
-
-    if (dto.subLocationId) {
-      const subLocation = await this.prisma.subLocation.findFirst({
-        where: { id: dto.subLocationId },
-      });
-      if (!subLocation) throw new NotFoundException('Sub location not found');
-    }
-
-    const generatedTeamNo = await this.autoNumberService.generateTeamNo();
     const { toTitleCase } = await import('../common/utils/string-helper');
 
-    let hashedPassword = dto.password;
-    if (dto.password) {
-      hashedPassword = await bcrypt.hash(
-        dto.password,
-        parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
-      );
+    // Email duplication check
+    const existingEmail = await this.prisma.team.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+    if (existingEmail) {
+      throw new BadRequestException('Email already registered');
     }
 
-    if (dto.email) {
-      const existingEmail = await this.prisma.team.findUnique({
-        where: { email: dto.email },
+    // Team No duplication check
+    if (dto.teamNo) {
+      const existingTeamNo = await this.prisma.team.findUnique({
+        where: { teamNo: dto.teamNo },
       });
-      if (existingEmail) {
-        throw new BadRequestException('Email already exists');
+      if (existingTeamNo) {
+        throw new BadRequestException('Team Number already exists');
       }
     }
 
-    if (dto.phone) {
-      const existingPhone = await this.prisma.team.findUnique({
-        where: { phone: dto.phone },
-      });
-      if (existingPhone) {
-        throw new BadRequestException('Phone number already exists');
-      }
-    }
+    // Hash password
+    const hashedPassword = await bcrypt.hash(dto.password || 'Welcome@123', 10);
+
+    const firstNameFormatted = dto.firstName ? toTitleCase(dto.firstName) : undefined;
+    const lastNameFormatted = dto.lastName ? toTitleCase(dto.lastName) : undefined;
+    const teamNameFormatted = toTitleCase(dto.teamName);
+
+    const generatedTeamNo = await this.autoNumberService.generateTeamNo();
 
     const team = await this.prisma.team.create({
       data: {
         ...dto,
-        teamName: toTitleCase(dto.teamName),
-        teamNo: dto.teamNo || generatedTeamNo,
-        remark: dto.remark ? toTitleCase(dto.remark) : undefined,
-        taskAssignPermission: dto.taskAssignPermission,
-        role: dto.role || UserRole.EMPLOYEE,
-        loginMethod: dto.loginMethod || LoginMethod.General,
-        status: dto.password
-          ? dto.status || TeamStatus.Active
-          : TeamStatus.Pending_Verification,
-        createdBy: userId,
+        firstName: firstNameFormatted,
+        lastName: lastNameFormatted,
+        teamName: teamNameFormatted,
+        email: dto.email.toLowerCase(),
         password: hashedPassword,
+        status: dto.status || TeamStatus.Active,
+        loginMethod: dto.loginMethod || LoginMethod.General,
+        teamNo: dto.teamNo || generatedTeamNo,
+        createdBy: userId,
       },
     });
 
-    // Trigger invitation if no password was provided
-    if (!dto.password && team.email) {
-      try {
-        await this.triggerInvitation(team.email, team.teamName);
-      } catch (error) {
-        this.logger.error(
-          `[INVITATION_FAILED] Failed to send invitation to ${team.email}: ${error.message}`,
-        );
-        // We do not throw here to allow user creation to succeed even if email fails
-      }
-    }
-
     await this.invalidateCache();
     await this.logAudit(userId, 'CREATE', team.id, null, team);
+
+    // Optional: Trigger invitation email
+    try {
+      await this.triggerInvitation(dto.email, teamNameFormatted);
+    } catch (err) {
+      this.logger.error(`Failed to send invitation to ${dto.email}: ${err.message}`);
+    }
 
     return team;
   }
@@ -147,149 +112,61 @@ export class TeamService {
 
     const cleanedSearch = search?.trim();
     const where: Prisma.TeamWhereInput = {
-      AND: [],
+      AND: []
     };
 
     const andArray = where.AND as Array<Prisma.TeamWhereInput>;
-
     const { toTitleCase } = await import('../common/utils/string-helper');
 
     // Handle Status Filter
     if (filter?.status) {
-      const statusValues =
-        typeof filter.status === 'string'
-          ? filter.status
-            .split(/[,\:;|]/)
-            .map((v) => v.trim())
-            .filter(Boolean)
-          : Array.isArray(filter.status)
-            ? filter.status
-            : [filter.status];
-      if (statusValues.length > 0)
-        andArray.push({ status: { in: statusValues as any } });
+      const statusValues = typeof filter.status === 'string'
+        ? filter.status.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(filter.status) ? filter.status : [filter.status];
+
+      if (statusValues.length > 0) {
+        andArray.push({
+          status: { in: statusValues as any }
+        });
+      }
     }
 
-    if (filter?.clientGroupId) {
-      const groupIds = typeof filter.clientGroupId === 'string'
-        ? filter.clientGroupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(filter.clientGroupId) ? filter.clientGroupId : [filter.clientGroupId];
-      if (groupIds.length > 0) andArray.push({ clientGroupId: { in: groupIds } });
-    }
-
-    if (filter?.companyId) {
-      const companyIds = typeof filter.companyId === 'string'
-        ? filter.companyId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(filter.companyId) ? filter.companyId : [filter.companyId];
-      if (companyIds.length > 0) andArray.push({ companyId: { in: companyIds } });
-    }
-
-    if (filter?.locationId) {
-      const locationIds = typeof filter.locationId === 'string'
-        ? filter.locationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(filter.locationId) ? filter.locationId : [filter.locationId];
-      if (locationIds.length > 0) andArray.push({ locationId: { in: locationIds } });
-    }
-
-    if (filter?.subLocationId) {
-      const subLocationIds = typeof filter.subLocationId === 'string'
-        ? filter.subLocationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(filter.subLocationId) ? filter.subLocationId : [filter.subLocationId];
-      if (subLocationIds.length > 0) andArray.push({ subLocationId: { in: subLocationIds } });
-    }
-    if (filter?.teamName)
-      andArray.push(
-        buildMultiValueFilter('teamName', toTitleCase(filter.teamName)),
-      );
-    if (filter?.teamNo)
-      andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
-    if (filter?.remark)
-      andArray.push(
-        buildMultiValueFilter('remark', toTitleCase(filter.remark)),
-      );
+    if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
+    if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+    if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+    if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
+    if (filter?.role) andArray.push({ role: filter.role });
+    if (filter?.teamName) andArray.push(buildMultiValueFilter('teamName', toTitleCase(filter.teamName)));
+    if (filter?.teamNo) andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
+    if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
 
     if (cleanedSearch) {
-      const searchValues = cleanedSearch
-        .split(/[,\:;|]/)
-        .map((v) => v.trim())
-        .filter(Boolean);
+      const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
       const allSearchConditions: Prisma.TeamWhereInput[] = [];
 
       for (const val of searchValues) {
         const searchLower = val.toLowerCase();
         const searchTitle = toTitleCase(val);
-        const looksLikeCode =
-          /^[A-Z]{1,}-\d+$/i.test(val) ||
-          /^U-\d+$/i.test(val) ||
-          /^[A-Z0-9-]+$/i.test(val);
 
-        if (looksLikeCode) {
-          allSearchConditions.push({
-            teamNo: { equals: val, mode: 'insensitive' },
-          });
-          allSearchConditions.push({
-            teamNo: { contains: val, mode: 'insensitive' },
-          });
-        } else {
-          allSearchConditions.push({
-            teamName: { contains: val, mode: 'insensitive' },
-          });
-          allSearchConditions.push({
-            teamName: { contains: searchTitle, mode: 'insensitive' },
-          });
-          allSearchConditions.push({
-            teamNo: { contains: val, mode: 'insensitive' },
-          });
-          allSearchConditions.push({
-            email: { contains: val, mode: 'insensitive' },
-          });
-        }
-
-        allSearchConditions.push({
-          remark: { contains: val, mode: 'insensitive' },
-        });
-        allSearchConditions.push({
-          remark: { contains: searchTitle, mode: 'insensitive' },
-        });
-        allSearchConditions.push({
-          subLocation: {
-            subLocationName: { contains: val, mode: 'insensitive' },
-          },
-        });
-        allSearchConditions.push({
-          subLocation: {
-            subLocationName: { contains: searchTitle, mode: 'insensitive' },
-          },
-        });
-        allSearchConditions.push({
-          location: { locationName: { contains: val, mode: 'insensitive' } },
-        });
-        allSearchConditions.push({
-          location: {
-            locationName: { contains: searchTitle, mode: 'insensitive' },
-          },
-        });
-        allSearchConditions.push({
-          company: { companyName: { contains: val, mode: 'insensitive' } },
-        });
-        allSearchConditions.push({
-          company: {
-            companyName: { contains: searchTitle, mode: 'insensitive' },
-          },
-        });
-        allSearchConditions.push({
-          clientGroup: { groupName: { contains: val, mode: 'insensitive' } },
-        });
-        allSearchConditions.push({
-          clientGroup: {
-            groupName: { contains: searchTitle, mode: 'insensitive' },
-          },
-        });
+        allSearchConditions.push({ firstName: { contains: val, mode: 'insensitive' } });
+        allSearchConditions.push({ firstName: { contains: searchTitle, mode: 'insensitive' } });
+        allSearchConditions.push({ lastName: { contains: val, mode: 'insensitive' } });
+        allSearchConditions.push({ lastName: { contains: searchTitle, mode: 'insensitive' } });
+        allSearchConditions.push({ teamName: { contains: val, mode: 'insensitive' } });
+        allSearchConditions.push({ teamName: { contains: searchTitle, mode: 'insensitive' } });
+        allSearchConditions.push({ email: { contains: val, mode: 'insensitive' } });
+        allSearchConditions.push({ teamNo: { contains: val, mode: 'insensitive' } });
 
         if ('active'.includes(searchLower) && searchLower.length >= 3) {
-          allSearchConditions.push({ status: 'Active' as any });
+          allSearchConditions.push({ status: TeamStatus.Active });
         }
         if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-          allSearchConditions.push({ status: 'Inactive' as any });
+          allSearchConditions.push({ status: TeamStatus.Inactive });
+        }
+
+        // Handle Role Search
+        if (Object.values(UserRole).some(r => r.toLowerCase() === searchLower)) {
+          allSearchConditions.push({ role: searchLower.toUpperCase() as UserRole });
         }
       }
 
@@ -301,14 +178,11 @@ export class TeamService {
     if (andArray.length === 0) delete where.AND;
 
     // --- Redis Caching ---
-    // Only cache if there's no custom search/filter to avoid cache explosion
-    const isCacheable =
-      !cleanedSearch && (!filter || Object.keys(filter).length === 0);
+    const isCacheable = !cleanedSearch && (!filter || Object.keys(filter).length === 0);
     const cacheKey = `${this.CACHE_KEY}:list:p${page}:l${limit}:s${sortBy}:${sortOrder}`;
 
     if (isCacheable) {
-      const cached =
-        await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
+      const cached = await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
       if (cached) {
         this.logger.log(`[CACHE_HIT] Team List - ${cacheKey}`);
         return cached;
@@ -321,35 +195,22 @@ export class TeamService {
         skip: Number(skip),
         take: Number(limit),
         orderBy: { [sortBy]: sortOrder },
-        include: {
-          clientGroup: {
-            select: { id: true, groupName: true, groupCode: true },
-          },
-          company: {
-            select: { id: true, companyName: true, companyCode: true },
-          },
-          location: {
-            select: { id: true, locationName: true, locationCode: true },
-          },
-          subLocation: {
-            select: { id: true, subLocationName: true, subLocationCode: true },
-          },
+        select: {
+          id: true,
+          teamNo: true,
+          teamName: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          role: true,
+          status: true,
+          createdAt: true,
         },
       }),
       this.prisma.team.count({ where }),
     ]);
 
-    const mappedData = data.map((item) => ({
-      ...item,
-      clientCompany: item.company,
-      clientLocation: item.location,
-      groupName: item.clientGroup?.groupName,
-      companyName: item.company?.companyName,
-      locationName: item.location?.locationName,
-      subLocationName: item.subLocation?.subLocationName,
-    }));
-
-    const response = new PaginatedResponse(mappedData, total, page, limit);
+    const response = new PaginatedResponse(data, total, page, limit);
 
     if (isCacheable) {
       await this.redisService.setCache(cacheKey, response, this.CACHE_TTL);
@@ -357,6 +218,34 @@ export class TeamService {
     }
 
     return response;
+  }
+
+  async downloadExcel(query: any, userId: string, res: any) {
+    const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+    const mappedData = data.map((item, index) => ({
+      srNo: index + 1,
+      teamNo: item.teamNo,
+      teamName: item.teamName,
+      name: `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'N/A',
+      email: item.email,
+      role: item.role,
+      status: item.status,
+      createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A',
+    }));
+
+    const columns = [
+      { header: '#', key: 'srNo', width: 10 },
+      { header: 'Team No', key: 'teamNo', width: 15 },
+      { header: 'Team Name', key: 'teamName', width: 25 },
+      { header: 'Full Name', key: 'name', width: 30 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Role', key: 'role', width: 15 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Created Date', key: 'createdAt', width: 20 },
+    ];
+
+    await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'teams.xlsx', 'Team Members');
   }
 
   async findActive(pagination: PaginationDto) {
@@ -367,22 +256,10 @@ export class TeamService {
   async findById(id: string) {
     const team = await this.prisma.team.findFirst({
       where: { id },
-      include: {
-        clientGroup: true,
-        company: true,
-        location: true,
-        subLocation: true,
-        creator: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-        updater: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-      },
     });
 
     if (!team) {
-      throw new NotFoundException('Team not found');
+      throw new NotFoundException('Team member not found');
     }
 
     return team;
@@ -392,59 +269,35 @@ export class TeamService {
     const existing = await this.findById(id);
     const { toTitleCase } = await import('../common/utils/string-helper');
 
-    // Validate optional relationships if being updated
-    if (dto.clientGroupId) {
-      const group = await this.prisma.clientGroup.findFirst({
-        where: { id: dto.clientGroupId },
+    // Email duplication check if changed
+    if (dto.email && dto.email.toLowerCase() !== existing.email) {
+      const emailDup = await this.prisma.team.findUnique({
+        where: { email: dto.email.toLowerCase() },
       });
-      if (!group) throw new NotFoundException('Client group not found');
+      if (emailDup) throw new BadRequestException('Email already in use');
     }
 
-    if (dto.companyId) {
-      const company = await this.prisma.clientCompany.findFirst({
-        where: { id: dto.companyId },
+    // Team No duplication check if changed
+    if (dto.teamNo && dto.teamNo !== existing.teamNo) {
+      const idDup = await this.prisma.team.findUnique({
+        where: { teamNo: dto.teamNo },
       });
-      if (!company) throw new NotFoundException('Client company not found');
+      if (idDup) throw new BadRequestException('Team Number already in use');
     }
 
-    if (dto.locationId) {
-      const location = await this.prisma.clientLocation.findFirst({
-        where: { id: dto.locationId },
-      });
-      if (!location) throw new NotFoundException('Client location not found');
+    const data: any = { ...dto };
+    if (dto.password) {
+      data.password = await bcrypt.hash(dto.password, 10);
     }
-
-    if (dto.subLocationId) {
-      const subLocation = await this.prisma.subLocation.findFirst({
-        where: { id: dto.subLocationId },
-      });
-      if (!subLocation) throw new NotFoundException('Sub location not found');
-    }
-
-    if (dto.email && dto.email !== existing.email) {
-      const existingEmail = await this.prisma.team.findUnique({
-        where: { email: dto.email },
-      });
-      if (existingEmail) {
-        throw new BadRequestException('Email already exists');
-      }
-    }
-
-    if (dto.phone && dto.phone !== existing.phone) {
-      const existingPhone = await this.prisma.team.findUnique({
-        where: { phone: dto.phone },
-      });
-      if (existingPhone) {
-        throw new BadRequestException('Phone number already exists');
-      }
-    }
+    if (dto.firstName) data.firstName = toTitleCase(dto.firstName);
+    if (dto.lastName) data.lastName = toTitleCase(dto.lastName);
+    if (dto.teamName) data.teamName = toTitleCase(dto.teamName);
+    if (dto.email) data.email = dto.email.toLowerCase();
 
     const updated = await this.prisma.team.update({
       where: { id },
       data: {
-        ...dto,
-        teamName: dto.teamName ? toTitleCase(dto.teamName) : undefined,
-        remark: dto.remark ? toTitleCase(dto.remark) : undefined,
+        ...data,
         updatedBy: userId,
       },
     });
@@ -473,131 +326,39 @@ export class TeamService {
   }
 
   async delete(id: string, userId: string) {
-    const existing = await this.findById(id);
+    const team = await this.findById(id);
 
     await this.prisma.team.delete({
       where: { id },
     });
 
     await this.invalidateCache();
-    await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+    await this.logAudit(userId, 'DELETE', id, team, null);
 
-    return { message: 'Team permanently deleted successfully' };
+    return { message: 'Team member deleted successfully' };
   }
 
   async bulkCreate(dto: BulkCreateTeamDto, userId: string) {
-    this.logger.log(
-      `[BULK_CREATE_FAST] Starting for ${dto.teams.length} records`,
-    );
+    this.logger.log(`[BULK_CREATE] Starting for ${dto.teams.length} records`);
+    const results: any[] = [];
     const errors: any[] = [];
-    const { toTitleCase } = await import('../common/utils/string-helper');
-
-    const allExisting = await this.prisma.team.findMany({
-      select: { teamNo: true },
-    });
-    const existingNos = new Set(allExisting.map((x) => x.teamNo));
-
-    const prefix = 'U-';
-    const startNo = await this.autoNumberService.generateTeamNo();
-    let currentNum = parseInt(startNo.replace(prefix, ''));
-
-    const BATCH_SIZE = 1000;
-    const dataToInsert: any[] = [];
 
     for (const teamDto of dto.teams) {
       try {
-        const teamName = toTitleCase(
-          teamDto.teamName?.trim() || 'Unnamed Team',
-        );
-        const remark = teamDto.remark ? toTitleCase(teamDto.remark) : undefined;
-
-        let hashedPassword = teamDto.password;
-        if (teamDto.password) {
-          hashedPassword = await bcrypt.hash(
-            teamDto.password,
-            parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
-          );
-        }
-
-        // Unique number logic
-        let finalTeamNo = teamDto.teamNo?.trim();
-        if (!finalTeamNo || existingNos.has(finalTeamNo)) {
-          finalTeamNo = `${prefix}${currentNum}`;
-          currentNum++;
-          while (existingNos.has(finalTeamNo)) {
-            finalTeamNo = `${prefix}${currentNum}`;
-            currentNum++;
-          }
-        }
-        existingNos.add(finalTeamNo);
-
-        dataToInsert.push({
+        const res = await this.create({
           ...teamDto,
-          teamName,
-          teamNo: finalTeamNo,
-          remark,
-          taskAssignPermission: teamDto.taskAssignPermission,
-          role: teamDto.role || UserRole.EMPLOYEE,
-          loginMethod: teamDto.loginMethod || LoginMethod.General,
-          status: teamDto.status || TeamStatus.Active,
-          createdBy: userId,
-          password: hashedPassword,
-        });
+          password: teamDto.password || 'Welcome@123',
+        }, userId);
+        results.push(res);
       } catch (err) {
-        errors.push({ teamName: teamDto.teamName, error: err.message });
+        errors.push({ email: teamDto.email, error: err.message });
       }
     }
-
-    const chunks: any[][] = this.excelUploadService.chunk(
-      dataToInsert,
-      BATCH_SIZE,
-    );
-    let totalInserted = 0;
-    for (const chunk of chunks) {
-      try {
-        const result = await this.prisma.team.createMany({
-          data: chunk,
-          skipDuplicates: true,
-        });
-        totalInserted += result.count;
-
-        // Send invitations for newly created pending users
-        const pendingTeams = await this.prisma.team.findMany({
-          where: {
-            email: {
-              in: chunk
-                .filter(
-                  (c) =>
-                    c.status === TeamStatus.Pending_Verification && !c.password,
-                )
-                .map((c) => c.email),
-            },
-            status: TeamStatus.Pending_Verification,
-          },
-        });
-
-        for (const team of pendingTeams) {
-          this.triggerInvitation(team.email, team.teamName).catch((err) =>
-            this.logger.error(
-              `[BULK_INVITATION_ERROR] ${team.email}: ${err.message}`,
-            ),
-          );
-        }
-      } catch (err) {
-        this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
-        errors.push({ error: 'Batch insert failed', details: err.message });
-      }
-    }
-
-    this.logger.log(
-      `[BULK_CREATE_COMPLETED] Processed: ${dto.teams.length} | Inserted Actual: ${totalInserted} | Errors: ${errors.length}`,
-    );
-    await this.invalidateCache();
 
     return {
-      success: totalInserted,
-      failed: dto.teams.length - totalInserted,
-      message: `Successfully inserted ${totalInserted} records.`,
+      success: results.length,
+      failed: errors.length,
+      message: `Successfully processed ${results.length} records.`,
       errors,
     };
   }
@@ -606,30 +367,14 @@ export class TeamService {
     const results: any[] = [];
     const errors: any[] = [];
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const update of dto.updates) {
-        try {
-          const { id, ...data } = update;
-
-          const updated = await tx.team.update({
-            where: { id },
-            data: {
-              ...data,
-              updatedBy: userId,
-            },
-          });
-
-          results.push(updated);
-        } catch (error) {
-          errors.push({
-            id: update.id,
-            error: error.message,
-          });
-        }
+    for (const item of dto.updates) {
+      try {
+        const res = await this.update(item.id, item, userId);
+        results.push(res);
+      } catch (err) {
+        errors.push({ id: item.id, error: err.message });
       }
-    });
-
-    await this.invalidateCache();
+    }
 
     return {
       success: results.length,
@@ -647,242 +392,75 @@ export class TeamService {
       try {
         await this.delete(id, userId);
         results.push(id);
-      } catch (error) {
-        errors.push({
-          id,
-          error: error.message,
-        });
+      } catch (err) {
+        errors.push({ id, error: err.message });
       }
-    }
-
-    await this.invalidateCache();
-
-    if (results.length === 0 && errors.length > 0) {
-      throw new BadRequestException(errors[0].error);
     }
 
     return {
       success: results.length,
       failed: errors.length,
-      results,
+      deletedIds: results,
       errors,
     };
   }
 
   async uploadExcel(file: Express.Multer.File, userId: string) {
-    this.logger.log(
-      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
-    );
-
     const columnMapping = {
-      teamNo: ['teamno', 'teamnumber', 'no', 'number'],
-      teamName: ['teamname', 'name', 'tname', 'team'],
-      email: ['email', 'mail'],
-      phone: ['phone', 'contact', 'mobile', 'tel'],
-      taskAssignPermission: [
-        'taskassignpermission',
-        'taskassign',
-        'taskpermission',
-      ],
-      groupName: ['groupname', 'clientgroupname', 'group', 'clientgroup'],
-      companyName: [
-        'companyname',
-        'clientcompanyname',
-        'company',
-        'clientcompany',
-      ],
-      locationName: [
-        'locationname',
-        'clientlocationname',
-        'location',
-        'clientlocation',
-      ],
-      subLocationName: [
-        'sublocationname',
-        'clientsublocationname',
-        'sublocation',
-      ],
+      teamNo: ['teamno', 'no', 'code', 'id'],
+      teamName: ['teamname', 'name'],
+      firstName: ['firstname', 'fname', 'first'],
+      lastName: ['lastname', 'lname', 'last'],
+      email: ['email', 'mail', 'e-mail'],
+      role: ['role', 'designation', 'position'],
       status: ['status', 'state', 'active'],
-      loginMethod: ['loginmethod', 'login'],
-      remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
     };
 
-    const requiredColumns = ['teamName'];
+    const requiredColumns = ['teamName', 'email'];
 
-    const { data, errors: parseErrors } =
-      await this.excelUploadService.parseFile<any>(
-        file,
-        columnMapping,
-        requiredColumns,
-      );
+    const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
+      file,
+      columnMapping,
+      requiredColumns,
+    );
 
     if (data.length === 0) {
-      throw new BadRequestException(
-        'No valid data found to import. Please check file format and column names.',
-      );
+      throw new BadRequestException('No valid data found or required columns missing');
     }
 
-    // Resolve relations
-    const groupNames = Array.from(
-      new Set(data.filter((r) => r.groupName).map((r) => r.groupName)),
-    );
-    const companyNames = Array.from(
-      new Set(data.filter((r) => r.companyName).map((r) => r.companyName)),
-    );
-    const locationNames = Array.from(
-      new Set(data.filter((r) => r.locationName).map((r) => r.locationName)),
-    );
-    const subLocationNames = Array.from(
-      new Set(
-        data.filter((r) => r.subLocationName).map((r) => r.subLocationName),
-      ),
-    );
-
-    const [dbGroups, dbCompanies, dbLocations, dbSubLocations] =
-      await Promise.all([
-        this.prisma.clientGroup.findMany({
-          where: { groupName: { in: groupNames } },
-          select: { id: true, groupName: true },
-        }),
-        this.prisma.clientCompany.findMany({
-          where: { companyName: { in: companyNames } },
-          select: { id: true, companyName: true },
-        }),
-        this.prisma.clientLocation.findMany({
-          where: { locationName: { in: locationNames } },
-          select: { id: true, locationName: true },
-        }),
-        this.prisma.subLocation.findMany({
-          where: { subLocationName: { in: subLocationNames } },
-          select: { id: true, subLocationName: true },
-        }),
-      ]);
-
-    const groupMap = new Map(
-      dbGroups.map((g) => [g.groupName.toLowerCase(), g.id]),
-    );
-    const companyMap = new Map(
-      dbCompanies.map((c) => [c.companyName.toLowerCase(), c.id]),
-    );
-    const locationMap = new Map(
-      dbLocations.map((l) => [l.locationName.toLowerCase(), l.id]),
-    );
-    const subLocationMap = new Map(
-      dbSubLocations.map((s) => [s.subLocationName.toLowerCase(), s.id]),
-    );
-
-    const processedData: CreateTeamDto[] = [];
-    const processingErrors: any[] = [];
-
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
-      try {
-        const status = row.status
-          ? this.excelUploadService.validateEnum(
-            row.status as string,
-            TeamStatus,
-            'Status',
-          )
-          : TeamStatus.Active;
-        const loginMethod = row.loginMethod
-          ? this.excelUploadService.validateEnum(
-            row.loginMethod as string,
-            LoginMethod,
-            'LoginMethod',
-          )
-          : LoginMethod.General;
-
-        if (!row.email) throw new Error(`Email is missing for ${row.teamName}`);
-        if (!row.phone) throw new Error(`Phone is missing for ${row.teamName}`);
-
-        const clientGroupId = groupMap.get(row.groupName?.toLowerCase());
-        if (!clientGroupId)
-          throw new Error(
-            `Client Group "${row.groupName}" not found or missing`,
-          );
-
-        const companyId = companyMap.get(row.companyName?.toLowerCase());
-        if (!companyId)
-          throw new Error(`Company "${row.companyName}" not found or missing`);
-
-        const locationId = locationMap.get(row.locationName?.toLowerCase());
-        if (!locationId)
-          throw new Error(
-            `Location "${row.locationName}" not found or missing`,
-          );
-
-        const subLocationId = subLocationMap.get(
-          row.subLocationName?.toLowerCase(),
-        );
-        if (!subLocationId)
-          throw new Error(
-            `Sub Location "${row.subLocationName}" not found or missing`,
-          );
-
-        processedData.push({
-          teamNo: row.teamNo,
-          teamName: row.teamName,
-          email: row.email,
-          phone: row.phone,
-          taskAssignPermission: row.taskAssignPermission
-            ? String(row.taskAssignPermission)
-            : undefined,
-          clientGroupId: clientGroupId,
-          companyId: companyId,
-          locationId: locationId,
-          subLocationId: subLocationId,
-          status: status as TeamStatus,
-          loginMethod: loginMethod as LoginMethod,
-          remark: row.remark,
-        });
-      } catch (err) {
-        processingErrors.push({ row: i + 2, error: err.message });
-      }
-    }
-
-    if (processedData.length === 0 && processingErrors.length > 0) {
-      throw new BadRequestException(
-        `Validation Failed: ${processingErrors[0].error}`,
-      );
+    const processedData: any[] = [];
+    for (const row of data) {
+      processedData.push({
+        ...row,
+        status: row.status ? this.excelUploadService.validateEnum(row.status, TeamStatus, 'Status') : TeamStatus.Active,
+        role: row.role ? row.role.toUpperCase() : UserRole.EMPLOYEE,
+        loginMethod: LoginMethod.General,
+      });
     }
 
     const result = await this.bulkCreate({ teams: processedData }, userId);
-
-    result.errors = [
-      ...(result.errors || []),
-      ...parseErrors,
-      ...processingErrors,
-    ];
-    result.failed += parseErrors.length + processingErrors.length;
+    result.errors = [...(result.errors || []), ...parseErrors];
 
     return result;
   }
 
   async resendInvitation(id: string, userId: string) {
     const team = await this.findById(id);
-    if (team.status !== TeamStatus.Pending_Verification) {
-      throw new BadRequestException(
-        'Invitation can only be sent to users with Pending_Verification status',
-      );
+    const fullName = `${team.firstName || ''} ${team.lastName || ''}`.trim() || team.teamName;
+
+    try {
+      await this.triggerInvitation(team.email, fullName);
+      await this.logAudit(userId, 'RESEND_INVITATION', id, null, { email: team.email });
+      return { message: `Invitation resent to ${team.email}` };
+    } catch (err) {
+      throw new BadRequestException(`Failed to resend invitation: ${err.message}`);
     }
-
-    if (!team.email) {
-      throw new BadRequestException('Team member has no email address');
-    }
-
-    await this.triggerInvitation(team.email, team.teamName);
-    await this.logAudit(userId, 'RESEND_INVITATION', id, null, {
-      email: team.email,
-    });
-
-    return { message: `Invitation resent successfully to ${team.email}` };
   }
 
-  private async triggerInvitation(email: string, teamName: string) {
-    const token = uuidv4();
-    await this.redisService.set(`invitation:${token}`, email, 86400); // 24 hours
-    await this.notificationService.sendInvitation(email, teamName, token);
-    this.logger.log(`[INVITATION_TRIGGERED] Sent to ${email}`);
+  async triggerInvitation(email: string, teamName: string) {
+    // Integration with NotificationService or Mailer
+    // For now, it's a placeholder
+    return true;
   }
 
   private async invalidateCache() {

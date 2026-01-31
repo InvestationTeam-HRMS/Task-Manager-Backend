@@ -72,17 +72,13 @@ export class TaskController {
         return this.taskService.bulkUpload(files[0], userId);
     }
 
-    @Get('download')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER)
-    async download(
+    @Get('export/excel')
+    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
-        @Res() res: any
+        @Res() res: Response
     ) {
-        res.set({
-            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': 'attachment; filename="tasks.xlsx"',
-        });
         await this.taskService.downloadExcel(filter, userId, res);
     }
 

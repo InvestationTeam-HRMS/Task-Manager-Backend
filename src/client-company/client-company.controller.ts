@@ -8,11 +8,13 @@ import {
     Body,
     Param,
     Query,
+    Res,
     UseGuards,
     UseInterceptors,
     UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { ClientCompanyService } from './client-company.service';
 import {
     CreateClientCompanyDto,
@@ -64,6 +66,17 @@ export class ClientCompanyController {
     @UseGuards(JwtAuthGuard)
     findByCompanyCode(@Param('companyCode') companyCode: string) {
         return this.clientCompanyService.findByCompanyCode(companyCode);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response
+    ) {
+        return this.clientCompanyService.downloadExcel(query, userId, res);
     }
 
     @Put(':id')

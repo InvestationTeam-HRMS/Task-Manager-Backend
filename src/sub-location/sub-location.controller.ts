@@ -8,11 +8,13 @@ import {
     Body,
     Param,
     Query,
+    Res,
     UseGuards,
     UseInterceptors,
     UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { SubLocationService } from './sub-location.service';
 import {
     CreateSubLocationDto,
@@ -57,6 +59,17 @@ export class SubLocationController {
     @UseGuards(JwtAuthGuard)
     findById(@Param('id') id: string) {
         return this.subLocationService.findById(id);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response
+    ) {
+        return this.subLocationService.downloadExcel(query, userId, res);
     }
 
     @Put(':id')

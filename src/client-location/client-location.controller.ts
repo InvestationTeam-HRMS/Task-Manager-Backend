@@ -8,11 +8,13 @@ import {
     Body,
     Param,
     Query,
+    Res,
     UseGuards,
     UseInterceptors,
     UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { ClientLocationService } from './client-location.service';
 import {
     CreateClientLocationDto,
@@ -57,6 +59,17 @@ export class ClientLocationController {
     @UseGuards(JwtAuthGuard)
     findById(@Param('id') id: string) {
         return this.clientLocationService.findById(id);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response
+    ) {
+        return this.clientLocationService.downloadExcel(query, userId, res);
     }
 
     @Put(':id')

@@ -32,31 +32,52 @@ export class ExcelDownloadService {
         // 2. Add Data Rows
         worksheet.addRows(data);
 
-        // 3. Format Header Row
-        const headerRow = worksheet.getRow(1);
-        headerRow.height = 25;
+        // 3. Overall Formatting
+        worksheet.eachRow((row, rowNumber) => {
+            // Header Row Styling
+            if (rowNumber === 1) {
+                row.height = 30; // Increased height for premium look
+                row.eachCell((cell) => {
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FFE6B8B7' }, // Header Colour - #E6B8B7
+                    };
+                    cell.font = {
+                        bold: true,
+                        size: 11,
+                        color: { argb: 'FF000000' },
+                    };
+                    cell.alignment = {
+                        vertical: 'middle',
+                        horizontal: 'center',
+                    };
+                });
+            } else {
+                row.height = 20; // Slightly taller data rows
+            }
 
-        headerRow.eachCell((cell) => {
-            cell.fill = {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FFE6B8B7' }, // Header Colour - #E6B8B7
-            };
-            cell.font = {
-                bold: true,
-                size: 11,
-                color: { argb: 'FF000000' },
-            };
-            cell.alignment = {
-                vertical: 'middle',
-                horizontal: 'center',
-            };
-            cell.border = {
-                top: { style: 'thin' },
-                left: { style: 'thin' },
-                bottom: { style: 'thin' },
-                right: { style: 'thin' },
-            };
+            // Apply borders and vertical alignment to ALL cells
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                cell.border = {
+                    top: { style: 'thin' },
+                    left: { style: 'thin' },
+                    bottom: { style: 'thin' },
+                    right: { style: 'thin' },
+                };
+
+                // Vertical middle all cells
+                if (!cell.alignment) {
+                    cell.alignment = { vertical: 'middle' };
+                } else {
+                    cell.alignment.vertical = 'middle';
+                }
+
+                // Horizontal center for # or specific columns
+                if (columns[colNumber - 1]?.header === '#' || columns[colNumber - 1]?.key === '#') {
+                    cell.alignment.horizontal = 'center';
+                }
+            });
         });
 
         // 4. Add Filter on all columns
@@ -65,38 +86,24 @@ export class ExcelDownloadService {
             to: { row: 1, column: columns.length },
         };
 
-        // 5. Column width autoset by column data
+        // 5. Column width autoset based on content
         worksheet.columns.forEach((column: any) => {
             let maxLength = 0;
-            // Header length
             const headerText = column.header ? column.header.toString() : '';
             maxLength = headerText.length;
 
-            // Data length
             column.eachCell({ includeEmpty: true }, (cell) => {
                 const columnLength = cell.value ? cell.value.toString().length : 0;
                 if (columnLength > maxLength) {
                     maxLength = columnLength;
                 }
             });
-            column.width = maxLength < 10 ? 12 : maxLength + 5;
+
+            // Padding and bounds
+            column.width = Math.min(Math.max(maxLength + 4, 12), 50);
         });
 
-        // 6. Add borders to all data cells
-        worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber > 1) {
-                row.eachCell((cell) => {
-                    cell.border = {
-                        top: { style: 'thin' },
-                        left: { style: 'thin' },
-                        bottom: { style: 'thin' },
-                        right: { style: 'thin' },
-                    };
-                });
-            }
-        });
-
-        // 7. Stream response
+        // 6. Finalize response
         res.setHeader(
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

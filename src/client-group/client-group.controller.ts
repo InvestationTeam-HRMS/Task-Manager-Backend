@@ -52,10 +52,10 @@ export class ClientGroupController {
         return this.clientGroupService.findAll(query, query);
     }
 
-    @Get('download')
+    @Get('export/excel')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
-    async download(
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
         @Res() res: Response,

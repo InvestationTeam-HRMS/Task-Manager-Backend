@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateClientLocationDto,
     UpdateClientLocationDto,
@@ -34,6 +35,7 @@ export class ClientLocationService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateClientLocationDto, userId: string) {
@@ -239,6 +241,34 @@ export class ClientLocationService {
         }
 
         return response;
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            locationNo: item.locationNo,
+            locationName: item.locationName,
+            locationCode: item.locationCode,
+            company: item.company?.companyName || 'N/A',
+            address: item.address || 'N/A',
+            status: item.status,
+            remark: item.remark || 'N/A',
+        }));
+
+        const columns = [
+            { header: '#', key: 'srNo', width: 10 },
+            { header: 'Location No', key: 'locationNo', width: 15 },
+            { header: 'Location Name', key: 'locationName', width: 30 },
+            { header: 'Location Code', key: 'locationCode', width: 15 },
+            { header: 'Company', key: 'company', width: 25 },
+            { header: 'Address', key: 'address', width: 35 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'client_locations.xlsx', 'Client Locations');
     }
 
     async findActive(pagination: PaginationDto) {
@@ -532,8 +562,6 @@ export class ClientLocationService {
             errors,
         };
     }
-
-
 
     async uploadExcel(file: Express.Multer.File, userId: string) {
         this.logger.log(`[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`);

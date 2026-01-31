@@ -8,11 +8,13 @@ import {
     Body,
     Param,
     Query,
+    Res,
     UseGuards,
     UseInterceptors,
     UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { GroupService } from './group.service';
 import {
     CreateGroupDto,
@@ -45,6 +47,17 @@ export class GroupController {
     @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
     findAll(@Query() query: any) {
         return this.groupService.findAll(query, query);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard)
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response
+    ) {
+        return this.groupService.downloadExcel(query, userId, res);
     }
 
     @Get('active')

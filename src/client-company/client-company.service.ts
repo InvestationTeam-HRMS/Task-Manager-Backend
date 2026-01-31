@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateClientCompanyDto,
     UpdateClientCompanyDto,
@@ -34,6 +35,7 @@ export class ClientCompanyService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateClientCompanyDto, userId: string) {
@@ -228,6 +230,34 @@ export class ClientCompanyService {
         }
 
         return response;
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            companyNo: item.companyNo,
+            companyName: item.companyName,
+            companyCode: item.companyCode,
+            group: item.group?.groupName || 'N/A',
+            address: item.address || 'N/A',
+            status: item.status,
+            remark: item.remark || 'N/A',
+        }));
+
+        const columns = [
+            { header: '#', key: 'srNo', width: 10 },
+            { header: 'Company No', key: 'companyNo', width: 15 },
+            { header: 'Company Name', key: 'companyName', width: 30 },
+            { header: 'Company Code', key: 'companyCode', width: 15 },
+            { header: 'Group', key: 'group', width: 25 },
+            { header: 'Address', key: 'address', width: 35 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'client_companies.xlsx', 'Client Companies');
     }
 
     async findActive(pagination: PaginationDto) {
@@ -541,8 +571,6 @@ export class ClientCompanyService {
             errors,
         };
     }
-
-
 
     async uploadExcel(file: Express.Multer.File, userId: string) {
         this.logger.log(`[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`);

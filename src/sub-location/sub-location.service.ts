@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateSubLocationDto,
     UpdateSubLocationDto,
@@ -34,33 +35,28 @@ export class SubLocationService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateSubLocationDto, userId: string) {
+        // Transform subLocationCode to uppercase
+        const subLocationCodeUpper = dto.subLocationCode.toUpperCase();
+
         const existing = await this.prisma.subLocation.findUnique({
-            where: { subLocationCode: dto.subLocationCode },
+            where: { subLocationCode: subLocationCodeUpper },
         });
 
         if (existing) {
-            throw new ConflictException('Sub location code already exists');
+            throw new ConflictException('Sub-location code already exists');
         }
 
-        // Validate Client Group
-        const clientGroup = await this.prisma.clientGroup.findUnique({
-            where: { id: dto.clientGroupId },
-        });
-        if (!clientGroup) {
-            throw new NotFoundException('Client Group not found');
-        }
-
-        // Validate Location if provided
-        let location;
+        // Validate Location Existence if locationId is provided
         if (dto.locationId) {
-            location = await this.prisma.clientLocation.findFirst({
+            const location = await this.prisma.clientLocation.findUnique({
                 where: { id: dto.locationId },
             });
             if (!location) {
-                throw new NotFoundException('Client location not found');
+                throw new NotFoundException('Client Location not found');
             }
         }
 
@@ -70,13 +66,12 @@ export class SubLocationService {
         const subLocation = await this.prisma.subLocation.create({
             data: {
                 ...dto,
-                clientGroupId: dto.clientGroupId,
+                subLocationCode: subLocationCodeUpper,
                 subLocationName: toTitleCase(dto.subLocationName),
                 address: dto.address ? toTitleCase(dto.address) : undefined,
-                companyId: dto.companyId || location?.companyId || undefined,
                 subLocationNo: dto.subLocationNo || generatedSubLocationNo,
-                status: dto.status || SubLocationStatus.Active,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
+                status: dto.status || SubLocationStatus.Active,
                 createdBy: userId,
             },
         });
@@ -118,26 +113,10 @@ export class SubLocationService {
             }
         }
 
-        if (filter?.clientGroupId) {
-            const groupIds = typeof filter.clientGroupId === 'string'
-                ? filter.clientGroupId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.clientGroupId) ? filter.clientGroupId : [filter.clientGroupId];
-            if (groupIds.length > 0) andArray.push({ clientGroupId: { in: groupIds } });
-        }
+        if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
+        if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.locationId) andArray.push({ locationId: filter.locationId });
 
-        if (filter?.companyId) {
-            const companyIds = typeof filter.companyId === 'string'
-                ? filter.companyId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.companyId) ? filter.companyId : [filter.companyId];
-            if (companyIds.length > 0) andArray.push({ companyId: { in: companyIds } });
-        }
-
-        if (filter?.locationId) {
-            const locationIds = typeof filter.locationId === 'string'
-                ? filter.locationId.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.locationId) ? filter.locationId : [filter.locationId];
-            if (locationIds.length > 0) andArray.push({ locationId: { in: locationIds } });
-        }
         if (filter?.subLocationName) andArray.push(buildMultiValueFilter('subLocationName', toTitleCase(filter.subLocationName)));
         if (filter?.subLocationNo) andArray.push(buildMultiValueFilter('subLocationNo', filter.subLocationNo));
         if (filter?.subLocationCode) andArray.push(buildMultiValueFilter('subLocationCode', filter.subLocationCode));
@@ -150,6 +129,7 @@ export class SubLocationService {
             for (const val of searchValues) {
                 const searchLower = val.toLowerCase();
                 const searchTitle = toTitleCase(val);
+
                 const looksLikeCode = /^[A-Z]{2,}-\d+$/i.test(val) || /^[A-Z0-9-]+$/i.test(val);
 
                 if (looksLikeCode) {
@@ -170,8 +150,6 @@ export class SubLocationService {
                 allSearchConditions.push({ remark: { contains: searchTitle, mode: 'insensitive' } });
                 allSearchConditions.push({ location: { locationName: { contains: val, mode: 'insensitive' } } });
                 allSearchConditions.push({ location: { locationName: { contains: searchTitle, mode: 'insensitive' } } });
-                allSearchConditions.push({ company: { companyName: { contains: val, mode: 'insensitive' } } });
-                allSearchConditions.push({ company: { companyName: { contains: searchTitle, mode: 'insensitive' } } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
                     allSearchConditions.push({ status: 'Active' as any });
@@ -215,15 +193,9 @@ export class SubLocationService {
                     status: true,
                     remark: true,
                     createdAt: true,
-                    companyId: true,
                     locationId: true,
-                    company: {
-                        select: {
-                            id: true,
-                            companyName: true,
-                            companyCode: true,
-                        }
-                    },
+                    clientGroupId: true,
+                    companyId: true,
                     location: {
                         select: {
                             id: true,
@@ -242,9 +214,7 @@ export class SubLocationService {
         const mappedData = data.map((item) => ({
             ...item,
             clientLocation: item.location,
-            clientCompany: item.company,
-            locationName: item.location?.locationName,
-            companyName: item.company?.companyName,
+            locationName: item.location?.locationName, // Flattened for table column accessor
         }));
 
         const response = new PaginatedResponse(mappedData, total, page, limit);
@@ -255,6 +225,34 @@ export class SubLocationService {
         }
 
         return response;
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            subLocationNo: item.subLocationNo,
+            subLocationName: item.subLocationName,
+            subLocationCode: item.subLocationCode,
+            location: item.location?.locationName || 'N/A',
+            address: item.address || 'N/A',
+            status: item.status,
+            remark: item.remark || 'N/A',
+        }));
+
+        const columns = [
+            { header: '#', key: 'srNo', width: 10 },
+            { header: 'Sub-Location No', key: 'subLocationNo', width: 15 },
+            { header: 'Sub-Location Name', key: 'subLocationName', width: 30 },
+            { header: 'Sub-Location Code', key: 'subLocationCode', width: 15 },
+            { header: 'Location', key: 'location', width: 25 },
+            { header: 'Address', key: 'address', width: 35 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'sub_locations.xlsx', 'Sub-Locations');
     }
 
     async findActive(pagination: PaginationDto) {
@@ -268,11 +266,7 @@ export class SubLocationService {
             include: {
                 location: {
                     include: {
-                        company: {
-                            include: {
-                                group: true,
-                            },
-                        },
+                        company: true,
                     },
                 },
                 creator: {
@@ -285,7 +279,7 @@ export class SubLocationService {
         });
 
         if (!subLocation) {
-            throw new NotFoundException('Sub location not found');
+            throw new NotFoundException('Sub-location not found');
         }
 
         return subLocation;
@@ -295,13 +289,16 @@ export class SubLocationService {
         const existing = await this.findById(id);
         const { toTitleCase } = await import('../common/utils/string-helper');
 
-        if (dto.subLocationCode && dto.subLocationCode !== existing.subLocationCode) {
+        // Transform subLocationCode to uppercase if provided
+        const subLocationCodeUpper = dto.subLocationCode ? dto.subLocationCode.toUpperCase() : undefined;
+
+        if (subLocationCodeUpper && subLocationCodeUpper !== existing.subLocationCode) {
             const duplicate = await this.prisma.subLocation.findUnique({
-                where: { subLocationCode: dto.subLocationCode },
+                where: { subLocationCode: subLocationCodeUpper },
             });
 
             if (duplicate) {
-                throw new ConflictException('Sub location code already exists');
+                throw new ConflictException('Sub-location code already exists');
             }
         }
 
@@ -319,6 +316,7 @@ export class SubLocationService {
             where: { id },
             data: {
                 ...dto,
+                subLocationCode: subLocationCodeUpper,
                 subLocationName: dto.subLocationName ? toTitleCase(dto.subLocationName) : undefined,
                 address: dto.address ? toTitleCase(dto.address) : undefined,
                 remark: dto.remark ? toTitleCase(dto.remark) : undefined,
@@ -364,7 +362,7 @@ export class SubLocationService {
         });
 
         if (!subLocation) {
-            throw new NotFoundException('Sub location not found');
+            throw new NotFoundException('Sub-location not found');
         }
 
         const { _count } = subLocation;
@@ -376,7 +374,7 @@ export class SubLocationService {
 
         if (childCounts.length > 0) {
             throw new BadRequestException(
-                `Cannot delete Sub Location because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+                `Cannot delete Sub-Location because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
             );
         }
 
@@ -387,7 +385,7 @@ export class SubLocationService {
         await this.invalidateCache();
         await this.logAudit(userId, 'HARD_DELETE', id, subLocation, null);
 
-        return { message: 'Sub location deleted successfully' };
+        return { message: 'Sub-location deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateSubLocationDto, userId: string) {
@@ -402,21 +400,21 @@ export class SubLocationService {
         const existingCodes = new Set(allExisting.map((x) => x.subLocationCode));
         const existingNos = new Set(allExisting.map((x) => x.subLocationNo));
 
-        const prefix = 'CS-';
+        const prefix = 'SL-';
         const startNo = await this.autoNumberService.generateSubLocationNo();
-        let currentNum = parseInt(startNo.replace(prefix, ''));
+        let currentNum = parseInt(startNo.replace('CSL-', '').replace(prefix, '')) || 1000;
 
         const BATCH_SIZE = 1000;
         const dataToInsert: any[] = [];
 
         for (const subLocationDto of dto.subLocations) {
             try {
-                const subLocationName = toTitleCase(subLocationDto.subLocationName?.trim() || subLocationDto.subLocationCode || 'Unnamed Sub Location');
+                const subLocationName = toTitleCase(subLocationDto.subLocationName?.trim() || subLocationDto.subLocationCode || 'Unnamed Sub-Location');
                 const address = subLocationDto.address ? toTitleCase(subLocationDto.address) : undefined;
                 const remark = subLocationDto.remark ? toTitleCase(subLocationDto.remark) : undefined;
 
                 // Unique code logic
-                let finalSubLocationCode = subLocationDto.subLocationCode?.trim() || `SUBLOC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                let finalSubLocationCode = subLocationDto.subLocationCode?.trim() || `SLOC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 if (existingCodes.has(finalSubLocationCode)) {
                     let suffix = 1;
                     const originalCode = finalSubLocationCode;
@@ -509,6 +507,10 @@ export class SubLocationService {
 
         await this.invalidateCache();
 
+        if (results.length === 0 && errors.length > 0) {
+            throw new BadRequestException(errors[0].error);
+        }
+
         return {
             success: results.length,
             failed: errors.length,
@@ -535,36 +537,28 @@ export class SubLocationService {
 
         await this.invalidateCache();
 
-        if (results.length === 0 && errors.length > 0) {
-            throw new BadRequestException(errors[0].error);
-        }
-
         return {
             success: results.length,
             failed: errors.length,
-            results,
+            deletedIds: results,
             errors,
         };
     }
-
-
 
     async uploadExcel(file: Express.Multer.File, userId: string) {
         this.logger.log(`[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`);
 
         const columnMapping = {
             subLocationNo: ['sublocationno', 'sublocationnumber', 'no', 'number'],
-            subLocationName: ['sublocationname', 'name', 'sname', 'sublocation'],
-            subLocationCode: ['sublocationcode', 'code', 'scode'],
-            clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
-            locationName: ['locationname', 'clientlocationname', 'location', 'clientlocation'],
-            companyName: ['companyname', 'clientcompanyname', 'company', 'clientcompany'],
+            subLocationName: ['sublocationname', 'name', 'slname', 'sublocation'],
+            subLocationCode: ['sublocationcode', 'code', 'slcode'],
+            locationName: ['locationname', 'clientlocationname', 'location'],
             address: ['address', 'physicaladdress', 'street', 'sublocationaddress', 'addr'],
             status: ['status', 'state', 'active'],
             remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
         };
 
-        const requiredColumns = ['subLocationName', 'subLocationCode'];
+        const requiredColumns = ['subLocationName', 'subLocationCode', 'locationName'];
 
         const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
             file,
@@ -576,32 +570,15 @@ export class SubLocationService {
             throw new BadRequestException('No valid data found to import. Please check file format and column names.');
         }
 
-        // 1. Resolve all relations
-        const companyNames = Array.from(new Set(data.filter(row => row.companyName).map(row => row.companyName)));
+        // Resolve all locationNames
         const locationNames = Array.from(new Set(data.filter(row => row.locationName).map(row => row.locationName)));
-        const clientGroupNames = Array.from(new Set(data.filter(row => row.clientGroupName).map(row => row.clientGroupName)));
-
-        const [companies, locations, clientGroups] = await Promise.all([
-            this.prisma.clientCompany.findMany({
-                where: { companyName: { in: companyNames } },
-                select: { id: true, companyName: true, groupId: true }
-            }),
-            this.prisma.clientLocation.findMany({
-                where: { locationName: { in: locationNames } },
-                select: { id: true, locationName: true, companyId: true, clientGroupId: true }
-            }),
-            this.prisma.clientGroup.findMany({
-                where: { groupName: { in: clientGroupNames } },
-                select: { id: true, groupName: true }
-            })
-        ]);
-
-        const companyMap = new Map(companies.map(c => [c.companyName.toLowerCase(), c]));
-        const groupMap = new Map(clientGroups.map(g => [g.groupName.toLowerCase(), g.id]));
-        // Optimization: Simplified lookup for location mapping
+        const locations = await this.prisma.clientLocation.findMany({
+            where: { locationName: { in: locationNames } },
+            select: { id: true, locationName: true, clientGroupId: true, companyId: true }
+        });
         const locationMap = new Map(locations.map(l => [l.locationName.toLowerCase(), l]));
 
-        // 2. Build processing data
+        // Build processing data
         const processedData: CreateSubLocationDto[] = [];
         const processingErrors: any[] = [];
 
@@ -610,54 +587,16 @@ export class SubLocationService {
             try {
                 const status = row.status ? this.excelUploadService.validateEnum(row.status as string, SubLocationStatus, 'Status') : SubLocationStatus.Active;
 
-                let companyId: string | undefined;
-                let locationId: string | undefined;
-                let clientGroupId: string | undefined;
-
-                if (row.companyName) {
-                    const company = companyMap.get(row.companyName.toLowerCase());
-                    if (!company) throw new Error(`Client Company not found: ${row.companyName}`);
-                    companyId = company.id;
-                    clientGroupId = company.groupId;
-                }
-
-                if (row.locationName) {
-                    const location = locationMap.get(row.locationName.toLowerCase());
-                    if (!location) throw new Error(`Client Location not found: ${row.locationName}`);
-                    locationId = location.id;
-
-                    if (clientGroupId && clientGroupId !== location.clientGroupId) {
-                        throw new Error(`Location "${row.locationName}" does not belong to the same Group as Company`);
-                    }
-                    clientGroupId = location.clientGroupId;
-
-                    if (companyId && location.companyId && companyId !== location.companyId) {
-                        throw new Error(`Location "${row.locationName}" belongs to a different Company`);
-                    }
-                    if (!companyId) companyId = location.companyId || undefined;
-                }
-
-                if (row.clientGroupName) {
-                    const gid = groupMap.get(row.clientGroupName.toLowerCase());
-                    if (!gid) throw new Error(`Client Group not found: ${row.clientGroupName}`);
-
-                    if (clientGroupId && clientGroupId !== gid) {
-                        throw new Error(`Resolved Group does not match "Client Group Name" provided`);
-                    }
-                    clientGroupId = gid;
-                }
-
-                if (!clientGroupId) {
-                    throw new Error(`Client Group could not be resolved from Company, Location, or Group Name`);
-                }
+                const location = locationMap.get(row.locationName?.toLowerCase());
+                if (!location) throw new Error(`Client Location not found: ${row.locationName}`);
 
                 processedData.push({
                     subLocationNo: row.subLocationNo,
                     subLocationName: row.subLocationName,
                     subLocationCode: row.subLocationCode,
-                    clientGroupId: clientGroupId,
-                    companyId: companyId,
-                    locationId: locationId,
+                    locationId: location.id,
+                    clientGroupId: location.clientGroupId,
+                    companyId: location.companyId || undefined,
                     address: row.address,
                     status: status as SubLocationStatus,
                     remark: row.remark,

@@ -240,16 +240,17 @@ export class ProjectService {
             srNo: index + 1,
             projectNo: item.projectNo,
             projectName: item.projectName,
-            company: item.companyName,
-            location: item.locationName,
-            subLocation: item.subLocationName,
+            company: item.companyName || 'N/A',
+            location: item.locationName || 'N/A',
+            subLocation: item.subLocationName || 'N/A',
             priority: item.priority,
             status: item.status,
             deadline: item.deadline ? new Date(item.deadline).toLocaleDateString() : 'N/A',
+            remark: item.remark || 'N/A',
         }));
 
         const columns = [
-            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: '#', key: 'srNo', width: 10 },
             { header: 'Project No', key: 'projectNo', width: 15 },
             { header: 'Project Name', key: 'projectName', width: 30 },
             { header: 'Company', key: 'company', width: 25 },
@@ -258,6 +259,7 @@ export class ProjectService {
             { header: 'Priority', key: 'priority', width: 12 },
             { header: 'Status', key: 'status', width: 15 },
             { header: 'Deadline', key: 'deadline', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
         ];
 
         await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'projects.xlsx', 'Projects');

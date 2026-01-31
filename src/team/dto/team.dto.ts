@@ -210,4 +210,8 @@ export class FilterTeamDto {
     @IsOptional()
     @IsString()
     remark?: string;
+
+    @IsOptional()
+    @IsEnum(UserRole)
+    role?: UserRole;
 }

@@ -8,11 +8,13 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { TeamService } from './team.service';
 import {
   CreateTeamDto,
@@ -31,7 +33,7 @@ import { UserRole } from '@prisma/client';
 
 @Controller('teams')
 export class TeamController {
-  constructor(private teamService: TeamService) {}
+  constructor(private teamService: TeamService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -45,6 +47,17 @@ export class TeamController {
   @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
   findAll(@Query() query: any) {
     return this.teamService.findAll(query, query);
+  }
+
+  @Get('export/excel')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+  async exportExcel(
+    @Query() query: any,
+    @GetUser('id') userId: string,
+    @Res() res: Response,
+  ) {
+    return this.teamService.downloadExcel(query, userId, res);
   }
 
   @Get('active')

@@ -206,7 +206,7 @@ export class ClientGroupService {
         }));
 
         const columns = [
-            { header: 'Sr. No.', key: 'srNo', width: 10 },
+            { header: '#', key: 'srNo', width: 10 },
             { header: 'Group No', key: 'groupNo', width: 15 },
             { header: 'Group Name', key: 'groupName', width: 25 },
             { header: 'Group Code', key: 'groupCode', width: 15 },

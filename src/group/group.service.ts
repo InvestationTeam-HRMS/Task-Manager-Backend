@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateGroupDto,
     UpdateGroupDto,
@@ -35,29 +36,30 @@ export class GroupService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateGroupDto, userId: string) {
-        const { teamMemberIds, ...groupData } = dto;
+        const { toTitleCase } = await import('../common/utils/string-helper');
 
-        const generatedGroupNo = await this.autoNumberService.generateGroupNo();
+        const existing = await this.prisma.group.findFirst({
+            where: { groupName: toTitleCase(dto.groupName) },
+        });
+
+        if (existing) {
+            throw new ConflictException('Group name already exists');
+        }
+
+        const groupNo = await this.autoNumberService.generateGroupNo();
 
         const group = await this.prisma.group.create({
             data: {
-                ...groupData as any,
-                groupNo: dto.groupNo || generatedGroupNo,
+                ...dto,
+                groupName: toTitleCase(dto.groupName),
+                groupNo: dto.groupNo || groupNo,
                 status: dto.status || GroupStatus.Active,
                 createdBy: userId,
-                members: teamMemberIds && teamMemberIds.length > 0 ? {
-                    create: teamMemberIds.map(id => ({
-                        userId: id,
-                        role: 'MEMBER'
-                    }))
-                } : undefined
             },
-            include: {
-                members: true
-            }
         });
 
         await this.invalidateCache();
@@ -82,22 +84,24 @@ export class GroupService {
         };
 
         const andArray = where.AND as Array<Prisma.GroupWhereInput>;
+        const { toTitleCase } = await import('../common/utils/string-helper');
 
         // Handle Status Filter
-        if (filter?.status as any) {
-            const statusValues = typeof (filter as any).status === 'string'
-                ? (filter as any).status.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray((filter as any).status) ? (filter as any).status : [(filter as any).status];
-            if (statusValues.length > 0) andArray.push({ status: { in: statusValues as any } });
+        if (filter?.status) {
+            const statusValues = typeof filter.status === 'string'
+                ? filter.status.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.status) ? filter.status : [filter.status];
+
+            if (statusValues.length > 0) {
+                andArray.push({
+                    status: { in: statusValues as any }
+                });
+            }
         }
 
-        if (filter?.clientGroupIds && filter.clientGroupIds.length > 0) andArray.push({ clientGroupIds: { hasSome: filter.clientGroupIds } });
-        if (filter?.companyIds && filter.companyIds.length > 0) andArray.push({ companyIds: { hasSome: filter.companyIds } });
-        if (filter?.locationIds && filter.locationIds.length > 0) andArray.push({ locationIds: { hasSome: filter.locationIds } });
-        if (filter?.subLocationIds && filter.subLocationIds.length > 0) andArray.push({ subLocationIds: { hasSome: filter.subLocationIds } });
-        if (filter?.groupName) andArray.push(buildMultiValueFilter('groupName', filter.groupName));
+        if (filter?.groupName) andArray.push(buildMultiValueFilter('groupName', toTitleCase(filter.groupName)));
         if (filter?.groupNo) andArray.push(buildMultiValueFilter('groupNo', filter.groupNo));
-        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
 
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
@@ -105,23 +109,19 @@ export class GroupService {
 
             for (const val of searchValues) {
                 const searchLower = val.toLowerCase();
-                const looksLikeCode = /^[A-Z]{2,}-\d+$/i.test(val) || /^[A-Z0-9-]+$/i.test(val);
+                const searchTitle = toTitleCase(val);
 
-                if (looksLikeCode) {
-                    allSearchConditions.push({ groupNo: { equals: val, mode: 'insensitive' } });
-                    allSearchConditions.push({ groupNo: { contains: val, mode: 'insensitive' } });
-                } else {
-                    allSearchConditions.push({ groupName: { contains: val, mode: 'insensitive' } });
-                    allSearchConditions.push({ groupNo: { contains: val, mode: 'insensitive' } });
-                }
-
+                allSearchConditions.push({ groupName: { contains: val, mode: 'insensitive' } });
+                allSearchConditions.push({ groupName: { contains: searchTitle, mode: 'insensitive' } });
+                allSearchConditions.push({ groupNo: { contains: val, mode: 'insensitive' } });
                 allSearchConditions.push({ remark: { contains: val, mode: 'insensitive' } });
+                allSearchConditions.push({ remark: { contains: searchTitle, mode: 'insensitive' } });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'Active' as any });
+                    allSearchConditions.push({ status: GroupStatus.Active });
                 }
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
-                    allSearchConditions.push({ status: 'Inactive' as any });
+                    allSearchConditions.push({ status: GroupStatus.Inactive });
                 }
             }
 
@@ -131,6 +131,18 @@ export class GroupService {
         }
 
         if (andArray.length === 0) delete where.AND;
+
+        // --- Redis Caching ---
+        const isCacheable = !cleanedSearch && (!filter || Object.keys(filter).length === 0);
+        const cacheKey = `${this.CACHE_KEY}:list:p${page}:l${limit}:s${sortBy}:${sortOrder}`;
+
+        if (isCacheable) {
+            const cached = await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
+            if (cached) {
+                this.logger.log(`[CACHE_HIT] Group List - ${cacheKey}`);
+                return cached;
+            }
+        }
 
         const [data, total] = await Promise.all([
             this.prisma.group.findMany({
@@ -142,72 +154,92 @@ export class GroupService {
                     members: {
                         include: {
                             team: {
-                                select: { id: true, firstName: true, lastName: true, teamName: true }
-                            }
-                        }
+                                select: {
+                                    id: true,
+                                    firstName: true,
+                                    lastName: true,
+                                    email: true,
+                                },
+                            },
+                        },
+                    },
+                    _count: {
+                        select: { pendingTasks: true, completedTasks: true }
                     }
                 },
             }),
             this.prisma.group.count({ where }),
         ]);
 
-        // Resolve Hierarchical Names
-        const allClientGroupIds = Array.from(new Set(data.flatMap(g => g.clientGroupIds || [])));
-        const allCompanyIds = Array.from(new Set(data.flatMap(g => g.companyIds || [])));
-        const allLocationIds = Array.from(new Set(data.flatMap(g => g.locationIds || [])));
-        const allSubLocationIds = Array.from(new Set(data.flatMap(g => g.subLocationIds || [])));
+        const response = new PaginatedResponse(data, total, page, limit);
 
-        const [clientGroups, companies, locations, subLocations] = await Promise.all([
-            this.prisma.clientGroup.findMany({ where: { id: { in: allClientGroupIds } }, select: { id: true, groupName: true } }),
-            this.prisma.clientCompany.findMany({ where: { id: { in: allCompanyIds } }, select: { id: true, companyName: true } }),
-            this.prisma.clientLocation.findMany({ where: { id: { in: allLocationIds } }, select: { id: true, locationName: true } }),
-            this.prisma.subLocation.findMany({ where: { id: { in: allSubLocationIds } }, select: { id: true, subLocationName: true } }),
-        ]);
+        if (isCacheable) {
+            await this.redisService.setCache(cacheKey, response, this.CACHE_TTL);
+            this.logger.log(`[CACHE_MISS] Group List - Cached result: ${cacheKey}`);
+        }
 
-        const clientGroupMap = new Map(clientGroups.map(x => [x.id, x.groupName]));
-        const companyMap = new Map(companies.map(x => [x.id, x.companyName]));
-        const locationMap = new Map(locations.map(x => [x.id, x.locationName]));
-        const subLocationMap = new Map(subLocations.map(x => [x.id, x.subLocationName]));
+        return response;
+    }
 
-        const mappedData = data.map((item) => ({
-            ...item,
-            clientGroupName: (item.clientGroupIds || []).map(id => clientGroupMap.get(id)).filter(Boolean).join(', '),
-            companyName: (item.companyIds || []).map(id => companyMap.get(id)).filter(Boolean).join(', '),
-            locationName: (item.locationIds || []).map(id => locationMap.get(id)).filter(Boolean).join(', '),
-            subLocationName: (item.subLocationIds || []).map(id => subLocationMap.get(id)).filter(Boolean).join(', '),
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            groupNo: item.groupNo,
+            groupName: item.groupName,
+            members: item.members.map(m => `${m.team.firstName || ''} ${m.team.lastName || ''}`.trim()).join(', '),
+            status: item.status,
+            createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A',
+            remark: item.remark || 'N/A',
         }));
 
-        return new PaginatedResponse(mappedData, total, page, limit);
+        const columns = [
+            { header: '#', key: 'srNo', width: 10 },
+            { header: 'Group No', key: 'groupNo', width: 15 },
+            { header: 'Group Name', key: 'groupName', width: 30 },
+            { header: 'Members', key: 'members', width: 50 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Created Date', key: 'createdAt', width: 20 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'internal_groups.xlsx', 'Internal Groups');
     }
 
     async findActive(pagination: PaginationDto) {
-        const filter: any = { status: GroupStatus.Active };
+        const filter: FilterGroupDto = { status: GroupStatus.Active };
         return this.findAll(pagination, filter);
     }
 
     async findMyGroups(userId: string) {
-        // Get groups where user is a member AND group is Active
-        const groupMembers = await this.prisma.groupMember.findMany({
+        const groups = await this.prisma.group.findMany({
             where: {
-                userId,
-                group: {
-                    status: GroupStatus.Active
-                }
+                members: {
+                    some: {
+                        userId,
+                    },
+                },
+                status: GroupStatus.Active,
             },
             include: {
-                group: {
-                    select: {
-                        id: true,
-                        groupNo: true,
-                        groupName: true,
-                        status: true,
-                    }
-                }
-            }
+                members: {
+                    include: {
+                        team: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                avatar: true,
+                            },
+                        },
+                    },
+                },
+            },
         });
 
-        // @ts-ignore
-        return groupMembers.map(gm => gm.group);
+        return groups;
     }
 
     async findById(id: string) {
@@ -217,9 +249,15 @@ export class GroupService {
                 members: {
                     include: {
                         team: {
-                            select: { id: true, firstName: true, lastName: true, email: true }
-                        }
-                    }
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                avatar: true,
+                            },
+                        },
+                    },
                 },
                 creator: {
                     select: { id: true, firstName: true, lastName: true, email: true },
@@ -239,32 +277,25 @@ export class GroupService {
 
     async update(id: string, dto: UpdateGroupDto, userId: string) {
         const existing = await this.findById(id);
-        const { teamMemberIds, ...groupData } = dto;
+        const { toTitleCase } = await import('../common/utils/string-helper');
 
-        const updated = await this.prisma.$transaction(async (tx) => {
-            const grp = await tx.group.update({
-                where: { id },
-                data: {
-                    ...groupData as any,
-                    updatedBy: userId,
-                },
+        if (dto.groupName && toTitleCase(dto.groupName) !== existing.groupName) {
+            const duplicate = await this.prisma.group.findFirst({
+                where: { groupName: toTitleCase(dto.groupName) },
             });
 
-            if (teamMemberIds !== undefined) {
-                // Sync members
-                await tx.groupMember.deleteMany({ where: { groupId: id } });
-                if (teamMemberIds.length > 0) {
-                    await tx.groupMember.createMany({
-                        data: teamMemberIds.map(uid => ({
-                            groupId: id,
-                            userId: uid,
-                            role: 'MEMBER'
-                        }))
-                    });
-                }
+            if (duplicate) {
+                throw new ConflictException('Group name already exists');
             }
+        }
 
-            return grp;
+        const updated = await this.prisma.group.update({
+            where: { id },
+            data: {
+                ...dto,
+                groupName: dto.groupName ? toTitleCase(dto.groupName) : undefined,
+                updatedBy: userId,
+            },
         });
 
         await this.invalidateCache();
@@ -308,11 +339,11 @@ export class GroupService {
             throw new NotFoundException('Group not found');
         }
 
-        const { _count } = group as any;
-        const totalTasks = _count.pendingTasks + _count.completedTasks;
+        const { _count } = group;
         const childCounts = [
             _count.members > 0 && `${_count.members} members`,
-            totalTasks > 0 && `${totalTasks} tasks`,
+            _count.pendingTasks > 0 && `${_count.pendingTasks} pending tasks`,
+            _count.completedTasks > 0 && `${_count.completedTasks} completed tasks`,
         ].filter(Boolean);
 
         if (childCounts.length > 0) {
@@ -326,78 +357,30 @@ export class GroupService {
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, group, null);
+        await this.logAudit(userId, 'DELETE', id, group, null);
 
         return { message: 'Group deleted successfully' };
     }
 
     async bulkCreate(dto: BulkCreateGroupDto, userId: string) {
-        this.logger.log(`[BULK_CREATE_FAST] Starting for ${dto.groups.length} records`);
+        this.logger.log(`[BULK_CREATE] Starting for ${dto.groups.length} records`);
+        const { toTitleCase } = await import('../common/utils/string-helper');
         const errors: any[] = [];
-
-        const allExisting = await this.prisma.group.findMany({
-            select: { groupNo: true },
-        });
-        const existingNos = new Set(allExisting.map((x) => x.groupNo));
-
-        const prefix = 'G-';
-        const startNo = await this.autoNumberService.generateGroupNo();
-        let currentNum = parseInt(startNo.replace(prefix, ''));
-
-        const BATCH_SIZE = 1000;
-        const dataToInsert: any[] = [];
+        const results: any[] = [];
 
         for (const groupDto of dto.groups) {
-            let groupName = 'Unnamed Group';
             try {
-                groupName = groupDto.groupName?.trim() || 'Unnamed Group';
-
-                // Unique number logic
-                let finalGroupNo = groupDto.groupNo?.trim();
-                if (!finalGroupNo || existingNos.has(finalGroupNo)) {
-                    finalGroupNo = `${prefix}${currentNum}`;
-                    currentNum++;
-                    while (existingNos.has(finalGroupNo)) {
-                        finalGroupNo = `${prefix}${currentNum}`;
-                        currentNum++;
-                    }
-                }
-                existingNos.add(finalGroupNo);
-
-                dataToInsert.push({
-                    ...groupDto,
-                    groupName,
-                    groupNo: finalGroupNo,
-                    status: groupDto.status || GroupStatus.Active,
-                    createdBy: userId,
-                });
+                const res = await this.create(groupDto, userId);
+                results.push(res);
             } catch (err) {
-                errors.push({ groupName, error: err.message });
+                errors.push({ groupName: groupDto.groupName, error: err.message });
             }
         }
-
-        const chunks: any[][] = this.excelUploadService.chunk(dataToInsert, BATCH_SIZE);
-        let totalInserted = 0;
-        for (const chunk of chunks) {
-            try {
-                const result = await this.prisma.group.createMany({
-                    data: chunk,
-                    skipDuplicates: true,
-                });
-                totalInserted += result.count;
-            } catch (err) {
-                this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
-                errors.push({ error: 'Batch insert failed', details: err.message });
-            }
-        }
-
-        this.logger.log(`[BULK_CREATE_COMPLETED] Processed: ${dto.groups.length} | Inserted Actual: ${totalInserted} | Errors: ${errors.length}`);
-        await this.invalidateCache();
 
         return {
-            success: totalInserted,
-            failed: dto.groups.length - totalInserted,
-            message: `Successfully inserted ${totalInserted} records.`,
+            success: results.length,
+            failed: errors.length,
+            message: `Successfully processed ${results.length} records.`,
             errors,
         };
     }
@@ -406,30 +389,14 @@ export class GroupService {
         const results: any[] = [];
         const errors: any[] = [];
 
-        await this.prisma.$transaction(async (tx) => {
-            for (const update of dto.updates) {
-                try {
-                    const { id, ...data } = update;
-
-                    const updated = await tx.group.update({
-                        where: { id },
-                        data: {
-                            ...data,
-                            updatedBy: userId,
-                        },
-                    });
-
-                    results.push(updated);
-                } catch (error) {
-                    errors.push({
-                        id: update.id,
-                        error: error.message,
-                    });
-                }
+        for (const item of dto.updates) {
+            try {
+                const res = await this.update(item.id, item, userId);
+                results.push(res);
+            } catch (err) {
+                errors.push({ id: item.id, error: err.message });
             }
-        });
-
-        await this.invalidateCache();
+        }
 
         return {
             success: results.length,
@@ -447,113 +414,49 @@ export class GroupService {
             try {
                 await this.delete(id, userId);
                 results.push(id);
-            } catch (error) {
-                errors.push({
-                    id,
-                    error: error.message,
-                });
+            } catch (err) {
+                errors.push({ id, error: err.message });
             }
-        }
-
-        await this.invalidateCache();
-
-        if (results.length === 0 && errors.length > 0) {
-            throw new BadRequestException(errors[0].error);
         }
 
         return {
             success: results.length,
             failed: errors.length,
-            results,
+            deletedIds: results,
             errors,
         };
     }
 
-
-
     async uploadExcel(file: Express.Multer.File, userId: string) {
-        this.logger.log(`[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`);
-
         const columnMapping = {
-            groupNo: ['groupno', 'groupnumber', 'no', 'number'],
-            groupName: ['groupname', 'name', 'gname', 'group'],
-            groupCode: ['groupcode', 'code', 'gcode'],
-            clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
-            companyName: ['companyname', 'clientcompanyname', 'company', 'clientcompany'],
-            locationName: ['locationname', 'clientlocationname', 'location', 'clientlocation'],
-            subLocationName: ['sublocationname', 'sublocation', 'clientsublocationname'],
+            groupNo: ['groupno', 'no', 'code'],
+            groupName: ['groupname', 'name'],
             status: ['status', 'state', 'active'],
-            remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
+            remark: ['remark', 'remarks', 'notes'],
         };
 
         const requiredColumns = ['groupName'];
 
-        const { data, errors: parseErrors } = await this.excelUploadService.parseFile<CreateGroupDto>(
+        const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
             file,
             columnMapping,
             requiredColumns,
         );
 
         if (data.length === 0) {
-            throw new BadRequestException('No valid data found to import. Please check file format and column names.');
+            throw new BadRequestException('No valid data found or required columns missing');
         }
 
-        // Resolve relations
-        const clientGroupNames = Array.from(new Set(data.filter(r => (r as any).clientGroupName).map(r => (r as any).clientGroupName)));
-        const companyNames = Array.from(new Set(data.filter(r => (r as any).companyName).map(r => (r as any).companyName)));
-        const locationNames = Array.from(new Set(data.filter(r => (r as any).locationName).map(r => (r as any).locationName)));
-        const subLocationNames = Array.from(new Set(data.filter(r => (r as any).subLocationName).map(r => (r as any).subLocationName)));
-
-        const [dbClientGroups, dbCompanies, dbLocations, dbSubLocations] = await Promise.all([
-            this.prisma.clientGroup.findMany({ where: { groupName: { in: clientGroupNames } }, select: { id: true, groupName: true } }),
-            this.prisma.clientCompany.findMany({ where: { companyName: { in: companyNames } }, select: { id: true, companyName: true } }),
-            this.prisma.clientLocation.findMany({ where: { locationName: { in: locationNames } }, select: { id: true, locationName: true } }),
-            this.prisma.subLocation.findMany({ where: { subLocationName: { in: subLocationNames } }, select: { id: true, subLocationName: true } }),
-        ]);
-
-        const clientGroupMap = new Map(dbClientGroups.map(g => [g.groupName.toLowerCase(), g.id]));
-        const companyMap = new Map(dbCompanies.map(c => [c.companyName.toLowerCase(), c.id]));
-        const locationMap = new Map(dbLocations.map(l => [l.locationName.toLowerCase(), l.id]));
-        const subLocationMap = new Map(dbSubLocations.map(s => [s.subLocationName.toLowerCase(), s.id]));
-
-        const processedData: CreateGroupDto[] = [];
-        const processingErrors: any[] = [];
-
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            try {
-                const status = (row as any).status ? this.excelUploadService.validateEnum((row as any).status as string, GroupStatus, 'Status') : GroupStatus.Active;
-
-                const clientGroupId = clientGroupMap.get((row as any).clientGroupName?.toLowerCase());
-                if (!clientGroupId) throw new Error(`Client Group "${(row as any).clientGroupName}" not found or missing`);
-
-                const companyId = companyMap.get((row as any).companyName?.toLowerCase());
-                const locationId = locationMap.get((row as any).locationName?.toLowerCase());
-                const subLocationId = subLocationMap.get((row as any).subLocationName?.toLowerCase());
-
-                processedData.push({
-                    groupNo: (row as any).groupNo,
-                    groupName: (row as any).groupName,
-                    clientGroupIds: clientGroupId ? [clientGroupId] : [],
-                    companyIds: companyId ? [companyId] : [],
-                    locationIds: locationId ? [locationId] : [],
-                    subLocationIds: subLocationId ? [subLocationId] : [],
-                    status: status as GroupStatus,
-                    remark: (row as any).remark,
-                });
-            } catch (err) {
-                processingErrors.push({ row: i + 2, error: err.message });
-            }
-        }
-
-        if (processedData.length === 0 && processingErrors.length > 0) {
-            throw new BadRequestException(`Validation Failed: ${processingErrors[0].error}`);
+        const processedData: any[] = [];
+        for (const row of data) {
+            processedData.push({
+                ...row,
+                status: row.status ? this.excelUploadService.validateEnum(row.status, GroupStatus, 'Status') : GroupStatus.Active,
+            });
         }
 
         const result = await this.bulkCreate({ groups: processedData }, userId);
-
-        result.errors = [...(result.errors || []), ...parseErrors, ...processingErrors];
-        result.failed += parseErrors.length + processingErrors.length;
+        result.errors = [...(result.errors || []), ...parseErrors];
 
         return result;
     }

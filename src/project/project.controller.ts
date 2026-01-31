@@ -49,10 +49,10 @@ export class ProjectController {
         return this.projectService.findAll(query, query);
     }
 
-    @Get('download')
+    @Get('export/excel')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
-    async download(
+    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
         @Res() res: Response,
