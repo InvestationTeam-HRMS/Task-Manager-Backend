@@ -121,6 +121,41 @@ export class ProjectService {
         if (filter?.projectNo) andArray.push(buildMultiValueFilter('projectNo', filter.projectNo));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
 
+        if (filter?.groupName) {
+            const multiFilter = buildMultiValueFilter('groupName', filter.groupName);
+            if (multiFilter) andArray.push({ clientGroup: multiFilter });
+        }
+
+        if (filter?.companyName) {
+            const multiFilter = buildMultiValueFilter('companyName', filter.companyName);
+            if (multiFilter) andArray.push({ company: multiFilter });
+        }
+
+        if (filter?.locationName) {
+            const multiFilter = buildMultiValueFilter('locationName', toTitleCase(filter.locationName));
+            if (multiFilter) andArray.push({ location: multiFilter });
+        }
+
+        if (filter?.subLocationName) {
+            const multiFilter = buildMultiValueFilter('subLocationName', toTitleCase(filter.subLocationName));
+            if (multiFilter) andArray.push({ subLocation: multiFilter });
+        }
+
+        if (filter?.deadline) {
+            const values = filter.deadline.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+            const dateConditions = values.map(v => {
+                const date = new Date(v);
+                if (isNaN(date.getTime())) return undefined;
+                const startOfDay = new Date(date.setHours(0, 0, 0, 0));
+                const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+                return { deadline: { gte: startOfDay, lte: endOfDay } };
+            }).filter((v): v is { deadline: { gte: Date; lte: Date } } => !!v);
+
+            if (dateConditions.length > 0) {
+                andArray.push({ OR: dateConditions });
+            }
+        }
+
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
             const allSearchConditions: Prisma.ProjectWhereInput[] = [];
@@ -538,8 +573,6 @@ export class ProjectService {
             errors,
         };
     }
-
-
 
     async uploadExcel(file: Express.Multer.File, userId: string) {
         this.logger.log(`[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`);

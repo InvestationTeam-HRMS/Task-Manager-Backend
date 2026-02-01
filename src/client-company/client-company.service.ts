@@ -128,7 +128,17 @@ export class ClientCompanyService {
         if (filter?.companyName) andArray.push(buildMultiValueFilter('companyName', toTitleCase(filter.companyName)));
         if (filter?.companyNo) andArray.push(buildMultiValueFilter('companyNo', filter.companyNo));
         if (filter?.companyCode) andArray.push(buildMultiValueFilter('companyCode', filter.companyCode));
+        if (filter?.address) andArray.push(buildMultiValueFilter('address', toTitleCase(filter.address)));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
+
+        if (filter?.groupName) {
+            const groupFilter = buildMultiValueFilter('groupName', toTitleCase(filter.groupName));
+            if (groupFilter) {
+                andArray.push({
+                    group: groupFilter
+                });
+            }
+        }
 
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);

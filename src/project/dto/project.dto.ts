@@ -144,4 +144,24 @@ export class FilterProjectDto {
     @IsOptional()
     @IsString()
     remark?: string;
+
+    @IsOptional()
+    @IsString()
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
+
+    @IsOptional()
+    @IsString()
+    locationName?: string;
+
+    @IsOptional()
+    @IsString()
+    subLocationName?: string;
+
+    @IsOptional()
+    @IsString()
+    deadline?: string;
 }

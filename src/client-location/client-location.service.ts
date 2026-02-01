@@ -139,6 +139,52 @@ export class ClientLocationService {
         if (filter?.locationNo) andArray.push(buildMultiValueFilter('locationNo', filter.locationNo));
         if (filter?.locationCode) andArray.push(buildMultiValueFilter('locationCode', filter.locationCode));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
+        if (filter?.address) andArray.push(buildMultiValueFilter('address', toTitleCase(filter.address)));
+
+        if (filter?.groupName) {
+            const multiFilter = buildMultiValueFilter('groupName', filter.groupName);
+            if (multiFilter) andArray.push({ clientGroup: multiFilter });
+        }
+
+        if (filter?.companyName) {
+            const multiFilter = buildMultiValueFilter('companyName', filter.companyName);
+            if (multiFilter) andArray.push({ company: multiFilter });
+        }
+
+        if (filter?.subLocationName) {
+            const multiFilter = buildMultiValueFilter('subLocationName', toTitleCase(filter.subLocationName));
+            if (multiFilter) andArray.push({ subLocations: { some: multiFilter } });
+        }
+
+        if (filter?.priority) {
+            const multiFilter = buildMultiValueFilter('priority', filter.priority);
+            if (multiFilter) andArray.push({ projects: { some: multiFilter } });
+        }
+
+        if (filter?.projectNo) {
+            const multiFilter = buildMultiValueFilter('projectNo', filter.projectNo);
+            if (multiFilter) andArray.push({ projects: { some: multiFilter } });
+        }
+
+        if (filter?.projectName) {
+            const multiFilter = buildMultiValueFilter('projectName', toTitleCase(filter.projectName));
+            if (multiFilter) andArray.push({ projects: { some: multiFilter } });
+        }
+
+        if (filter?.deadline) {
+            const values = filter.deadline.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+            const projectDeadlineConditions = values.map(v => {
+                const date = new Date(v);
+                if (isNaN(date.getTime())) return undefined;
+                const startOfDay = new Date(date.setHours(0, 0, 0, 0));
+                const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+                return { deadline: { gte: startOfDay, lte: endOfDay } };
+            }).filter((v): v is { deadline: { gte: Date; lte: Date } } => !!v);
+
+            if (projectDeadlineConditions.length > 0) {
+                andArray.push({ projects: { some: { OR: projectDeadlineConditions } } });
+            }
+        }
 
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);

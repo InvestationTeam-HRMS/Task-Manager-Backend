@@ -134,4 +134,20 @@ export class FilterSubLocationDto {
     @IsOptional()
     @IsString()
     remark?: string;
+
+    @IsOptional()
+    @IsString()
+    address?: string;
+
+    @IsOptional()
+    @IsString()
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
+
+    @IsOptional()
+    @IsString()
+    locationName?: string;
 }

@@ -121,6 +121,22 @@ export class SubLocationService {
         if (filter?.subLocationNo) andArray.push(buildMultiValueFilter('subLocationNo', filter.subLocationNo));
         if (filter?.subLocationCode) andArray.push(buildMultiValueFilter('subLocationCode', filter.subLocationCode));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
+        if (filter?.address) andArray.push(buildMultiValueFilter('address', toTitleCase(filter.address)));
+
+        if (filter?.groupName) {
+            const multiFilter = buildMultiValueFilter('groupName', filter.groupName);
+            if (multiFilter) andArray.push({ clientGroup: multiFilter });
+        }
+
+        if (filter?.companyName) {
+            const multiFilter = buildMultiValueFilter('companyName', filter.companyName);
+            if (multiFilter) andArray.push({ company: multiFilter });
+        }
+
+        if (filter?.locationName) {
+            const multiFilter = buildMultiValueFilter('locationName', toTitleCase(filter.locationName));
+            if (multiFilter) andArray.push({ location: multiFilter });
+        }
 
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);

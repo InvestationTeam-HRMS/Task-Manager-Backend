@@ -100,6 +100,10 @@ export class FilterClientCompanyDto {
 
     @IsOptional()
     @IsString()
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
     companyName?: string;
 
     @IsOptional()
@@ -110,6 +114,10 @@ export class FilterClientCompanyDto {
     @IsString()
     @Transform(({ value }) => value?.toUpperCase())
     companyCode?: string;
+
+    @IsOptional()
+    @IsString()
+    address?: string;
 
     @IsOptional()
     @IsString()

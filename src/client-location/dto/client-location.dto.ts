@@ -122,4 +122,36 @@ export class FilterClientLocationDto {
     @IsOptional()
     @IsString()
     remark?: string;
+
+    @IsOptional()
+    @IsString()
+    address?: string;
+
+    @IsOptional()
+    @IsString()
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
+
+    @IsOptional()
+    @IsString()
+    subLocationName?: string;
+
+    @IsOptional()
+    @IsString()
+    priority?: string;
+
+    @IsOptional()
+    @IsString()
+    projectNo?: string;
+
+    @IsOptional()
+    @IsString()
+    projectName?: string;
+
+    @IsOptional()
+    @IsString()
+    deadline?: string;
 }
