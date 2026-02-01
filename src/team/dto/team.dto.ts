@@ -1,5 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, IsBoolean, IsEmail, MinLength, Length } from 'class-validator';
-import { TeamStatus, LoginMethod, UserRole } from '@prisma/client';
+import { TeamStatus, LoginMethod } from '@prisma/client';
 
 export class CreateTeamDto {
     @IsString()
@@ -52,9 +52,9 @@ export class CreateTeamDto {
     @IsOptional()
     password?: string;
 
-    @IsEnum(UserRole)
+    @IsString()
     @IsOptional()
-    role?: UserRole;
+    role?: string;
 
     @IsUUID()
     @IsOptional()
@@ -117,9 +117,9 @@ export class UpdateTeamDto {
     @IsOptional()
     password?: string;
 
-    @IsEnum(UserRole)
+    @IsString()
     @IsOptional()
-    role?: UserRole;
+    role?: string;
 
     @IsUUID()
     @IsOptional()
@@ -188,6 +188,6 @@ export class FilterTeamDto {
     remark?: string;
 
     @IsOptional()
-    @IsEnum(UserRole)
-    role?: UserRole;
+    @IsString()
+    role?: string;
 }

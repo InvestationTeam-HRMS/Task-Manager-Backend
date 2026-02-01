@@ -22,7 +22,7 @@ import {
 } from './dto/team.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { PaginatedResponse } from '../common/dto/api-response.dto';
-import { TeamStatus, LoginMethod, Prisma, UserRole } from '@prisma/client';
+import { TeamStatus, LoginMethod, Prisma } from '@prisma/client';
 import { buildMultiValueFilter } from '../common/utils/prisma-helper';
 import { NotificationService } from '../notification/notification.service';
 
@@ -70,6 +70,16 @@ export class TeamService {
 
     const generatedTeamNo = await this.autoNumberService.generateTeamNo();
 
+    let roleName = dto.role || 'EMPLOYEE';
+    if (dto.roleId) {
+      const customRole = await this.prisma.role.findUnique({
+        where: { id: dto.roleId },
+      });
+      if (customRole) {
+        roleName = customRole.name;
+      }
+    }
+
     const team = await this.prisma.team.create({
       data: {
         ...dto,
@@ -80,7 +90,7 @@ export class TeamService {
         loginMethod: dto.loginMethod || LoginMethod.General,
         teamNo: dto.teamNo || generatedTeamNo,
         roleId: dto.roleId,
-        role: dto.role || UserRole.EMPLOYEE, // Default to EMPLOYEE, actual role is in custom role (roleId)
+        role: roleName,
         createdBy: userId,
       },
     });
@@ -168,9 +178,7 @@ export class TeamService {
         }
 
         // Handle Role Search
-        if (Object.values(UserRole).some(r => r.toLowerCase() === searchLower)) {
-          allSearchConditions.push({ role: searchLower.toUpperCase() as UserRole });
-        }
+        allSearchConditions.push({ role: { contains: searchLower, mode: 'insensitive' } });
       }
 
       if (allSearchConditions.length > 0) {
@@ -361,6 +369,15 @@ export class TeamService {
     if (dto.teamName) data.teamName = toTitleCase(dto.teamName);
     if (dto.email) data.email = dto.email.toLowerCase();
 
+    if (dto.roleId) {
+      const customRole = await this.prisma.role.findUnique({
+        where: { id: dto.roleId },
+      });
+      if (customRole) {
+        data.role = customRole.name;
+      }
+    }
+
     const updated = await this.prisma.team.update({
       where: { id },
       data: {
@@ -534,7 +551,7 @@ export class TeamService {
       processedData.push({
         ...row,
         status: row.status ? this.excelUploadService.validateEnum(row.status, TeamStatus, 'Status') : TeamStatus.Active,
-        role: row.role ? row.role.toUpperCase() : UserRole.EMPLOYEE,
+        role: row.role ? row.role.toUpperCase() : 'EMPLOYEE',
         loginMethod: LoginMethod.General,
       });
     }

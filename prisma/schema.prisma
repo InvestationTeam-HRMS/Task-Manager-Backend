@@ -290,7 +290,7 @@ model Team {
   teamName               String             @map("team_name")
   email                  String             @unique
   phone                  String?            @unique
-  role                   UserRole           @default(EMPLOYEE)
+  role                   String             @default("EMPLOYEE")
   roleId                 String?            @map("role_id") @db.Uuid
   clientGroupId          String?            @map("client_group_id") @db.Uuid
   companyId              String?            @map("company_id") @db.Uuid
@@ -591,12 +591,7 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
-enum UserRole {
-  ADMIN
-  MANAGER
-  EMPLOYEE
-  HR
-}
+
 
 enum UserStatus {
   Active

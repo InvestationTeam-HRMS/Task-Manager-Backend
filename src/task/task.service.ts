@@ -6,7 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateTaskDto, UpdateTaskDto, FilterTaskDto, TaskViewMode, UpdateTaskAcceptanceDto } from './dto/task.dto';
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { Prisma, TaskStatus, AcceptanceStatus, UserRole } from '@prisma/client';
+import { Prisma, TaskStatus, AcceptanceStatus } from '@prisma/client';
 import { toTitleCase } from '../common/utils/string-helper';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
 import * as ExcelJS from 'exceljs';
@@ -264,7 +264,7 @@ export class TaskService {
 
         const model: any = isCompletedView ? this.prisma.completedTask : this.prisma.pendingTask;
         const andArray: any[] = [];
-        const isAdmin = role === UserRole.ADMIN || role === UserRole.HR || role === UserRole.MANAGER;
+        const isAdmin = role?.toUpperCase() === 'ADMIN' || role?.toUpperCase() === 'HR' || role?.toUpperCase() === 'MANAGER';
 
         // 1. Priority Filters (Project, Priority, Search)
         if (filter.projectId) andArray.push({ projectId: filter.projectId });
@@ -414,7 +414,7 @@ export class TaskService {
 
         // Permission Check: Only Admin/SuperAdmin can update tasks
         // (Per user request: "admin ne hr ko task assign kia toh sirf admin edit kar skta hai")
-        const isAdmin = role === 'ADMIN' || role === 'ADMIN';
+        const isAdmin = role?.toUpperCase() === 'ADMIN';
         if (!isAdmin) {
             throw new ForbiddenException('Only Admins can edit tasks.');
         }

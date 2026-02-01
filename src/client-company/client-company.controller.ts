@@ -30,7 +30,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { UserRole } from '@prisma/client';
+// Removed UserRole import from @prisma/client
 
 @Controller('client-companies')
 export class ClientCompanyController {
@@ -38,14 +38,14 @@ export class ClientCompanyController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     create(@Body() dto: CreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     findAll(@Query() query: any) {
         return this.clientCompanyService.findAll(query, query);
     }
@@ -70,7 +70,7 @@ export class ClientCompanyController {
 
     @Get('export/excel')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
@@ -81,7 +81,7 @@ export class ClientCompanyController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientCompanyDto,
@@ -92,7 +92,7 @@ export class ClientCompanyController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -103,28 +103,28 @@ export class ClientCompanyController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientCompanyService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkCreate(@Body() dto: BulkCreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkUpdate(@Body() dto: BulkUpdateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     bulkDelete(@Body() dto: BulkDeleteClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkDelete(dto, userId);
     }
@@ -134,10 +134,10 @@ export class ClientCompanyController {
     @Post('upload/excel')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
-        UserRole.ADMIN,
-        UserRole.HR,
-        UserRole.EMPLOYEE,
-        UserRole.MANAGER,
+        'ADMIN',
+        'HR',
+        'EMPLOYEE',
+        'MANAGER',
     )
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(

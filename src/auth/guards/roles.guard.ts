@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '@prisma/client';
+
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -9,7 +9,7 @@ export class RolesGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest();
         const url = request.url;
-        const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>('roles', [
+        const requiredRoles = this.reflector.getAllAndOverride<string[]>('roles', [
             context.getHandler(),
             context.getClass(),
         ]);
@@ -23,8 +23,8 @@ export class RolesGuard implements CanActivate {
             return false;
         }
 
-        const userRole = identity.role;
-        const hasPermission = requiredRoles.includes(userRole);
+        const userRoleUpper = identity.role?.toUpperCase();
+        const hasPermission = requiredRoles.map(r => r.toUpperCase()).includes(userRoleUpper);
 
         return hasPermission;
     }

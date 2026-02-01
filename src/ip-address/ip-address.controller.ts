@@ -27,7 +27,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { UserRole } from '@prisma/client';
+
 
 @Controller('ip-addresses')
 export class IpAddressController {
@@ -35,14 +35,14 @@ export class IpAddressController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     create(@Body() dto: CreateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     findAll(@Query() query: any) {
         return this.ipAddressService.findAll(query, query);
     }
@@ -61,7 +61,7 @@ export class IpAddressController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateIpAddressDto,
@@ -72,7 +72,7 @@ export class IpAddressController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -83,28 +83,28 @@ export class IpAddressController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.ipAddressService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkCreate(@Body() dto: BulkCreateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkUpdate(@Body() dto: BulkUpdateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     bulkDelete(@Body() dto: BulkDeleteIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkDelete(dto, userId);
     }
@@ -114,10 +114,10 @@ export class IpAddressController {
     @Post('upload/excel')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
-        UserRole.ADMIN,
-        UserRole.HR,
-        UserRole.EMPLOYEE,
-        UserRole.MANAGER,
+        'ADMIN',
+        'HR',
+        'EMPLOYEE',
+        'MANAGER',
     )
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(

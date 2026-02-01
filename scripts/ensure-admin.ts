@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, TeamStatus, LoginMethod } from '@prisma/client';
+import { PrismaClient, TeamStatus, LoginMethod } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -18,7 +18,7 @@ async function main() {
                 teamName: 'Super Admin',
                 email: email,
                 password: password,
-                role: UserRole.ADMIN,
+                role: 'ADMIN',
                 status: TeamStatus.Active,
                 loginMethod: LoginMethod.General,
             }
@@ -28,7 +28,7 @@ async function main() {
         // Update password just to be sure it matches the screenshot
         await prisma.team.update({
             where: { email: email },
-            data: { password: password, role: UserRole.ADMIN }
+            data: { password: password, role: 'ADMIN' }
         });
         console.log(`Updated admin: ${email}`);
     }

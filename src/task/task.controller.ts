@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { UserRole, AcceptanceStatus } from '@prisma/client';
+import { AcceptanceStatus } from '@prisma/client';
 import { UpdateTaskAcceptanceDto } from './dto/task-acceptance.dto';
 
 @Controller('tasks')
@@ -41,7 +41,7 @@ export class TaskController {
     }
 
     @Post()
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('files'))
     async create(
         @UploadedFiles() files: Express.Multer.File[],
@@ -56,13 +56,13 @@ export class TaskController {
     findAll(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
-        @GetUser('role') role: UserRole
+        @GetUser('role') role: string
     ) {
         return this.taskService.findAll(filter, filter, userId, role);
     }
 
     @Post('bulk-upload')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER)
+    @Roles('ADMIN', 'MANAGER')
     @UseInterceptors(FilesInterceptor('file', 1)) // 'file' matches the frontend key
     bulkUpload(
         @UploadedFiles() files: Express.Multer.File[],
@@ -73,7 +73,7 @@ export class TaskController {
     }
 
     @Get('export/excel')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     async exportExcel(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
@@ -110,7 +110,7 @@ export class TaskController {
         @Param('id') id: string,
         @Body() dto: UpdateTaskDto,
         @GetUser('id') userId: string,
-        @GetUser('role') role: UserRole,
+        @GetUser('role') role: string,
         @UploadedFiles() files?: Express.Multer.File[],
     ) {
         const result = await this.taskService.update(id, dto, userId, role, files);
@@ -118,7 +118,7 @@ export class TaskController {
     }
 
     @Patch(':id/submit-review')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('attachments'))
     async submitReview(
         @Param('id') id: string,
@@ -131,7 +131,7 @@ export class TaskController {
     }
 
     @Patch(':id/finalize-complete')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('attachments'))
     async finalizeComplete(
         @Param('id') id: string,
@@ -144,7 +144,7 @@ export class TaskController {
     }
 
     @Patch(':id/reminder')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     sendReminder(
         @Param('id') id: string,
         @GetUser('id') userId: string,
@@ -153,7 +153,7 @@ export class TaskController {
     }
 
     @Patch(':id/reject')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('attachments'))
     async rejectTask(
         @Param('id') id: string,
@@ -166,11 +166,11 @@ export class TaskController {
     }
 
     @Delete(':id')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     delete(
         @Param('id') id: string,
         @GetUser('id') userId: string,
-        @GetUser('role') role: UserRole
+        @GetUser('role') role: string
     ) {
         return this.taskService.delete(id, userId, role);
     }

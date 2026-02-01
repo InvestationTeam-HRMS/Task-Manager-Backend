@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, TeamStatus, LoginMethod } from '@prisma/client';
+import { PrismaClient, TeamStatus, LoginMethod } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -12,7 +12,7 @@ async function main() {
             teamName: 'Marketing Manager',
             email: 'aman.manager@investationteam.com',
             password: password,
-            role: UserRole.MANAGER,
+            role: 'MANAGER',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         },
@@ -21,7 +21,7 @@ async function main() {
             teamName: 'HR Executive',
             email: 'priya.hr@investationteam.com',
             password: password,
-            role: UserRole.HR,
+            role: 'HR',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         },
@@ -30,7 +30,7 @@ async function main() {
             teamName: 'Senior Developer',
             email: 'rahul.emp@investationteam.com',
             password: password,
-            role: UserRole.EMPLOYEE,
+            role: 'EMPLOYEE',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         }

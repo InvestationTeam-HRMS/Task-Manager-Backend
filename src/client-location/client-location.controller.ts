@@ -29,7 +29,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { UserRole } from '@prisma/client';
+
 
 @Controller('client-locations')
 export class ClientLocationController {
@@ -37,14 +37,14 @@ export class ClientLocationController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     create(@Body() dto: CreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.create(dto, userId);
     }
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     findAll(@Query() query: any) {
         return this.clientLocationService.findAll(query, query);
     }
@@ -63,7 +63,7 @@ export class ClientLocationController {
 
     @Get('export/excel')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR, UserRole.EMPLOYEE)
+    @Roles('ADMIN', 'HR', 'EMPLOYEE')
     async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
@@ -74,7 +74,7 @@ export class ClientLocationController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientLocationDto,
@@ -85,7 +85,7 @@ export class ClientLocationController {
 
     @Patch(':id/status')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -96,28 +96,28 @@ export class ClientLocationController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientLocationService.delete(id, userId);
     }
 
     @Post('bulk/create')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkCreate(@Body() dto: BulkCreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN, UserRole.HR)
+    @Roles('ADMIN', 'HR')
     bulkUpdate(@Body() dto: BulkUpdateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
     @UseGuards(JwtAuthGuard)
-    @Roles(UserRole.ADMIN)
+    @Roles('ADMIN')
     bulkDelete(@Body() dto: BulkDeleteClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkDelete(dto, userId);
     }
@@ -127,10 +127,10 @@ export class ClientLocationController {
     @Post('upload/excel')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(
-        UserRole.ADMIN,
-        UserRole.HR,
-        UserRole.EMPLOYEE,
-        UserRole.MANAGER,
+        'ADMIN',
+        'HR',
+        'EMPLOYEE',
+        'MANAGER',
     )
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(

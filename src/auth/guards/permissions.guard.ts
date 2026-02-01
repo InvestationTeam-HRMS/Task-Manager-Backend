@@ -1,7 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-import { UserRole } from '@prisma/client';
+// Removed UserRole import from @prisma/client
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -24,7 +24,7 @@ export class PermissionsGuard implements CanActivate {
         }
 
         // Admin check
-        if (user.role === UserRole.ADMIN) {
+        if (user.role?.toUpperCase() === 'ADMIN') {
             return true;
         }
 

@@ -19,7 +19,7 @@ import {
 } from './dto/auth.dto';
 import { NotificationService } from '../notification/notification.service';
 import { CloudinaryService } from '../common/services/cloudinary.service';
-import { UserRole } from '@prisma/client';
+// Removed UserRole import from @prisma/client
 
 @Injectable()
 export class AuthService {
@@ -96,7 +96,7 @@ export class AuthService {
                 email: tempUser.email,
                 password: tempUser.password,
                 phone: tempUser.phoneNumber,
-                role: UserRole.EMPLOYEE,
+                role: 'EMPLOYEE',
                 status: 'Active',
                 isEmailVerified: true,
                 allowedIps: [ipAddress],
@@ -130,8 +130,8 @@ export class AuthService {
         }
 
         const loginMethod = identity.loginMethod;
-        const isAdmin = identity.role === UserRole.ADMIN;
-        const isSuperAdmin = identity.role === UserRole.ADMIN;
+        const isAdmin = identity.role === 'ADMIN';
+        const isSuperAdmin = identity.role === 'ADMIN';
 
         // 1. IP Check for methods requiring it (Ip_address, Ip_Otp)
         const requiresIpCheck = loginMethod === 'Ip_address' || loginMethod === 'Ip_Otp';
@@ -237,8 +237,8 @@ export class AuthService {
         }
 
         const loginMethod = identity.loginMethod;
-        const isAdmin = identity.role === UserRole.ADMIN;
-        const isSuperAdmin = identity.role === UserRole.ADMIN;
+        const isAdmin = identity.role === 'ADMIN';
+        const isSuperAdmin = identity.role === 'ADMIN';
 
         // 1. Double check IP for methods requiring it (Ip_address, Ip_Otp)
         const requiresIpCheck = loginMethod === 'Ip_address' || loginMethod === 'Ip_Otp';
@@ -540,9 +540,10 @@ export class AuthService {
 
         const permissions: any = user.customRole?.permissions || {};
 
-        // Fallback: If no custom role permissions, assign default based on ENUM role
+        // Fallback: If no custom role permissions, assign default based on role name
         if (Object.keys(permissions).length === 0) {
-            if (user.role === UserRole.ADMIN || user.role === UserRole.MANAGER || user.role === UserRole.HR) {
+            const roleUpper = user.role.toUpperCase();
+            if (roleUpper === 'ADMIN' || roleUpper === 'MANAGER' || roleUpper === 'HR') {
                 permissions['organization'] = ['add', 'view', 'edit', 'delete']
                 permissions['project'] = ['add', 'view', 'edit', 'delete']
                 permissions['task'] = ['add', 'view', 'edit', 'delete']
@@ -553,7 +554,7 @@ export class AuthService {
         }
 
         // Add isSuperAdmin flag if user has ADMIN role
-        if (user.role === UserRole.ADMIN) {
+        if (user.role.toUpperCase() === 'ADMIN') {
             permissions.isSuperAdmin = true;
         }
 
