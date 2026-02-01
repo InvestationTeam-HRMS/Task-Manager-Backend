@@ -883,6 +883,91 @@ export class TaskService {
         return this.sortTaskDates(updated);
     }
 
+    async revertToPending(id: string, userId: string) {
+        // Find the completed task
+        const task = await this.prisma.completedTask.findUnique({
+            where: { id },
+            include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true, worker: true }
+        });
+
+        if (!task) throw new NotFoundException('Completed task not found');
+
+        // Check permission: Only creator can revert
+        if (task.createdBy !== userId) {
+            throw new ForbiddenException('Only the task creator can revert a completed task.');
+        }
+
+        try {
+            const pendingTask = await this.prisma.$transaction(async (tx) => {
+                // Create the pending task with the same data
+                const pendingData: any = {
+                    id: task.id,
+                    taskNo: task.taskNo,
+                    taskTitle: task.taskTitle,
+                    priority: task.priority,
+                    taskStatus: TaskStatus.Pending,
+                    additionalNote: task.additionalNote,
+                    deadline: task.deadline,
+                    reminderTime: task.reminderTime || [],
+                    document: task.document,
+                    remarkChat: task.remarkChat,
+                    createdTime: task.createdTime,
+                    editTime: task.editTime || [],
+                    projectId: task.projectId || null,
+                    assignedTo: task.assignedTo || null,
+                    targetGroupId: task.targetGroupId || null,
+                    targetTeamId: task.targetTeamId || null,
+                    createdBy: task.createdBy || null,
+                    workingBy: task.workingBy || null,
+                    isSelfTask: (task as any).isSelfTask || false,
+                };
+
+                // Create the pending task
+                const pending = await tx.pendingTask.create({
+                    data: pendingData
+                });
+
+                // Delete from completed table
+                await tx.completedTask.delete({
+                    where: { id: task.id }
+                });
+
+                return pending;
+            });
+
+            // Notify Worker/Assignee about revert
+            const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
+            if (workerId && workerId !== userId) {
+                await this.notificationService.createNotification(workerId, {
+                    title: 'Task Reverted to Pending',
+                    description: `Task "${task.taskTitle}" (${task.taskNo}) has been moved back to pending.`,
+                    type: 'TASK',
+                    metadata: { taskId: pendingTask.id, taskNo: task.taskNo, status: 'Pending' },
+                });
+            }
+
+            await this.invalidateCache();
+            return this.sortTaskDates(pendingTask);
+
+        } catch (error: any) {
+            console.error(`[TaskService] REVERT FAILED for Task ${task.taskNo}`);
+            console.error(`[TaskService] Error Detail:`, error.message);
+
+            // Check for record already in PendingTask (Idempotency)
+            if (error.code === 'P2002') {
+                const alreadyPending = await this.prisma.pendingTask.findUnique({
+                    where: { taskNo: task.taskNo }
+                });
+                if (alreadyPending) {
+                    // If it's already there, just clean up Completed if it still exists
+                    await this.prisma.completedTask.deleteMany({ where: { taskNo: task.taskNo } }).catch(() => { });
+                    return this.sortTaskDates(alreadyPending);
+                }
+            }
+            throw new BadRequestException(`Revert Failed: ${error.message || 'Database error'}`);
+        }
+    }
+
     async delete(id: string, userId: string, role: string) {
         // User requested to remove delete logic completely for tasks
         throw new ForbiddenException('Task deletion is disabled.');

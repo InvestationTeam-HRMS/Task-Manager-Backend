@@ -167,6 +167,16 @@ export class TaskController {
         return { data: result };
     }
 
+    @Patch(':id/revert-to-pending')
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    async revertToPending(
+        @Param('id') id: string,
+        @GetUser('id') userId: string,
+    ) {
+        const result = await this.taskService.revertToPending(id, userId);
+        return { data: result };
+    }
+
     @Delete(':id')
     @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     delete(
