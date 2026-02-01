@@ -1,7 +1,10 @@
 /**
  * Script to fix roleId for existing team members
  * 
- * This script will:
+ * NOTE: This script is now deprecated as taskAssignPermission field has been removed.
+ * Team members now use roleId directly to reference their custom role.
+ * 
+ * This script was originally used to:
  * 1. Find all team members that have taskAssignPermission set but no roleId
  * 2. Look up the role by name (taskAssignPermission)
  * 3. Update the team member with the correct roleId
@@ -15,20 +18,18 @@ const prisma = new PrismaClient();
 
 async function main() {
     console.log('🔧 Starting role ID fix script...\n');
+    console.log('⚠️  NOTE: This script is deprecated. taskAssignPermission field has been removed.');
+    console.log('         Team members now use roleId directly.\n');
 
-    // Find all team members without roleId but with taskAssignPermission
+    // Find all team members without roleId
     const teamsWithoutRoleId = await prisma.team.findMany({
         where: {
             roleId: null,
-            taskAssignPermission: {
-                not: null
-            }
         },
         select: {
             id: true,
             email: true,
             teamName: true,
-            taskAssignPermission: true,
         }
     });
 
@@ -39,50 +40,11 @@ async function main() {
         return;
     }
 
-    // Get all roles for lookup
-    const roles = await prisma.role.findMany({
-        select: {
-            id: true,
-            name: true,
-        }
-    });
-
-    const roleMap = new Map(roles.map(r => [r.name, r.id]));
-
-    console.log('Available roles:', Array.from(roleMap.keys()).join(', '));
-    console.log('');
-
-    let updated = 0;
-    let skipped = 0;
-
+    console.log('Team members without roleId:');
     for (const team of teamsWithoutRoleId) {
-        const roleName = team.taskAssignPermission;
-        if (!roleName) {
-            console.log(`⚠️  Skipping ${team.email} - no taskAssignPermission`);
-            skipped++;
-            continue;
-        }
-
-        const roleId = roleMap.get(roleName);
-        if (!roleId) {
-            console.log(`⚠️  Skipping ${team.email} - role "${roleName}" not found`);
-            skipped++;
-            continue;
-        }
-
-        await prisma.team.update({
-            where: { id: team.id },
-            data: { roleId }
-        });
-
-        console.log(`✅ Updated ${team.email} (${team.teamName}) → roleId: ${roleId} (${roleName})`);
-        updated++;
+        console.log(`  - ${team.email} (${team.teamName})`);
     }
-
-    console.log('\n📊 Summary:');
-    console.log(`   Updated: ${updated}`);
-    console.log(`   Skipped: ${skipped}`);
-    console.log('\n🎉 Done!');
+    console.log('\nTo assign roles, use the admin panel or update roleId directly.');
 }
 
 main()

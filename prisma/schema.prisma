@@ -292,7 +292,6 @@ model Team {
   phone                  String?            @unique
   role                   UserRole           @default(EMPLOYEE)
   roleId                 String?            @map("role_id") @db.Uuid
-  taskAssignPermission   String?            @map("task_assign_permission")
   clientGroupId          String?            @map("client_group_id") @db.Uuid
   companyId              String?            @map("company_id") @db.Uuid
   locationId             String?            @map("location_id") @db.Uuid
@@ -305,8 +304,6 @@ model Team {
   createdBy              String?            @map("created_by") @db.Uuid
   updatedBy              String?            @map("updated_by") @db.Uuid
   password               String             @default("")
-  firstName              String?            @map("first_name")
-  lastName               String?            @map("last_name")
   isEmailVerified        Boolean            @default(false) @map("is_email_verified")
   lastLoginAt            DateTime?          @map("last_login_at")
   lastLoginIp            String?            @map("last_login_ip")

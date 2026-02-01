@@ -16,8 +16,6 @@ async function main() {
             data: {
                 teamNo: 'ADMIN-01',
                 teamName: 'Super Admin',
-                firstName: 'Admin',
-                lastName: 'User',
                 email: email,
                 password: password,
                 role: UserRole.ADMIN,

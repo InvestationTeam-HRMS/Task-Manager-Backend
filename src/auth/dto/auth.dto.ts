@@ -13,10 +13,7 @@ export class RegisterDto {
     password: string;
 
     @IsString()
-    firstName: string;
-
-    @IsString()
-    lastName: string;
+    teamName: string;
 
     @IsString()
     @IsOptional()
@@ -103,11 +100,7 @@ export class SetPasswordDto {
 export class UpdateProfileDto {
     @IsString()
     @IsOptional()
-    firstName?: string;
-
-    @IsString()
-    @IsOptional()
-    lastName?: string;
+    teamName?: string;
 
     @IsString()
     @IsOptional()

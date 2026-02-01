@@ -52,15 +52,30 @@ export class GroupService {
 
         const groupNo = await this.autoNumberService.generateGroupNo();
 
+        // Extract teamMemberIds from dto (not a Prisma field)
+        const { teamMemberIds, ...groupData } = dto;
+
         const group = await this.prisma.group.create({
             data: {
-                ...dto,
+                ...groupData,
                 groupName: toTitleCase(dto.groupName),
                 groupNo: dto.groupNo || groupNo,
                 status: dto.status || GroupStatus.Active,
                 createdBy: userId,
             },
         });
+
+        // Create GroupMember entries if teamMemberIds provided
+        if (teamMemberIds && teamMemberIds.length > 0) {
+            await this.prisma.groupMember.createMany({
+                data: teamMemberIds.map(memberId => ({
+                    groupId: group.id,
+                    userId: memberId,
+                    role: 'MEMBER',
+                })),
+                skipDuplicates: true,
+            });
+        }
 
         await this.invalidateCache();
         await this.logAudit(userId, 'CREATE', group.id, null, group);
@@ -156,8 +171,7 @@ export class GroupService {
                             team: {
                                 select: {
                                     id: true,
-                                    firstName: true,
-                                    lastName: true,
+                                    teamName: true,
                                     email: true,
                                 },
                             },
@@ -171,13 +185,76 @@ export class GroupService {
             this.prisma.group.count({ where }),
         ]);
 
-        // Add teamMemberEmails field to each group
+        // Collect all unique IDs to fetch names
+        const allClientGroupIds = [...new Set(rawData.flatMap(g => g.clientGroupIds || []))];
+        const allCompanyIds = [...new Set(rawData.flatMap(g => g.companyIds || []))];
+        const allLocationIds = [...new Set(rawData.flatMap(g => g.locationIds || []))];
+        const allSubLocationIds = [...new Set(rawData.flatMap(g => g.subLocationIds || []))];
+
+        // Fetch all related entities in parallel
+        const [clientGroups, companies, locations, subLocations] = await Promise.all([
+            allClientGroupIds.length > 0 
+                ? this.prisma.clientGroup.findMany({
+                    where: { id: { in: allClientGroupIds } },
+                    select: { id: true, groupName: true }
+                })
+                : [] as { id: string; groupName: string }[],
+            allCompanyIds.length > 0
+                ? this.prisma.clientCompany.findMany({
+                    where: { id: { in: allCompanyIds } },
+                    select: { id: true, companyName: true }
+                })
+                : [] as { id: string; companyName: string }[],
+            allLocationIds.length > 0
+                ? this.prisma.clientLocation.findMany({
+                    where: { id: { in: allLocationIds } },
+                    select: { id: true, locationName: true }
+                })
+                : [] as { id: string; locationName: string }[],
+            allSubLocationIds.length > 0
+                ? this.prisma.subLocation.findMany({
+                    where: { id: { in: allSubLocationIds } },
+                    select: { id: true, subLocationName: true }
+                })
+                : [] as { id: string; subLocationName: string }[],
+        ]);
+
+        // Create lookup maps
+        const clientGroupMap = new Map<string, string>();
+        clientGroups.forEach(cg => clientGroupMap.set(cg.id, cg.groupName));
+        
+        const companyMap = new Map<string, string>();
+        companies.forEach(c => companyMap.set(c.id, c.companyName));
+        
+        const locationMap = new Map<string, string>();
+        locations.forEach(l => locationMap.set(l.id, l.locationName));
+        
+        const subLocationMap = new Map<string, string>();
+        subLocations.forEach(sl => subLocationMap.set(sl.id, sl.subLocationName));
+
+        // Add resolved names and teamMemberEmails to each group
         const data = rawData.map(group => ({
             ...group,
+            clientGroupName: (group.clientGroupIds || [])
+                .map(id => clientGroupMap.get(id))
+                .filter(Boolean)
+                .join(', ') || '-',
+            companyName: (group.companyIds || [])
+                .map(id => companyMap.get(id))
+                .filter(Boolean)
+                .join(', ') || '-',
+            locationName: (group.locationIds || [])
+                .map(id => locationMap.get(id))
+                .filter(Boolean)
+                .join(', ') || '-',
+            subLocationName: (group.subLocationIds || [])
+                .map(id => subLocationMap.get(id))
+                .filter(Boolean)
+                .join(', ') || '-',
             teamMemberEmails: group.members
                 .map(m => m.team?.email)
                 .filter(Boolean)
-                .join(', '),
+                .join(', ') || '-',
         }));
 
         const response = new PaginatedResponse(data, total, page, limit);
@@ -197,10 +274,12 @@ export class GroupService {
             srNo: index + 1,
             groupNo: item.groupNo,
             groupName: item.groupName,
-            members: item.members.map(m => `${m.team.firstName || ''} ${m.team.lastName || ''}`.trim()).join(', '),
-            teamMemberEmails: item.teamMemberEmails || item.members.map(m => m.team?.email).filter(Boolean).join(', '),
+            clientGroupName: item.clientGroupName || '-',
+            companyName: item.companyName || '-',
+            locationName: item.locationName || '-',
+            subLocationName: item.subLocationName || '-',
+            teamMemberEmails: item.teamMemberEmails || '-',
             status: item.status,
-            createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A',
             remark: item.remark || 'N/A',
         }));
 
@@ -208,10 +287,12 @@ export class GroupService {
             { header: '#', key: 'srNo', width: 10 },
             { header: 'Group No', key: 'groupNo', width: 15 },
             { header: 'Group Name', key: 'groupName', width: 30 },
-            { header: 'Members', key: 'members', width: 50 },
-            { header: 'Team Member Emails', key: 'teamMemberEmails', width: 50 },
+            { header: 'Client Group', key: 'clientGroupName', width: 30 },
+            { header: 'Company', key: 'companyName', width: 30 },
+            { header: 'Location', key: 'locationName', width: 30 },
+            { header: 'Sublocation', key: 'subLocationName', width: 30 },
+            { header: 'Team Members', key: 'teamMemberEmails', width: 50 },
             { header: 'Status', key: 'status', width: 15 },
-            { header: 'Created Date', key: 'createdAt', width: 20 },
             { header: 'Remark', key: 'remark', width: 30 },
         ];
 
@@ -239,8 +320,7 @@ export class GroupService {
                         team: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                teamName: true,
                                 email: true,
                                 avatar: true,
                             },
@@ -269,8 +349,7 @@ export class GroupService {
                         team: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                teamName: true,
                                 email: true,
                                 avatar: true,
                             },
@@ -278,10 +357,10 @@ export class GroupService {
                     },
                 },
                 creator: {
-                    select: { id: true, firstName: true, lastName: true, email: true },
+                    select: { id: true, teamName: true, email: true },
                 },
                 updater: {
-                    select: { id: true, firstName: true, lastName: true, email: true },
+                    select: { id: true, teamName: true, email: true },
                 },
             },
         });
@@ -314,14 +393,36 @@ export class GroupService {
             }
         }
 
+        // Extract teamMemberIds from dto (not a Prisma field)
+        const { teamMemberIds, ...groupData } = dto;
+
         const updated = await this.prisma.group.update({
             where: { id },
             data: {
-                ...dto,
+                ...groupData,
                 groupName: dto.groupName ? toTitleCase(dto.groupName) : undefined,
                 updatedBy: userId,
             },
         });
+
+        // Update GroupMember entries if teamMemberIds provided
+        if (teamMemberIds !== undefined) {
+            // Remove existing members and add new ones
+            await this.prisma.groupMember.deleteMany({
+                where: { groupId: id },
+            });
+
+            if (teamMemberIds.length > 0) {
+                await this.prisma.groupMember.createMany({
+                    data: teamMemberIds.map(memberId => ({
+                        groupId: id,
+                        userId: memberId,
+                        role: 'MEMBER',
+                    })),
+                    skipDuplicates: true,
+                });
+            }
+        }
 
         await this.invalidateCache();
         await this.logAudit(userId, 'UPDATE', id, existing, updated);

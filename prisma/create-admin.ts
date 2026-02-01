@@ -63,8 +63,6 @@ async function main() {
             role: UserRole.ADMIN,
             status: 'Active',
             isEmailVerified: true,
-            firstName: 'Super',
-            lastName: 'Admin'
         },
     });
     console.log('✅ Admin user ready:', admin.email);
@@ -118,8 +116,6 @@ async function main() {
                 status: 'Active',
                 isEmailVerified: true,
                 allowedIps: ['*'],
-                firstName: m.name.split(' ')[0],
-                lastName: m.name.split(' ')[1]
             }
         });
         console.log(`✅ Member ready: ${user.email} (IP: Any)`);

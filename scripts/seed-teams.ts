@@ -10,8 +10,6 @@ async function main() {
         {
             teamNo: 'T-1001',
             teamName: 'Marketing Manager',
-            firstName: 'Aman',
-            lastName: 'Sharma',
             email: 'aman.manager@investationteam.com',
             password: password,
             role: UserRole.MANAGER,
@@ -21,8 +19,6 @@ async function main() {
         {
             teamNo: 'T-1002',
             teamName: 'HR Executive',
-            firstName: 'Priya',
-            lastName: 'Verma',
             email: 'priya.hr@investationteam.com',
             password: password,
             role: UserRole.HR,
@@ -32,8 +28,6 @@ async function main() {
         {
             teamNo: 'T-1003',
             teamName: 'Senior Developer',
-            firstName: 'Rahul',
-            lastName: 'Gupta',
             email: 'rahul.emp@investationteam.com',
             password: password,
             role: UserRole.EMPLOYEE,

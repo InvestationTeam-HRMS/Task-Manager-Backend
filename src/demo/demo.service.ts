@@ -36,8 +36,7 @@ export class DemoService {
             const regDto = {
                 email,
                 password,
-                firstName: 'Demo',
-                lastName: 'User',
+                teamName: 'Demo User',
             };
             const regResult = await this.authService.register(regDto, ip);
 

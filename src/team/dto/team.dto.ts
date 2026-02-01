@@ -19,10 +19,6 @@ export class CreateTeamDto {
     @Length(10, 10, { message: 'Phone number must be exactly 10 characters' })
     phone: string;
 
-    @IsString()
-    @IsOptional()
-    taskAssignPermission?: string;
-
     @IsUUID()
     @IsNotEmpty()
     clientGroupId: string;
@@ -56,14 +52,6 @@ export class CreateTeamDto {
     @IsOptional()
     password?: string;
 
-    @IsString()
-    @IsOptional()
-    firstName?: string;
-
-    @IsString()
-    @IsOptional()
-    lastName?: string;
-
     @IsEnum(UserRole)
     @IsOptional()
     role?: UserRole;
@@ -95,10 +83,6 @@ export class UpdateTeamDto {
     @IsOptional()
     @Length(10, 10, { message: 'Phone number must be exactly 10 characters' })
     phone?: string;
-
-    @IsString()
-    @IsOptional()
-    taskAssignPermission?: string;
 
     @IsUUID()
     @IsOptional()
@@ -132,14 +116,6 @@ export class UpdateTeamDto {
     @MinLength(6)
     @IsOptional()
     password?: string;
-
-    @IsString()
-    @IsOptional()
-    firstName?: string;
-
-    @IsString()
-    @IsOptional()
-    lastName?: string;
 
     @IsEnum(UserRole)
     @IsOptional()

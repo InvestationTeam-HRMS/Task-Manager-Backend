@@ -163,7 +163,7 @@ export class TaskService {
                 pendingTask: {
                     include: {
                         project: { select: { projectName: true } },
-                        creator: { select: { teamName: true, firstName: true, lastName: true, email: true } }
+                        creator: { select: { teamName: true, email: true } }
                     }
                 },
                 group: { select: { groupName: true } }
@@ -375,11 +375,11 @@ export class TaskService {
                 orderBy: isCompletedView ? { completedAt: 'desc' } : { createdTime: 'desc' },
                 include: {
                     project: { select: { id: true, projectName: true, projectNo: true } },
-                    assignee: { select: { id: true, firstName: true, lastName: true, email: true, teamName: true } },
-                    creator: { select: { id: true, firstName: true, lastName: true, email: true } },
+                    assignee: { select: { id: true, teamName: true, email: true } },
+                    creator: { select: { id: true, teamName: true, email: true } },
                     targetTeam: { select: { id: true, teamName: true, email: true } },
                     targetGroup: { select: { id: true, groupName: true } },
-                    worker: { select: { id: true, firstName: true, lastName: true, email: true } }
+                    worker: { select: { id: true, teamName: true, email: true } }
                 },
             }),
             model.count({ where }),
@@ -937,16 +937,16 @@ export class TaskService {
                 where: baseWhere,
                 include: {
                     project: { select: { projectName: true } },
-                    assignee: { select: { firstName: true, lastName: true } },
-                    worker: { select: { firstName: true, lastName: true } },
+                    assignee: { select: { teamName: true } },
+                    worker: { select: { teamName: true } },
                 }
             }),
             this.prisma.completedTask.findMany({
                 where: baseWhere,
                 include: {
                     project: { select: { projectName: true } },
-                    assignee: { select: { firstName: true, lastName: true } },
-                    worker: { select: { firstName: true, lastName: true } },
+                    assignee: { select: { teamName: true } },
+                    worker: { select: { teamName: true } },
                 }
             })
         ]);
@@ -960,8 +960,8 @@ export class TaskService {
             priority: task.priority,
             taskStatus: task.taskStatus,
             project: task.project?.projectName || 'N/A',
-            assignee: task.assignee ? `${task.assignee.firstName} ${task.assignee.lastName}` : 'N/A',
-            worker: task.worker ? `${task.worker.firstName} ${task.worker.lastName}` : 'N/A',
+            assignee: task.assignee?.teamName || 'N/A',
+            worker: task.worker?.teamName || 'N/A',
             createdTime: task.createdTime ? new Date(task.createdTime).toLocaleString() : 'N/A',
             deadline: task.deadline ? new Date(task.deadline).toLocaleString() : 'N/A',
         }));
@@ -1029,7 +1029,7 @@ export class TaskService {
             take: PAGE_SIZE + 1, // Fetch one extra to check if there are more
             include: {
                 team: {
-                    select: { firstName: true, lastName: true, avatar: true }
+                    select: { teamName: true, avatar: true }
                 }
             }
         });
@@ -1061,7 +1061,7 @@ export class TaskService {
                 dateTime: Math.floor(notification.createdAt.getTime() / 1000),
                 taskNo: metadata.taskNo || '',
                 status: metadata.status || 'Pending',
-                userName: notification.team ? `${notification.team.firstName || ''} ${notification.team.lastName || ''}`.trim() || 'System' : 'System',
+                userName: notification.team?.teamName || 'System',
                 userImg: (notification.team as any)?.avatar || '',
                 comment: notification.description,
                 notificationType: notification.type,

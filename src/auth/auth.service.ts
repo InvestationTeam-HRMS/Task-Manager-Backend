@@ -91,15 +91,12 @@ export class AuthService {
         // Create the team now
         const team = await this.prisma.team.create({
             data: {
-                teamName: `${tempUser.firstName} ${tempUser.lastName}`,
-                firstName: tempUser.firstName,
-                lastName: tempUser.lastName,
+                teamName: tempUser.teamName,
                 teamNo: `TM-${Date.now()}`, // Auto-generated team identifier
                 email: tempUser.email,
                 password: tempUser.password,
                 phone: tempUser.phoneNumber,
                 role: UserRole.EMPLOYEE,
-                taskAssignPermission: 'EMPLOYEE',
                 status: 'Active',
                 isEmailVerified: true,
                 allowedIps: [ipAddress],
@@ -565,8 +562,7 @@ export class AuthService {
         return {
             id: user.id,
             email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
+            teamName: user.teamName,
             role: user.role,
             roleId: user.roleId,
             roleName,
@@ -577,7 +573,6 @@ export class AuthService {
             city: user.city,
             postcode: user.postcode,
             country: user.country,
-            teamName: user.teamName,
             isTeam: true,
         };
     }
@@ -628,11 +623,6 @@ export class AuthService {
         }
 
         const updateData: any = { ...dto, avatar: avatarUrl };
-        if (dto.firstName || dto.lastName) {
-            const firstName = dto.firstName ?? team.firstName ?? '';
-            const lastName = dto.lastName ?? team.lastName ?? '';
-            updateData.teamName = `${firstName} ${lastName}`.trim();
-        }
 
         const updated = await this.prisma.team.update({
             where: { id: userId },
@@ -646,8 +636,7 @@ export class AuthService {
             user: {
                 id: updated.id,
                 email: updated.email,
-                firstName: updated.firstName,
-                lastName: updated.lastName,
+                teamName: updated.teamName,
                 avatar: updated.avatar,
                 phone: updated.phone,
                 address: updated.address,

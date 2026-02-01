@@ -276,10 +276,10 @@ export class ClientCompanyService {
                     },
                 },
                 creator: {
-                    select: { id: true, firstName: true, lastName: true, email: true },
+                    select: { id: true, teamName: true, email: true },
                 },
                 updater: {
-                    select: { id: true, firstName: true, lastName: true, email: true },
+                    select: { id: true, teamName: true, email: true },
                 },
             },
         });

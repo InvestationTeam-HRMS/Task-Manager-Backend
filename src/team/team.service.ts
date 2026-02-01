@@ -66,35 +66,21 @@ export class TeamService {
     // Hash password - Use provided password, fallback to default only if not provided
     const hashedPassword = await bcrypt.hash(dto.password || 'Welcome@123', 10);
 
-    const firstNameFormatted = dto.firstName ? toTitleCase(dto.firstName) : undefined;
-    const lastNameFormatted = dto.lastName ? toTitleCase(dto.lastName) : undefined;
     const teamNameFormatted = toTitleCase(dto.teamName);
 
     const generatedTeamNo = await this.autoNumberService.generateTeamNo();
 
-    // Look up roleId from taskAssignPermission (role name) if provided
-    let roleId = dto.roleId;
-    if (!roleId && dto.taskAssignPermission) {
-      const customRole = await this.prisma.role.findUnique({
-        where: { name: dto.taskAssignPermission },
-      });
-      if (customRole) {
-        roleId = customRole.id;
-      }
-    }
-
     const team = await this.prisma.team.create({
       data: {
         ...dto,
-        firstName: firstNameFormatted,
-        lastName: lastNameFormatted,
         teamName: teamNameFormatted,
         email: dto.email.toLowerCase(),
         password: hashedPassword,
         status: dto.status || TeamStatus.Active,
         loginMethod: dto.loginMethod || LoginMethod.General,
         teamNo: dto.teamNo || generatedTeamNo,
-        roleId: roleId, // Assign the looked up roleId
+        roleId: dto.roleId,
+        role: dto.role || UserRole.EMPLOYEE, // Default to EMPLOYEE, actual role is in custom role (roleId)
         createdBy: userId,
       },
     });
@@ -169,10 +155,6 @@ export class TeamService {
         const searchLower = val.toLowerCase();
         const searchTitle = toTitleCase(val);
 
-        allSearchConditions.push({ firstName: { contains: val, mode: 'insensitive' } });
-        allSearchConditions.push({ firstName: { contains: searchTitle, mode: 'insensitive' } });
-        allSearchConditions.push({ lastName: { contains: val, mode: 'insensitive' } });
-        allSearchConditions.push({ lastName: { contains: searchTitle, mode: 'insensitive' } });
         allSearchConditions.push({ teamName: { contains: val, mode: 'insensitive' } });
         allSearchConditions.push({ teamName: { contains: searchTitle, mode: 'insensitive' } });
         allSearchConditions.push({ email: { contains: val, mode: 'insensitive' } });
@@ -220,14 +202,18 @@ export class TeamService {
           id: true,
           teamNo: true,
           teamName: true,
-          firstName: true,
-          lastName: true,
           email: true,
           phone: true,
           role: true,
+          roleId: true,
+          customRole: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           status: true,
           loginMethod: true,
-          taskAssignPermission: true,
           remark: true,
           createdAt: true,
           clientGroupId: true,
@@ -270,6 +256,7 @@ export class TeamService {
     // Map the data to include flat field names for frontend table
     const mappedData = data.map((team) => ({
       ...team,
+      roleName: team.customRole?.name || team.role,
       groupName: team.clientGroup?.groupName || '',
       groupCode: team.clientGroup?.groupCode || '',
       companyName: team.company?.companyName || '',
@@ -297,10 +284,9 @@ export class TeamService {
       srNo: index + 1,
       teamNo: item.teamNo,
       teamName: item.teamName,
-      name: `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'N/A',
       email: item.email,
       phone: item.phone || 'N/A',
-      taskAssignPermission: item.taskAssignPermission ? 'Yes' : 'No',
+      role: item.roleName || item.role || 'N/A',
       groupName: item.groupName || 'N/A',
       companyName: item.companyName || 'N/A',
       locationName: item.locationName || 'N/A',
@@ -315,10 +301,9 @@ export class TeamService {
       { header: '#', key: 'srNo', width: 10 },
       { header: 'Team No', key: 'teamNo', width: 15 },
       { header: 'Team Name', key: 'teamName', width: 25 },
-      { header: 'Full Name', key: 'name', width: 30 },
       { header: 'Email', key: 'email', width: 30 },
       { header: 'Phone', key: 'phone', width: 15 },
-      { header: 'Task Assign', key: 'taskAssignPermission', width: 12 },
+      { header: 'Role', key: 'role', width: 15 },
       { header: 'Client Group', key: 'groupName', width: 20 },
       { header: 'Company', key: 'companyName', width: 20 },
       { header: 'Location', key: 'locationName', width: 20 },
@@ -373,20 +358,8 @@ export class TeamService {
     if (dto.password) {
       data.password = await bcrypt.hash(dto.password, 10);
     }
-    if (dto.firstName) data.firstName = toTitleCase(dto.firstName);
-    if (dto.lastName) data.lastName = toTitleCase(dto.lastName);
     if (dto.teamName) data.teamName = toTitleCase(dto.teamName);
     if (dto.email) data.email = dto.email.toLowerCase();
-
-    // Look up roleId from taskAssignPermission (role name) if provided
-    if (!data.roleId && dto.taskAssignPermission) {
-      const customRole = await this.prisma.role.findUnique({
-        where: { name: dto.taskAssignPermission },
-      });
-      if (customRole) {
-        data.roleId = customRole.id;
-      }
-    }
 
     const updated = await this.prisma.team.update({
       where: { id },
@@ -539,8 +512,6 @@ export class TeamService {
     const columnMapping = {
       teamNo: ['teamno', 'no', 'code', 'id'],
       teamName: ['teamname', 'name'],
-      firstName: ['firstname', 'fname', 'first'],
-      lastName: ['lastname', 'lname', 'last'],
       email: ['email', 'mail', 'e-mail'],
       role: ['role', 'designation', 'position'],
       status: ['status', 'state', 'active'],
@@ -576,7 +547,7 @@ export class TeamService {
 
   async resendInvitation(id: string, userId: string) {
     const team = await this.findById(id);
-    const fullName = `${team.firstName || ''} ${team.lastName || ''}`.trim() || team.teamName;
+    const fullName = team.teamName;
 
     try {
       await this.triggerInvitation(team.email, fullName);
