@@ -282,69 +282,128 @@ export class TaskService {
             });
         }
 
-        // 2. View Mode Logic
+        // ══════════════════════════════════════════════════════════════════════════════
+        // HRMS TASK VISIBILITY RULES - PRODUCTION GRADE LOGIC
+        // ══════════════════════════════════════════════════════════════════════════════
+        // 
+        // CORE PRINCIPLE: Once a GROUP TASK is ACCEPTED by ONE member:
+        //   → Task is LOCKED to that single owner (acceptor)
+        //   → Other group members who rejected/didn't accept MUST NOT see the task
+        //   → Only Creator and Acceptor can see the task from that point forward
+        //
+        // VISIBILITY TABLE (After Acceptance):
+        // ┌─────────────────────┬────────────┬─────────────┬──────────────┬────────────────┬──────────────┬────────────────┐
+        // │ Role                │ My Pending │ Team Pending│ Review by Me │ Review by Team │ My Completed │ Team Completed │
+        // ├─────────────────────┼────────────┼─────────────┼──────────────┼────────────────┼──────────────┼────────────────┤
+        // │ Acceptor            │ ✅ YES     │ ❌ NO       │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
+        // │ Creator/Manager     │ ❌ NO      │ ✅ YES      │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
+        // │ Other Group Members │ ❌ NO      │ ❌ NO       │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
+        // └─────────────────────┴────────────┴─────────────┴──────────────┴────────────────┴──────────────┴────────────────┘
+        //
+        // WHY THIS DESIGN:
+        //   1. Avoids confusion → No duplicate ownership
+        //   2. Clean handoff → Task flows: Creator → Acceptor → Review → Complete
+        //   3. Rejected members are excluded → They can't accidentally work on it
+        // ══════════════════════════════════════════════════════════════════════════════
+
         if (filter.viewMode && userId) {
-            // Helper for "NOT ME" (Matches where I am NOT the assignee/worker, including NULLs)
-            const isNotMeAssigned = {
-                AND: [
-                    { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
-                    { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
-                ]
-            };
-
-            const iAmInvolved = {
-                OR: [
-                    { createdBy: userId },
-                    { targetGroup: { members: { some: { userId } } } },
-                    { targetTeamId: userId }
-                ]
-            };
-
             switch (filter.viewMode) {
                 case TaskViewMode.ALL:
-                    // No additional filters needed for Admin to show all.
-                    // Involvement check for non-admins is handled in the fallback below.
+                    // Admin sees all - no additional filters
+                    // Non-admin restriction handled in fallback
                     break;
 
                 case TaskViewMode.MY_PENDING:
+                    // ═══════════════════════════════════════════════════════════════
+                    // MY PENDING: Tasks I must work on
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks where I am the ASSIGNED owner (direct or via acceptance)
+                    // RULE:  assignedTo = me OR targetTeamId = me
+                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
-                        OR: [{ assignedTo: userId }, { targetTeamId: userId }]
+                        OR: [
+                            { assignedTo: userId },
+                            { targetTeamId: userId }
+                        ]
                     });
                     break;
 
                 case TaskViewMode.TEAM_PENDING:
-                    andArray.push({ taskStatus: TaskStatus.Pending, isSelfTask: false });
-                    // Must be involved (Creator/Member/Team) AND NOT assigned to me personally
-                    andArray.push(isNotMeAssigned);
-                    andArray.push(iAmInvolved);
+                    // ═══════════════════════════════════════════════════════════════
+                    // TEAM PENDING: Tasks I created/manage but others are working on
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks where I am the CREATOR, but NOT the assignee
+                    // RULE:  createdBy = me AND assignedTo != me AND not self-task
+                    // 
+                    // CRITICAL: Group members who REJECTED must NOT see this!
+                    //           Only the CREATOR sees team tasks after acceptance.
+                    // ═══════════════════════════════════════════════════════════════
+                    andArray.push({
+                        taskStatus: TaskStatus.Pending,
+                        isSelfTask: false,
+                        createdBy: userId, // ONLY Creator sees Team Pending
+                        // Ensure I'm not the one working on it
+                        AND: [
+                            { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
+                            { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
+                        ]
+                    });
                     break;
 
                 case TaskViewMode.MY_COMPLETED:
-                    // Task I personally completed
+                    // ═══════════════════════════════════════════════════════════════
+                    // MY COMPLETED: Tasks I personally finished
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks where workingBy = me (I did the work)
+                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({ workingBy: userId });
                     break;
 
                 case TaskViewMode.TEAM_COMPLETED:
-                    // Task completed by someone else (including NULL if applicable, but workingBy is usually set)
-                    andArray.push({ OR: [{ workingBy: { not: userId } }, { workingBy: null }] });
-                    andArray.push({ isSelfTask: false });
-                    // Involved but not the worker
-                    andArray.push(iAmInvolved);
+                    // ═══════════════════════════════════════════════════════════════
+                    // TEAM COMPLETED: Tasks my team finished (but not me)
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks I created that were completed by someone else
+                    // RULE:  createdBy = me AND workingBy != me AND not self-task
+                    // ═══════════════════════════════════════════════════════════════
+                    andArray.push({
+                        createdBy: userId, // ONLY Creator sees Team Completed
+                        isSelfTask: false,
+                        OR: [{ workingBy: { not: userId } }, { workingBy: null }]
+                    });
                     break;
 
                 case TaskViewMode.REVIEW_PENDING_BY_ME:
-                    andArray.push({ createdBy: userId, taskStatus: TaskStatus.ReviewPending });
+                    // ═══════════════════════════════════════════════════════════════
+                    // REVIEW BY ME: Tasks submitted for MY review
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks I created that are now in ReviewPending status
+                    // RULE:  createdBy = me AND status = ReviewPending
+                    // 
+                    // LIFECYCLE: Acceptor submits remark → appears here for Creator
+                    // ═══════════════════════════════════════════════════════════════
+                    andArray.push({
+                        createdBy: userId,
+                        taskStatus: TaskStatus.ReviewPending
+                    });
                     break;
 
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
+                    // ═══════════════════════════════════════════════════════════════
+                    // REVIEW BY TEAM: Tasks I submitted that are awaiting review
+                    // ═══════════════════════════════════════════════════════════════
+                    // SHOWS: Tasks where I am the worker (submitted the remark)
+                    // RULE:  workingBy = me AND status = ReviewPending AND NOT self-task
+                    //
+                    // CRITICAL: This is for the ACCEPTOR to see their submitted tasks
+                    // EXCLUDE self-tasks: Those appear in "Review Pending by Me" only
+                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         taskStatus: TaskStatus.ReviewPending,
-                        isSelfTask: false,
-                        OR: [{ createdBy: { not: userId } }, { createdBy: null }]
+                        workingBy: userId, // I submitted it for review
+                        isSelfTask: false // EXCLUDE self-assigned tasks
                     });
-                    // Only see reviews for tasks you are involved in
-                    andArray.push(iAmInvolved);
                     break;
             }
         } else {

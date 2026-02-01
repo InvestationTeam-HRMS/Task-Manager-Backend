@@ -96,6 +96,8 @@ export class TaskController {
         return this.taskService.updateAcceptanceStatus(id, dto, userId);
     }
 
+    @Get(':id')
+    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
     async findById(@Param('id') id: string) {
         const result = await this.taskService.findById(id);
         return { data: result };
