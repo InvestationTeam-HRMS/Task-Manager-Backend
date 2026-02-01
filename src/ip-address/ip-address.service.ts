@@ -108,13 +108,22 @@ export class IpAddressService {
         }
 
         if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
+        if (filter?.groupName) andArray.push({ clientGroup: { groupName: { contains: filter.groupName, mode: 'insensitive' } } });
+
         if (filter?.companyId) andArray.push({ companyId: filter.companyId });
+        if (filter?.companyName) andArray.push({ company: { companyName: { contains: filter.companyName, mode: 'insensitive' } } });
+
         if (filter?.locationId) andArray.push({ locationId: filter.locationId });
+        if (filter?.locationName) andArray.push({ location: { locationName: { contains: filter.locationName, mode: 'insensitive' } } });
+
         if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
+        if (filter?.subLocationName) andArray.push({ subLocation: { subLocationName: { contains: filter.subLocationName, mode: 'insensitive' } } });
+
         if (filter?.ipAddressName) andArray.push(buildMultiValueFilter('ipAddressName', filter.ipAddressName));
         if (filter?.ipAddress) andArray.push(buildMultiValueFilter('ipAddress', filter.ipAddress));
         if (filter?.ipNo) andArray.push(buildMultiValueFilter('ipNo', filter.ipNo));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
 
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);

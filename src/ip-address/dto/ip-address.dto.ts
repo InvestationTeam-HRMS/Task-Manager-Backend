@@ -110,16 +110,32 @@ export class FilterIpAddressDto {
     clientGroupId?: string;
 
     @IsOptional()
+    @IsString()
+    groupName?: string;
+
+    @IsOptional()
     @IsUUID()
     companyId?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
 
     @IsOptional()
     @IsUUID()
     locationId?: string;
 
     @IsOptional()
+    @IsString()
+    locationName?: string;
+
+    @IsOptional()
     @IsUUID()
     subLocationId?: string;
+
+    @IsOptional()
+    @IsString()
+    subLocationName?: string;
 
     @IsOptional()
     @IsString()
@@ -137,3 +153,4 @@ export class FilterIpAddressDto {
     @IsString()
     remark?: string;
 }
+
