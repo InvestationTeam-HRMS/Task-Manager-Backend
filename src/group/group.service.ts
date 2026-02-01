@@ -144,7 +144,7 @@ export class GroupService {
             }
         }
 
-        const [data, total] = await Promise.all([
+        const [rawData, total] = await Promise.all([
             this.prisma.group.findMany({
                 where,
                 skip: Number(skip),
@@ -171,6 +171,15 @@ export class GroupService {
             this.prisma.group.count({ where }),
         ]);
 
+        // Add teamMemberEmails field to each group
+        const data = rawData.map(group => ({
+            ...group,
+            teamMemberEmails: group.members
+                .map(m => m.team?.email)
+                .filter(Boolean)
+                .join(', '),
+        }));
+
         const response = new PaginatedResponse(data, total, page, limit);
 
         if (isCacheable) {
@@ -189,6 +198,7 @@ export class GroupService {
             groupNo: item.groupNo,
             groupName: item.groupName,
             members: item.members.map(m => `${m.team.firstName || ''} ${m.team.lastName || ''}`.trim()).join(', '),
+            teamMemberEmails: item.teamMemberEmails || item.members.map(m => m.team?.email).filter(Boolean).join(', '),
             status: item.status,
             createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A',
             remark: item.remark || 'N/A',
@@ -199,6 +209,7 @@ export class GroupService {
             { header: 'Group No', key: 'groupNo', width: 15 },
             { header: 'Group Name', key: 'groupName', width: 30 },
             { header: 'Members', key: 'members', width: 50 },
+            { header: 'Team Member Emails', key: 'teamMemberEmails', width: 50 },
             { header: 'Status', key: 'status', width: 15 },
             { header: 'Created Date', key: 'createdAt', width: 20 },
             { header: 'Remark', key: 'remark', width: 30 },
@@ -239,7 +250,14 @@ export class GroupService {
             },
         });
 
-        return groups;
+        // Add teamMemberEmails field to each group
+        return groups.map(group => ({
+            ...group,
+            teamMemberEmails: group.members
+                .map(m => m.team?.email)
+                .filter(Boolean)
+                .join(', '),
+        }));
     }
 
     async findById(id: string) {
@@ -272,7 +290,14 @@ export class GroupService {
             throw new NotFoundException('Group not found');
         }
 
-        return group;
+        // Add teamMemberEmails field
+        return {
+            ...group,
+            teamMemberEmails: group.members
+                .map(m => m.team?.email)
+                .filter(Boolean)
+                .join(', '),
+        };
     }
 
     async update(id: string, dto: UpdateGroupDto, userId: string) {
