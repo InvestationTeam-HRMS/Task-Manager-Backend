@@ -63,7 +63,7 @@ export class TeamService {
       }
     }
 
-    // Hash password
+    // Hash password - Use provided password, fallback to default only if not provided
     const hashedPassword = await bcrypt.hash(dto.password || 'Welcome@123', 10);
 
     const firstNameFormatted = dto.firstName ? toTitleCase(dto.firstName) : undefined;
@@ -71,6 +71,17 @@ export class TeamService {
     const teamNameFormatted = toTitleCase(dto.teamName);
 
     const generatedTeamNo = await this.autoNumberService.generateTeamNo();
+
+    // Look up roleId from taskAssignPermission (role name) if provided
+    let roleId = dto.roleId;
+    if (!roleId && dto.taskAssignPermission) {
+      const customRole = await this.prisma.role.findUnique({
+        where: { name: dto.taskAssignPermission },
+      });
+      if (customRole) {
+        roleId = customRole.id;
+      }
+    }
 
     const team = await this.prisma.team.create({
       data: {
@@ -83,6 +94,7 @@ export class TeamService {
         status: dto.status || TeamStatus.Active,
         loginMethod: dto.loginMethod || LoginMethod.General,
         teamNo: dto.teamNo || generatedTeamNo,
+        roleId: roleId, // Assign the looked up roleId
         createdBy: userId,
       },
     });
@@ -90,12 +102,21 @@ export class TeamService {
     await this.invalidateCache();
     await this.logAudit(userId, 'CREATE', team.id, null, team);
 
-    // Optional: Trigger invitation email
-    try {
-      await this.triggerInvitation(dto.email, teamNameFormatted);
-    } catch (err) {
-      this.logger.error(`Failed to send invitation to ${dto.email}: ${err.message}`);
-    }
+    // ============================================================
+    // SMTP DISABLED: Email sending is currently not working in production.
+    // User will login using the email + password set during creation.
+    // After login, user can reset their password manually.
+    // 
+    // To re-enable, uncomment the code below:
+    // ------------------------------------------------------------
+    // try {
+    //   await this.triggerInvitation(dto.email, teamNameFormatted);
+    // } catch (err) {
+    //   this.logger.error(`Failed to send invitation to ${dto.email}: ${err.message}`);
+    // }
+    // ============================================================
+
+    this.logger.log(`[TEAM_CREATED] ${dto.email} - Password set directly, no invitation email sent (SMTP disabled)`);
 
     return team;
   }
@@ -356,6 +377,16 @@ export class TeamService {
     if (dto.lastName) data.lastName = toTitleCase(dto.lastName);
     if (dto.teamName) data.teamName = toTitleCase(dto.teamName);
     if (dto.email) data.email = dto.email.toLowerCase();
+
+    // Look up roleId from taskAssignPermission (role name) if provided
+    if (!data.roleId && dto.taskAssignPermission) {
+      const customRole = await this.prisma.role.findUnique({
+        where: { name: dto.taskAssignPermission },
+      });
+      if (customRole) {
+        data.roleId = customRole.id;
+      }
+    }
 
     const updated = await this.prisma.team.update({
       where: { id },
