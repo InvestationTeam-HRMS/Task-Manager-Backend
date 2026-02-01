@@ -183,12 +183,21 @@ export class ProjectService {
                     id: true,
                     projectNo: true,
                     projectName: true,
+                    clientGroupId: true,
+                    companyId: true,
+                    locationId: true,
                     subLocationId: true,
                     deadline: true,
                     priority: true,
                     status: true,
                     remark: true,
                     createdAt: true,
+                    clientGroup: {
+                        select: {
+                            id: true,
+                            groupName: true,
+                        },
+                    },
                     subLocation: {
                         select: {
                             id: true,
@@ -218,6 +227,7 @@ export class ProjectService {
 
         const mappedData = data.map((item) => ({
             ...item,
+            groupName: item.clientGroup?.groupName, // Flattened for table column accessor
             subLocationName: item.subLocation?.subLocationName,
             locationName: item.subLocation?.location?.locationName,
             companyName: item.subLocation?.location?.company?.companyName,

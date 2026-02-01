@@ -60,7 +60,7 @@ async function main() {
             teamName: 'Admin User',
             email: 'admin-01@investationteam.com',
             password: hashedPassword,
-            role: UserRole.SUPER_ADMIN,
+            role: UserRole.ADMIN,
             status: 'Active',
             isEmailVerified: true,
             firstName: 'Super',

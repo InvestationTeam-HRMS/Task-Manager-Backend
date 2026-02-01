@@ -203,6 +203,18 @@ export class SubLocationService {
                             locationCode: true,
                         },
                     },
+                    clientGroup: {
+                        select: {
+                            id: true,
+                            groupName: true,
+                        },
+                    },
+                    company: {
+                        select: {
+                            id: true,
+                            companyName: true,
+                        },
+                    },
                     _count: {
                         select: { projects: true, teams: true }
                     }
@@ -215,6 +227,8 @@ export class SubLocationService {
             ...item,
             clientLocation: item.location,
             locationName: item.location?.locationName, // Flattened for table column accessor
+            groupName: item.clientGroup?.groupName, // Flattened for table column accessor
+            companyName: item.company?.companyName, // Flattened for table column accessor
         }));
 
         const response = new PaginatedResponse(mappedData, total, page, limit);

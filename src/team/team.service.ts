@@ -333,8 +333,10 @@ export class TeamService {
           select: {
             createdPendingTasks: true,
             assignedPendingTasks: true,
+            workingPendingTasks: true,
             createdCompletedTasks: true,
             assignedCompletedTasks: true,
+            workingCompletedTasks: true,
             groupMembers: true,
           }
         }
@@ -349,8 +351,10 @@ export class TeamService {
     const childCounts = [
       _count.createdPendingTasks > 0 && `${_count.createdPendingTasks} created pending tasks`,
       _count.assignedPendingTasks > 0 && `${_count.assignedPendingTasks} assigned pending tasks`,
+      _count.workingPendingTasks > 0 && `${_count.workingPendingTasks} working pending tasks`,
       _count.createdCompletedTasks > 0 && `${_count.createdCompletedTasks} created completed tasks`,
       _count.assignedCompletedTasks > 0 && `${_count.assignedCompletedTasks} assigned completed tasks`,
+      _count.workingCompletedTasks > 0 && `${_count.workingCompletedTasks} working completed tasks`,
       _count.groupMembers > 0 && `${_count.groupMembers} group memberships`,
     ].filter(Boolean);
 

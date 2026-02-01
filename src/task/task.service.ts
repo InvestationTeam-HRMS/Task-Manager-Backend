@@ -73,7 +73,7 @@ export class TaskService {
                 createdBy: userId,
                 document,
                 reminderTime: dto.reminderTime ? [...new Set(dto.reminderTime)].sort().map(d => new Date(d)) : [],
-                editTime: [new Date()],
+                editTime: [],
                 isSelfTask: (dto.assignedTo === userId && !dto.targetGroupId && !dto.targetTeamId) || false,
                 assignedTo: dto.assignedTo && dto.assignedTo !== 'null' ? dto.assignedTo : null,
                 targetGroupId: dto.targetGroupId && dto.targetGroupId !== 'null' ? dto.targetGroupId : null,

@@ -296,14 +296,20 @@ export class IpAddressService {
     }
 
     async delete(id: string, userId: string) {
-        const existing = await this.findById(id);
+        const ipAddress = await this.prisma.ipAddress.findUnique({
+            where: { id }
+        });
+
+        if (!ipAddress) {
+            throw new NotFoundException('IP address not found');
+        }
 
         await this.prisma.ipAddress.delete({
             where: { id },
         });
 
         await this.invalidateCache();
-        await this.logAudit(userId, 'HARD_DELETE', id, existing, null);
+        await this.logAudit(userId, 'HARD_DELETE', id, ipAddress, null);
 
         return { message: 'IP address permanently deleted successfully' };
     }

@@ -219,6 +219,12 @@ export class ClientLocationService {
                             companyCode: true,
                         },
                     },
+                    clientGroup: {
+                        select: {
+                            id: true,
+                            groupName: true,
+                        },
+                    },
                     _count: {
                         select: { subLocations: true, teams: true }
                     }
@@ -231,6 +237,7 @@ export class ClientLocationService {
             ...item,
             clientCompany: item.company,
             companyName: item.company?.companyName, // Flattened for table column accessor
+            groupName: item.clientGroup?.groupName, // Flattened for table column accessor
         }));
 
         const response = new PaginatedResponse(mappedData, total, page, limit);
