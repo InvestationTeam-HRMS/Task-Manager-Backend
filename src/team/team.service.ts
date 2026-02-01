@@ -25,6 +25,7 @@ import { PaginatedResponse } from '../common/dto/api-response.dto';
 import { TeamStatus, LoginMethod, Prisma } from '@prisma/client';
 import { buildMultiValueFilter } from '../common/utils/prisma-helper';
 import { NotificationService } from '../notification/notification.service';
+import { toTitleCase } from '../common/utils/string-helper';
 
 @Injectable()
 export class TeamService {
@@ -43,7 +44,6 @@ export class TeamService {
   ) { }
 
   async create(dto: CreateTeamDto, userId: string) {
-    const { toTitleCase } = await import('../common/utils/string-helper');
 
     // Email duplication check
     const existingEmail = await this.prisma.team.findUnique({
@@ -70,13 +70,13 @@ export class TeamService {
 
     const generatedTeamNo = await this.autoNumberService.generateTeamNo();
 
-    let roleName = dto.role || 'EMPLOYEE';
+    let roleName = toTitleCase(dto.role || 'Employee');
     if (dto.roleId) {
       const customRole = await this.prisma.role.findUnique({
         where: { id: dto.roleId },
       });
       if (customRole) {
-        roleName = customRole.name;
+        roleName = toTitleCase(customRole.name);
       }
     }
 
@@ -133,7 +133,6 @@ export class TeamService {
     };
 
     const andArray = where.AND as Array<Prisma.TeamWhereInput>;
-    const { toTitleCase } = await import('../common/utils/string-helper');
 
     // Handle Status Filter
     if (filter?.status) {
@@ -148,14 +147,35 @@ export class TeamService {
       }
     }
 
-    if (filter?.clientGroupId) andArray.push({ clientGroupId: filter.clientGroupId });
-    if (filter?.companyId) andArray.push({ companyId: filter.companyId });
-    if (filter?.locationId) andArray.push({ locationId: filter.locationId });
-    if (filter?.subLocationId) andArray.push({ subLocationId: filter.subLocationId });
-    if (filter?.role) andArray.push({ role: filter.role });
-    if (filter?.teamName) andArray.push(buildMultiValueFilter('teamName', toTitleCase(filter.teamName)));
+    const handleMultiIdFilter = (field: string, value: any) => {
+      if (!value) return;
+      const values = typeof value === 'string'
+        ? value.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+        : Array.isArray(value) ? value : [value];
+      if (values.length > 0) {
+        andArray.push({ [field]: { in: values } });
+      }
+    };
+
+    handleMultiIdFilter('clientGroupId', filter?.clientGroupId);
+    handleMultiIdFilter('companyId', filter?.companyId);
+    handleMultiIdFilter('locationId', filter?.locationId);
+    handleMultiIdFilter('subLocationId', filter?.subLocationId);
+
+    if (filter?.role) andArray.push(buildMultiValueFilter('role', filter.role));
+
+    if (filter?.groupName) andArray.push({ clientGroup: buildMultiValueFilter('groupName', filter.groupName) });
+    if (filter?.companyName) andArray.push({ company: buildMultiValueFilter('companyName', filter.companyName) });
+    if (filter?.locationName) andArray.push({ location: buildMultiValueFilter('locationName', filter.locationName) });
+    if (filter?.subLocationName) andArray.push({ subLocation: buildMultiValueFilter('subLocationName', filter.subLocationName) });
+
+    if (filter?.email) andArray.push(buildMultiValueFilter('email', filter.email));
+    if (filter?.phone) andArray.push(buildMultiValueFilter('phone', filter.phone));
+    if (filter?.loginMethod) handleMultiIdFilter('loginMethod', filter.loginMethod);
+    if (filter?.teamName) andArray.push(buildMultiValueFilter('teamName', filter.teamName));
     if (filter?.teamNo) andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
-    if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
+    if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
+
 
     if (cleanedSearch) {
       const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
@@ -264,7 +284,7 @@ export class TeamService {
     // Map the data to include flat field names for frontend table
     const mappedData = data.map((team) => ({
       ...team,
-      roleName: team.customRole?.name || team.role,
+      roleName: toTitleCase(team.customRole?.name || team.role),
       groupName: team.clientGroup?.groupName || '',
       groupCode: team.clientGroup?.groupCode || '',
       companyName: team.company?.companyName || '',
@@ -294,7 +314,7 @@ export class TeamService {
       teamName: item.teamName,
       email: item.email,
       phone: item.phone || 'N/A',
-      role: item.roleName || item.role || 'N/A',
+      role: item.roleName || 'N/A',
       groupName: item.groupName || 'N/A',
       companyName: item.companyName || 'N/A',
       locationName: item.locationName || 'N/A',
@@ -344,7 +364,6 @@ export class TeamService {
 
   async update(id: string, dto: UpdateTeamDto, userId: string) {
     const existing = await this.findById(id);
-    const { toTitleCase } = await import('../common/utils/string-helper');
 
     // Email duplication check if changed
     if (dto.email && dto.email.toLowerCase() !== existing.email) {
@@ -369,12 +388,13 @@ export class TeamService {
     if (dto.teamName) data.teamName = toTitleCase(dto.teamName);
     if (dto.email) data.email = dto.email.toLowerCase();
 
+    if (dto.role) data.role = toTitleCase(dto.role);
     if (dto.roleId) {
       const customRole = await this.prisma.role.findUnique({
         where: { id: dto.roleId },
       });
       if (customRole) {
-        data.role = customRole.name;
+        data.role = toTitleCase(customRole.name);
       }
     }
 
@@ -551,7 +571,7 @@ export class TeamService {
       processedData.push({
         ...row,
         status: row.status ? this.excelUploadService.validateEnum(row.status, TeamStatus, 'Status') : TeamStatus.Active,
-        role: row.role ? row.role.toUpperCase() : 'EMPLOYEE',
+        role: row.role ? toTitleCase(row.role) : 'Employee',
         loginMethod: LoginMethod.General,
       });
     }

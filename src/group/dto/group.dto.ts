@@ -151,4 +151,20 @@ export class FilterGroupDto {
     @IsOptional()
     @IsString()
     remark?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
+
+    @IsOptional()
+    @IsString()
+    locationName?: string;
+
+    @IsOptional()
+    @IsString()
+    subLocationName?: string;
+
+    @IsOptional()
+    @IsString()
+    teamMember?: string;
 }

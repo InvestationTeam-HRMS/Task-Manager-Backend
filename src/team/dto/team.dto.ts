@@ -165,7 +165,15 @@ export class FilterTeamDto {
 
     @IsOptional()
     @IsString()
+    groupName?: string;
+
+    @IsOptional()
+    @IsString()
     companyId?: string;
+
+    @IsOptional()
+    @IsString()
+    companyName?: string;
 
     @IsOptional()
     @IsString()
@@ -173,7 +181,15 @@ export class FilterTeamDto {
 
     @IsOptional()
     @IsString()
+    locationName?: string;
+
+    @IsOptional()
+    @IsString()
     subLocationId?: string;
+
+    @IsOptional()
+    @IsString()
+    subLocationName?: string;
 
     @IsOptional()
     @IsString()
@@ -183,6 +199,19 @@ export class FilterTeamDto {
     @IsString()
     teamNo?: string;
 
+
+    @IsOptional()
+    @IsString()
+    email?: string;
+
+    @IsOptional()
+    @IsString()
+    phone?: string;
+
+    @IsOptional()
+    @IsEnum(LoginMethod)
+    loginMethod?: LoginMethod;
+
     @IsOptional()
     @IsString()
     remark?: string;
@@ -191,3 +220,4 @@ export class FilterTeamDto {
     @IsString()
     role?: string;
 }
+

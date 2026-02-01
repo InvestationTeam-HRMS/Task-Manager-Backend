@@ -118,6 +118,85 @@ export class GroupService {
         if (filter?.groupNo) andArray.push(buildMultiValueFilter('groupNo', filter.groupNo));
         if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
 
+        // Handle Array Filters (IDs)
+        if (filter?.clientGroupIds && filter.clientGroupIds.length > 0) {
+            andArray.push({ clientGroupIds: { hasSome: filter.clientGroupIds } });
+        }
+        if (filter?.companyIds && filter.companyIds.length > 0) {
+            andArray.push({ companyIds: { hasSome: filter.companyIds } });
+        }
+        if (filter?.locationIds && filter.locationIds.length > 0) {
+            andArray.push({ locationIds: { hasSome: filter.locationIds } });
+        }
+        if (filter?.subLocationIds && filter.subLocationIds.length > 0) {
+            andArray.push({ subLocationIds: { hasSome: filter.subLocationIds } });
+        }
+
+        // Handle Text Filters for Related Entities
+        if (filter?.companyName) {
+            const companies = await this.prisma.clientCompany.findMany({
+                where: { companyName: { contains: filter.companyName, mode: 'insensitive' } },
+                select: { id: true }
+            });
+            const companyIds = companies.map(c => c.id);
+            if (companyIds.length > 0) {
+                andArray.push({ companyIds: { hasSome: companyIds } });
+            } else {
+                // Return empty if search term doesn't match any company but was provided
+                andArray.push({ id: 'none' });
+            }
+        }
+
+        if (filter?.locationName) {
+            const locations = await this.prisma.clientLocation.findMany({
+                where: { locationName: { contains: filter.locationName, mode: 'insensitive' } },
+                select: { id: true }
+            });
+            const locationIds = locations.map(l => l.id);
+            if (locationIds.length > 0) {
+                andArray.push({ locationIds: { hasSome: locationIds } });
+            } else {
+                andArray.push({ id: 'none' });
+            }
+        }
+
+        if (filter?.subLocationName) {
+            const subLocations = await this.prisma.subLocation.findMany({
+                where: { subLocationName: { contains: filter.subLocationName, mode: 'insensitive' } },
+                select: { id: true }
+            });
+            const subLocationIds = subLocations.map(sl => sl.id);
+            if (subLocationIds.length > 0) {
+                andArray.push({ subLocationIds: { hasSome: subLocationIds } });
+            } else {
+                andArray.push({ id: 'none' });
+            }
+        }
+
+        if (filter?.teamMember) {
+            const teams = await this.prisma.team.findMany({
+                where: {
+                    OR: [
+                        { teamName: { contains: filter.teamMember, mode: 'insensitive' } },
+                        { email: { contains: filter.teamMember, mode: 'insensitive' } },
+                    ]
+                },
+                select: { id: true }
+            });
+            const teamIds = teams.map(t => t.id);
+            if (teamIds.length > 0) {
+                andArray.push({
+                    members: {
+                        some: {
+                            userId: { in: teamIds }
+                        }
+                    }
+                });
+            } else {
+                andArray.push({ id: 'none' });
+            }
+        }
+
         if (cleanedSearch) {
             const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
             const allSearchConditions: Prisma.GroupWhereInput[] = [];
@@ -138,6 +217,9 @@ export class GroupService {
                 if ('inactive'.includes(searchLower) && searchLower.length >= 3) {
                     allSearchConditions.push({ status: GroupStatus.Inactive });
                 }
+
+                // Add deep search for members/related entities if needed
+                // For performance, we limit this in search or keep it simple
             }
 
             if (allSearchConditions.length > 0) {
@@ -193,7 +275,7 @@ export class GroupService {
 
         // Fetch all related entities in parallel
         const [clientGroups, companies, locations, subLocations] = await Promise.all([
-            allClientGroupIds.length > 0 
+            allClientGroupIds.length > 0
                 ? this.prisma.clientGroup.findMany({
                     where: { id: { in: allClientGroupIds } },
                     select: { id: true, groupName: true }
@@ -222,13 +304,13 @@ export class GroupService {
         // Create lookup maps
         const clientGroupMap = new Map<string, string>();
         clientGroups.forEach(cg => clientGroupMap.set(cg.id, cg.groupName));
-        
+
         const companyMap = new Map<string, string>();
         companies.forEach(c => companyMap.set(c.id, c.companyName));
-        
+
         const locationMap = new Map<string, string>();
         locations.forEach(l => locationMap.set(l.id, l.locationName));
-        
+
         const subLocationMap = new Map<string, string>();
         subLocations.forEach(sl => subLocationMap.set(sl.id, sl.subLocationName));
 

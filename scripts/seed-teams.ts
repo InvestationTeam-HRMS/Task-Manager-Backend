@@ -12,7 +12,7 @@ async function main() {
             teamName: 'Marketing Manager',
             email: 'aman.manager@investationteam.com',
             password: password,
-            role: 'MANAGER',
+            role: 'Manager',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         },
@@ -21,7 +21,7 @@ async function main() {
             teamName: 'HR Executive',
             email: 'priya.hr@investationteam.com',
             password: password,
-            role: 'HR',
+            role: 'Hr',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         },
@@ -30,11 +30,12 @@ async function main() {
             teamName: 'Senior Developer',
             email: 'rahul.emp@investationteam.com',
             password: password,
-            role: 'EMPLOYEE',
+            role: 'Employee',
             status: TeamStatus.Active,
             loginMethod: LoginMethod.General,
         }
     ];
+
 
     console.log('Seed: Creating teams...');
 
