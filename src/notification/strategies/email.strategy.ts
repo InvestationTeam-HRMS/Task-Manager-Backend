@@ -70,7 +70,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
 
     async sendOtp(recipient: string, otp: string): Promise<boolean> {
         const from = this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
-        const subject = '🔐 Verification Code - Mission HRMS';
+        const subject = '🔐 Verification Code - Task Manager';
 
         try {
             if (!this.transporter) throw new Error('SMTP transporter not initialized');
@@ -92,7 +92,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
 
     async sendForgotPasswordOtp(recipient: string, otp: string): Promise<boolean> {
         const from = this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
-        const subject = '🔐 Password Reset Code - Mission HRMS';
+        const subject = '🔐 Password Reset Code - Task Manager';
 
         try {
             if (!this.transporter) throw new Error('SMTP transporter not initialized');
@@ -116,7 +116,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
         const from = this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
         const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:5173';
         const invitationLink = `${frontendUrl}/set-password?token=${token}&email=${recipient}`;
-        const subject = '🤝 Create Your Account - Mission HRMS';
+        const subject = '🤝 Create Your Account - Task Manager';
 
         try {
             if (!this.transporter) throw new Error('SMTP transporter not initialized');
@@ -146,7 +146,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
                 </div>
                 <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
                     <p style="font-size: 16px; margin-bottom: 20px;">Hello <strong>${teamName}</strong>,</p>
-                    <p style="font-size: 16px; margin-bottom: 20px;">Welcome to <strong>Mission HRMS</strong>! Your account has been created. For security reasons, you must set an initial password before you can log in.</p>
+                    <p style="font-size: 16px; margin-bottom: 20px;">Welcome to <strong>Task Manager</strong>! Your account has been created. For security reasons, you must set an initial password before you can log in.</p>
                     <div style="text-align: center; margin: 30px 0;">
                         <a href="${link}" style="background-color: #FF3D71; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Set My Password</a>
                     </div>
@@ -154,7 +154,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
                     <p style="font-size: 12px; color: #FF3D71; word-break: break-all;">${link}</p>
                     <p style="font-size: 14px; color: #666; margin-top: 20px;">This link is valid for <strong>24 hours</strong>. If you did not expect this invitation, please contact your HR administrator.</p>
                     <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} Mission HRMS. All rights reserved.</p>
+                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} Task Manager. All rights reserved.</p>
                 </div>
             </body>
             </html>

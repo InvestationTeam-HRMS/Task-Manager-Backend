@@ -202,15 +202,64 @@ export class TeamService {
           firstName: true,
           lastName: true,
           email: true,
+          phone: true,
           role: true,
           status: true,
+          loginMethod: true,
+          taskAssignPermission: true,
+          remark: true,
           createdAt: true,
+          clientGroupId: true,
+          companyId: true,
+          locationId: true,
+          subLocationId: true,
+          clientGroup: {
+            select: {
+              id: true,
+              groupName: true,
+              groupCode: true,
+            },
+          },
+          company: {
+            select: {
+              id: true,
+              companyName: true,
+              companyCode: true,
+            },
+          },
+          location: {
+            select: {
+              id: true,
+              locationName: true,
+              locationCode: true,
+            },
+          },
+          subLocation: {
+            select: {
+              id: true,
+              subLocationName: true,
+              subLocationCode: true,
+            },
+          },
         },
       }),
       this.prisma.team.count({ where }),
     ]);
 
-    const response = new PaginatedResponse(data, total, page, limit);
+    // Map the data to include flat field names for frontend table
+    const mappedData = data.map((team) => ({
+      ...team,
+      groupName: team.clientGroup?.groupName || '',
+      groupCode: team.clientGroup?.groupCode || '',
+      companyName: team.company?.companyName || '',
+      companyCode: team.company?.companyCode || '',
+      locationName: team.location?.locationName || '',
+      locationCode: team.location?.locationCode || '',
+      subLocationName: team.subLocation?.subLocationName || '',
+      subLocationCode: team.subLocation?.subLocationCode || '',
+    }));
+
+    const response = new PaginatedResponse(mappedData, total, page, limit);
 
     if (isCacheable) {
       await this.redisService.setCache(cacheKey, response, this.CACHE_TTL);
@@ -223,14 +272,21 @@ export class TeamService {
   async downloadExcel(query: any, userId: string, res: any) {
     const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
 
-    const mappedData = data.map((item, index) => ({
+    const mappedData = data.map((item: any, index) => ({
       srNo: index + 1,
       teamNo: item.teamNo,
       teamName: item.teamName,
       name: `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'N/A',
       email: item.email,
-      role: item.role,
+      phone: item.phone || 'N/A',
+      taskAssignPermission: item.taskAssignPermission ? 'Yes' : 'No',
+      groupName: item.groupName || 'N/A',
+      companyName: item.companyName || 'N/A',
+      locationName: item.locationName || 'N/A',
+      subLocationName: item.subLocationName || 'N/A',
       status: item.status,
+      loginMethod: item.loginMethod || 'N/A',
+      remark: item.remark || 'N/A',
       createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A',
     }));
 
@@ -240,8 +296,15 @@ export class TeamService {
       { header: 'Team Name', key: 'teamName', width: 25 },
       { header: 'Full Name', key: 'name', width: 30 },
       { header: 'Email', key: 'email', width: 30 },
-      { header: 'Role', key: 'role', width: 15 },
+      { header: 'Phone', key: 'phone', width: 15 },
+      { header: 'Task Assign', key: 'taskAssignPermission', width: 12 },
+      { header: 'Client Group', key: 'groupName', width: 20 },
+      { header: 'Company', key: 'companyName', width: 20 },
+      { header: 'Location', key: 'locationName', width: 20 },
+      { header: 'SubLocation', key: 'subLocationName', width: 20 },
       { header: 'Status', key: 'status', width: 15 },
+      { header: 'Login Method', key: 'loginMethod', width: 15 },
+      { header: 'Remark', key: 'remark', width: 25 },
       { header: 'Created Date', key: 'createdAt', width: 20 },
     ];
 
@@ -494,13 +557,29 @@ export class TeamService {
   }
 
   async triggerInvitation(email: string, teamName: string) {
-    // Integration with NotificationService or Mailer
-    // For now, it's a placeholder
-    return true;
+    try {
+      // 1. Generate invitation token
+      const crypto = await import('crypto');
+      const token = crypto.randomBytes(32).toString('hex');
+
+      // Store token in Redis with 24 hour expiry (86400 seconds)
+      await this.redisService.set(`invitation:${token}`, email, 86400);
+
+      // 2. Send email via NotificationService
+      await this.notificationService.sendInvitation(email, teamName, token);
+
+      this.logger.log(`[INVITATION] Sent to ${email}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`[INVITATION_FAIL] ${error.message}`);
+      // Don't throw to prevent blocking creation flow
+      return false;
+    }
   }
 
   private async invalidateCache() {
     await this.redisService.deleteCachePattern(`${this.CACHE_KEY}:*`);
+    await this.redisService.deleteCachePattern(`client_groups:*`);
   }
 
   private async logAudit(

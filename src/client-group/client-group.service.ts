@@ -176,6 +176,11 @@ export class ClientGroupService {
                     createdAt: true,
                     _count: {
                         select: { companies: true, teams: true }
+                    },
+                    teams: {
+                        select: {
+                            email: true
+                        }
                     }
                 }
             }),
