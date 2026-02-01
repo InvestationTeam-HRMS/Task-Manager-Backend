@@ -4,14 +4,6 @@ import { Response } from 'express';
 
 @Injectable()
 export class ExcelDownloadService {
-    /**
-     * Generate and stream an Excel file with standard HRMS formatting
-     * @param res Express Response object
-     * @param data Array of data objects
-     * @param columns Column definitions { header: string, key: string, width?: number }
-     * @param fileName Name of the file to be downloaded
-     * @param sheetName Name of the worksheet
-     */
     async downloadExcel(
         res: Response,
         data: any[],
@@ -29,64 +21,72 @@ export class ExcelDownloadService {
             width: col.width || 20,
         }));
 
-        // 2. Add Data Rows
+        // 2. Add Data
         worksheet.addRows(data);
 
-        // 3. Overall Formatting
+        // 3. Formatting
         worksheet.eachRow((row, rowNumber) => {
-            // Header Row Styling
+
+            // ===== HEADER ROW =====
             if (rowNumber === 1) {
-                row.height = 30; // Increased height for premium look
+                row.height = 30;
+
                 row.eachCell((cell) => {
+                    // Header background
                     cell.fill = {
                         type: 'pattern',
                         pattern: 'solid',
-                        fgColor: { argb: 'FFE6B8B7' }, // Header Colour - #E6B8B7
+                        fgColor: { argb: 'FFE6B8B7' },
                     };
+
+                    // Header font
                     cell.font = {
                         bold: true,
                         size: 11,
                         color: { argb: 'FF000000' },
                     };
+
+                    // Header alignment + indent
                     cell.alignment = {
                         vertical: 'middle',
-                        horizontal: 'center',
+                        horizontal: 'left',
+                        indent: 1,
+                    };
+
+                    // ✅ BORDER ONLY ON HEADER
+                    cell.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' },
                     };
                 });
-            } else {
-                row.height = 20; // Slightly taller data rows
             }
 
-            // Apply borders and vertical alignment to ALL cells
-            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                cell.border = {
-                    top: { style: 'thin' },
-                    left: { style: 'thin' },
-                    bottom: { style: 'thin' },
-                    right: { style: 'thin' },
-                };
+            // ===== DATA ROWS =====
+            else {
+                row.height = 20;
 
-                // Vertical middle all cells
-                if (!cell.alignment) {
-                    cell.alignment = { vertical: 'middle' };
-                } else {
-                    cell.alignment.vertical = 'middle';
-                }
+                row.eachCell({ includeEmpty: true }, (cell) => {
+                    // ❌ NO BORDER ON DATA
 
-                // Horizontal center for # or specific columns
-                if (columns[colNumber - 1]?.header === '#' || columns[colNumber - 1]?.key === '#') {
-                    cell.alignment.horizontal = 'center';
-                }
-            });
+                    // Data alignment + indent
+                    cell.alignment = {
+                        vertical: 'middle',
+                        horizontal: 'left',
+                        indent: 1,
+                    };
+                });
+            }
         });
 
-        // 4. Add Filter on all columns
+        // 4. Auto Filter (unchanged)
         worksheet.autoFilter = {
             from: { row: 1, column: 1 },
             to: { row: 1, column: columns.length },
         };
 
-        // 5. Column width autoset based on content
+        // 5. Auto Column Width (unchanged)
         worksheet.columns.forEach((column: any) => {
             let maxLength = 0;
             const headerText = column.header ? column.header.toString() : '';
@@ -99,18 +99,17 @@ export class ExcelDownloadService {
                 }
             });
 
-            // Padding and bounds
             column.width = Math.min(Math.max(maxLength + 4, 12), 50);
         });
 
-        // 6. Finalize response
+        // 6. Response
         res.setHeader(
             'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
         res.setHeader(
             'Content-Disposition',
-            `attachment; filename="${fileName}"`,
+            `attachment; filename="${fileName}"`
         );
 
         await workbook.xlsx.write(res);
