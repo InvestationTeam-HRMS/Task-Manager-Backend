@@ -172,13 +172,24 @@ export class ClientLocationService {
         }
 
         if (filter?.deadline) {
-            const values = filter.deadline.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+            const values = filter.deadline.split(/[,\;|]/).map(v => v.trim()).filter(Boolean);
             const projectDeadlineConditions = values.map(v => {
                 const date = new Date(v);
                 if (isNaN(date.getTime())) return undefined;
-                const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-                const endOfDay = new Date(date.setHours(23, 59, 59, 999));
-                return { deadline: { gte: startOfDay, lte: endOfDay } };
+
+                const hasTime = v.includes('T') || v.includes(':');
+
+                if (hasTime) {
+                    const startOfMinute = new Date(date.getTime());
+                    startOfMinute.setSeconds(0, 0);
+                    const endOfMinute = new Date(date.getTime());
+                    endOfMinute.setSeconds(59, 999);
+                    return { deadline: { gte: startOfMinute, lte: endOfMinute } };
+                } else {
+                    const startOfDay = new Date(date.setHours(0, 0, 0, 0));
+                    const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+                    return { deadline: { gte: startOfDay, lte: endOfDay } };
+                }
             }).filter((v): v is { deadline: { gte: Date; lte: Date } } => !!v);
 
             if (projectDeadlineConditions.length > 0) {
@@ -187,7 +198,7 @@ export class ClientLocationService {
         }
 
         if (cleanedSearch) {
-            const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+            const searchValues = cleanedSearch.split(/[,\;|]/).map(v => v.trim()).filter(Boolean);
             const allSearchConditions: Prisma.ClientLocationWhereInput[] = [];
 
             for (const val of searchValues) {
