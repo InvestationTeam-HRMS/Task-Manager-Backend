@@ -266,9 +266,61 @@ export class TaskService {
         const andArray: any[] = [];
         const isAdmin = role?.toUpperCase() === 'ADMIN' || role?.toUpperCase() === 'HR' || role?.toUpperCase() === 'MANAGER';
 
+        const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
         // 1. Priority Filters (Project, Priority, Search)
-        if (filter.projectId) andArray.push({ projectId: filter.projectId });
-        if (filter.priority) andArray.push({ priority: filter.priority });
+        if (filter.projectId) {
+            if (isUuid(filter.projectId)) andArray.push({ projectId: filter.projectId });
+            else andArray.push({ project: { OR: [{ projectName: { contains: filter.projectId, mode: 'insensitive' } }, { projectNo: { contains: filter.projectId, mode: 'insensitive' } }] } });
+        }
+
+        if (filter.priority) {
+            const priorityValues = typeof filter.priority === 'string'
+                ? filter.priority.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.priority) ? filter.priority : [filter.priority];
+            if (priorityValues.length > 0) andArray.push({ priority: { in: priorityValues as any } });
+        }
+
+        if (filter.assignedTo) {
+            if (isUuid(filter.assignedTo)) andArray.push({ assignedTo: filter.assignedTo });
+            else andArray.push({
+                OR: [
+                    { assignee: { teamName: { contains: filter.assignedTo, mode: 'insensitive' } } },
+                    { assignee: { email: { contains: filter.assignedTo, mode: 'insensitive' } } },
+                    { targetTeam: { teamName: { contains: filter.assignedTo, mode: 'insensitive' } } },
+                    { targetGroup: { groupName: { contains: filter.assignedTo, mode: 'insensitive' } } }
+                ]
+            });
+        }
+
+        if (filter.createdBy) {
+            if (isUuid(filter.createdBy)) andArray.push({ createdBy: filter.createdBy });
+            else andArray.push({
+                OR: [
+                    { creator: { teamName: { contains: filter.createdBy, mode: 'insensitive' } } },
+                    { creator: { email: { contains: filter.createdBy, mode: 'insensitive' } } }
+                ]
+            });
+        }
+
+        if (filter.taskNo) andArray.push({ taskNo: { contains: filter.taskNo, mode: 'insensitive' } });
+        if (filter.taskTitle) andArray.push({ taskTitle: { contains: filter.taskTitle, mode: 'insensitive' } });
+        if (filter.document) andArray.push({ document: { contains: filter.document, mode: 'insensitive' } });
+        if (filter.remarkChat) andArray.push({ remarkChat: { contains: filter.remarkChat, mode: 'insensitive' } });
+
+        // Date Filters
+        const dateFields = ['createdTime', 'deadline', 'completeTime'];
+        dateFields.forEach(field => {
+            if ((filter as any)[field]) {
+                const date = new Date((filter as any)[field]);
+                if (!isNaN(date.getTime())) {
+                    const startOfDay = new Date(date).setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(date).setHours(23, 59, 59, 999);
+                    andArray.push({ [field]: { gte: new Date(startOfDay), lte: new Date(endOfDay) } });
+                }
+            }
+        });
+
         if (filter.search) {
             const val = filter.search;
             const searchTitle = toTitleCase(val);
@@ -278,6 +330,16 @@ export class TaskService {
                     { taskTitle: { contains: searchTitle, mode: 'insensitive' } },
                     { taskNo: { contains: val, mode: 'insensitive' } },
                     { additionalNote: { contains: val, mode: 'insensitive' } },
+                    { remarkChat: { contains: val, mode: 'insensitive' } },
+                    { document: { contains: val, mode: 'insensitive' } },
+                    { project: { projectName: { contains: val, mode: 'insensitive' } } },
+                    { project: { projectNo: { contains: val, mode: 'insensitive' } } },
+                    { assignee: { teamName: { contains: val, mode: 'insensitive' } } },
+                    { assignee: { email: { contains: val, mode: 'insensitive' } } },
+                    { creator: { teamName: { contains: val, mode: 'insensitive' } } },
+                    { creator: { email: { contains: val, mode: 'insensitive' } } },
+                    { targetTeam: { teamName: { contains: val, mode: 'insensitive' } } },
+                    { targetGroup: { groupName: { contains: val, mode: 'insensitive' } } }
                 ]
             });
         }
@@ -309,17 +371,10 @@ export class TaskService {
         if (filter.viewMode && userId) {
             switch (filter.viewMode) {
                 case TaskViewMode.ALL:
-                    // Admin sees all - no additional filters
-                    // Non-admin restriction handled in fallback
+                    // Admin sees all - restricted only if not admin
                     break;
 
                 case TaskViewMode.MY_PENDING:
-                    // ═══════════════════════════════════════════════════════════════
-                    // MY PENDING: Tasks I must work on
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks where I am the ASSIGNED owner (direct or via acceptance)
-                    // RULE:  assignedTo = me OR targetTeamId = me
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
                         OR: [
@@ -330,20 +385,10 @@ export class TaskService {
                     break;
 
                 case TaskViewMode.TEAM_PENDING:
-                    // ═══════════════════════════════════════════════════════════════
-                    // TEAM PENDING: Tasks I created/manage but others are working on
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks where I am the CREATOR, but NOT the assignee
-                    // RULE:  createdBy = me AND assignedTo != me AND not self-task
-                    // 
-                    // CRITICAL: Group members who REJECTED must NOT see this!
-                    //           Only the CREATOR sees team tasks after acceptance.
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
                         isSelfTask: false,
-                        createdBy: userId, // ONLY Creator sees Team Pending
-                        // Ensure I'm not the one working on it
+                        createdBy: userId,
                         AND: [
                             { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
                             { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
@@ -352,37 +397,18 @@ export class TaskService {
                     break;
 
                 case TaskViewMode.MY_COMPLETED:
-                    // ═══════════════════════════════════════════════════════════════
-                    // MY COMPLETED: Tasks I personally finished
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks where workingBy = me (I did the work)
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({ workingBy: userId });
                     break;
 
                 case TaskViewMode.TEAM_COMPLETED:
-                    // ═══════════════════════════════════════════════════════════════
-                    // TEAM COMPLETED: Tasks my team finished (but not me)
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks I created that were completed by someone else
-                    // RULE:  createdBy = me AND workingBy != me AND not self-task
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
-                        createdBy: userId, // ONLY Creator sees Team Completed
+                        createdBy: userId,
                         isSelfTask: false,
                         OR: [{ workingBy: { not: userId } }, { workingBy: null }]
                     });
                     break;
 
                 case TaskViewMode.REVIEW_PENDING_BY_ME:
-                    // ═══════════════════════════════════════════════════════════════
-                    // REVIEW BY ME: Tasks submitted for MY review
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks I created that are now in ReviewPending status
-                    // RULE:  createdBy = me AND status = ReviewPending
-                    // 
-                    // LIFECYCLE: Acceptor submits remark → appears here for Creator
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         createdBy: userId,
                         taskStatus: TaskStatus.ReviewPending
@@ -390,38 +416,41 @@ export class TaskService {
                     break;
 
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
-                    // ═══════════════════════════════════════════════════════════════
-                    // REVIEW BY TEAM: Tasks I submitted that are awaiting review
-                    // ═══════════════════════════════════════════════════════════════
-                    // SHOWS: Tasks where I am the worker (submitted the remark)
-                    // RULE:  workingBy = me AND status = ReviewPending AND NOT self-task
-                    //
-                    // CRITICAL: This is for the ACCEPTOR to see their submitted tasks
-                    // EXCLUDE self-tasks: Those appear in "Review Pending by Me" only
-                    // ═══════════════════════════════════════════════════════════════
                     andArray.push({
                         taskStatus: TaskStatus.ReviewPending,
-                        workingBy: userId, // I submitted it for review
-                        isSelfTask: false // EXCLUDE self-assigned tasks
+                        workingBy: userId,
+                        isSelfTask: false
                     });
                     break;
             }
-        } else {
-            // Fallback: Use direct DTO filters (Legacy support)
-            if (!isAdmin && userId) {
-                andArray.push({
-                    OR: [
-                        { createdBy: userId },
-                        { assignedTo: userId },
-                        { workingBy: userId },
-                        { targetTeamId: userId },
-                        { targetGroup: { members: { some: { userId } } } }
-                    ]
-                });
-            }
-            if (filter.assignedTo) andArray.push({ assignedTo: filter.assignedTo });
-            if (filter.workingBy) andArray.push({ workingBy: filter.workingBy });
-            if (filter.taskStatus) andArray.push({ taskStatus: filter.taskStatus });
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════
+        // ADDITIVE FILTERS (Applicable in any view mode, especially ALL)
+        // ══════════════════════════════════════════════════════════════════════════════
+        if (!isAdmin && userId && !filter.viewMode) {
+            andArray.push({
+                OR: [
+                    { createdBy: userId },
+                    { assignedTo: userId },
+                    { workingBy: userId },
+                    { targetTeamId: userId },
+                    { targetGroup: { members: { some: { userId } } } }
+                ]
+            });
+        }
+
+        // These filters apply regardless of viewMode (if provided)
+        if (filter.taskStatus) {
+            const statusValues = typeof filter.taskStatus === 'string'
+                ? filter.taskStatus.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
+                : Array.isArray(filter.taskStatus) ? filter.taskStatus : [filter.taskStatus];
+            if (statusValues.length > 0) andArray.push({ taskStatus: { in: statusValues as any } });
+        }
+
+        if (filter.workingBy) {
+            if (isUuid(filter.workingBy)) andArray.push({ workingBy: filter.workingBy });
+            else andArray.push({ worker: { teamName: { contains: filter.workingBy, mode: 'insensitive' } } });
         }
 
         const where = { AND: andArray };

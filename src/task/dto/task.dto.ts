@@ -129,34 +129,62 @@ export class FilterTaskDto extends PaginationDto {
     priority?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     projectId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     assignedTo?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetGroupId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     targetTeamId?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     createdBy?: string;
 
     @IsOptional()
-    @IsUUID()
+    @IsString()
     @Transform(({ value }) => value === 'null' || value === '' ? null : value)
     workingBy?: string;
+
+    @IsOptional()
+    @IsString()
+    taskNo?: string;
+
+    @IsOptional()
+    @IsString()
+    taskTitle?: string;
+
+    @IsOptional()
+    @IsString()
+    document?: string;
+
+    @IsOptional()
+    @IsString()
+    remarkChat?: string;
+
+    @IsOptional()
+    @IsDateString()
+    createdTime?: string;
+
+    @IsOptional()
+    @IsDateString()
+    deadline?: string;
+
+    @IsOptional()
+    @IsDateString()
+    completeTime?: string;
 
     @IsOptional()
     @IsString()
