@@ -157,26 +157,27 @@ export class AuthController {
     private setSessionCookie(res: Response, sessionId: string) {
         const isProduction = process.env.NODE_ENV === 'production';
         const domain = process.env.COOKIE_DOMAIN || '';
-        const isSecure = process.env.COOKIE_SECURE !== 'false'; // Check explicit override
+        const isSecure = process.env.COOKIE_SECURE !== 'false';
 
-        // Cookie configuration that works in all scenarios
+        // Cookie configuration for proxied (Vercel) / same-site setup
         const cookieOptions: any = {
             httpOnly: true,
-            secure: isProduction ? isSecure : false, // Respect COOKIE_SECURE env var in production
-            sameSite: (isProduction && isSecure) ? 'none' : 'lax', // Use 'lax' if not HTTPS
+            secure: isProduction ? isSecure : false,
+            // 'lax' is better for Incognito when using a proxy
+            sameSite: isProduction ? 'lax' : 'lax', 
             maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year - WhatsApp style
             path: '/',
         };
 
         // Set domain only for production with valid domain
-        if (isProduction && domain && domain !== 'localhost') {
+        if (isProduction && domain && domain !== 'localhost' && domain !== '') {
             cookieOptions.domain = domain;
         }
 
         res.cookie('sessionId', sessionId, cookieOptions);
         
         // Log for debugging
-        this.logger?.log?.(`Cookie set: secure=${cookieOptions.secure}, sameSite=${cookieOptions.sameSite}, domain=${cookieOptions.domain || 'none'}`);
+        this.logger?.log?.(`Cookie set on ${domain || 'current domain'}: secure=${cookieOptions.secure}, sameSite=${cookieOptions.sameSite}`);
     }
 
     private clearSessionCookie(res: Response) {
@@ -188,10 +189,10 @@ export class AuthController {
             path: '/',
             httpOnly: true,
             secure: isProduction ? isSecure : false,
-            sameSite: (isProduction && isSecure) ? 'none' : 'lax',
+            sameSite: 'lax',
         };
 
-        if (isProduction && domain && domain !== 'localhost') {
+        if (isProduction && domain && domain !== 'localhost' && domain !== '') {
             cookieOptions.domain = domain;
         }
 
