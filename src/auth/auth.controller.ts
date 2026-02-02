@@ -150,53 +150,137 @@ export class AuthController {
     }
 
     /**
-     * WhatsApp-style cookie configuration
-     * Works on: Chrome, Edge, Firefox, Incognito, across restarts
-     * Supports both HTTP and HTTPS in production
+     * 🍪 Universal Cookie Configuration
+     * 
+     * Works on ALL environments:
+     * - Local Development (localhost)
+     * - Same-origin Production (frontend & backend on same domain)
+     * - Cross-origin Production (Vercel frontend + Render/Railway/AWS backend)
+     * 
+     * Environment Variables:
+     * - COOKIE_SAME_SITE: 'none' | 'lax' | 'strict' (default: auto-detect)
+     * - COOKIE_SECURE: 'true' | 'false' (default: auto based on HTTPS)
+     * - COOKIE_DOMAIN: '.example.com' for subdomain sharing (optional)
+     * - CORS_ORIGIN: Frontend URL(s) for cross-origin detection
      */
     private setSessionCookie(res: Response, sessionId: string) {
-        const isProduction = process.env.NODE_ENV === 'production';
-        const domain = process.env.COOKIE_DOMAIN || '';
-        const isSecure = process.env.COOKIE_SECURE !== 'false';
-
-        // Cookie configuration for proxied (Vercel) / same-site setup
-        const cookieOptions: any = {
-            httpOnly: true,
-            secure: isProduction ? isSecure : false,
-            // 'lax' is better for Incognito when using a proxy
-            sameSite: isProduction ? 'lax' : 'lax', 
-            maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year - WhatsApp style
-            path: '/',
-        };
-
-        // Set domain only for production with valid domain
-        if (isProduction && domain && domain !== 'localhost' && domain !== '') {
-            cookieOptions.domain = domain;
-        }
-
-        res.cookie('sessionId', sessionId, cookieOptions);
+        const cookieConfig = this.getCookieConfig();
         
-        // Log for debugging
-        this.logger?.log?.(`Cookie set on ${domain || 'current domain'}: secure=${cookieOptions.secure}, sameSite=${cookieOptions.sameSite}`);
+        res.cookie('sessionId', sessionId, {
+            httpOnly: true,
+            secure: cookieConfig.secure,
+            sameSite: cookieConfig.sameSite,
+            maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+            path: '/',
+            ...(cookieConfig.domain && { domain: cookieConfig.domain }),
+        });
+        
+        this.logger?.log?.(`[Cookie] Set: secure=${cookieConfig.secure}, sameSite=${cookieConfig.sameSite}, domain=${cookieConfig.domain || 'auto'}`);
     }
 
     private clearSessionCookie(res: Response) {
-        const isProduction = process.env.NODE_ENV === 'production';
-        const domain = process.env.COOKIE_DOMAIN || '';
-        const isSecure = process.env.COOKIE_SECURE !== 'false';
+        const cookieConfig = this.getCookieConfig();
 
-        const cookieOptions: any = {
+        res.clearCookie('sessionId', {
             path: '/',
             httpOnly: true,
-            secure: isProduction ? isSecure : false,
-            sameSite: 'lax',
-        };
+            secure: cookieConfig.secure,
+            sameSite: cookieConfig.sameSite,
+            ...(cookieConfig.domain && { domain: cookieConfig.domain }),
+        });
+        
+        this.logger?.log?.(`[Cookie] Cleared sessionId`);
+    }
 
-        if (isProduction && domain && domain !== 'localhost' && domain !== '') {
-            cookieOptions.domain = domain;
+    /**
+     * Auto-detect cookie configuration based on environment
+     */
+    private getCookieConfig(): { secure: boolean; sameSite: 'none' | 'lax' | 'strict'; domain?: string } {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const corsOrigin = process.env.CORS_ORIGIN || '';
+        const backendUrl = process.env.APP_URL || process.env.BACKEND_URL || '';
+        
+        // Manual overrides from environment
+        const manualSameSite = process.env.COOKIE_SAME_SITE as 'none' | 'lax' | 'strict' | undefined;
+        const manualSecure = process.env.COOKIE_SECURE;
+        const cookieDomain = process.env.COOKIE_DOMAIN || '';
+
+        // Detect if cross-origin (frontend and backend on different domains)
+        const isCrossOrigin = this.detectCrossOrigin(corsOrigin, backendUrl);
+
+        // Determine SameSite
+        let sameSite: 'none' | 'lax' | 'strict';
+        if (manualSameSite && ['none', 'lax', 'strict'].includes(manualSameSite)) {
+            sameSite = manualSameSite;
+        } else if (!isProduction) {
+            sameSite = 'lax'; // Local development
+        } else if (isCrossOrigin) {
+            sameSite = 'none'; // Cross-origin production (Vercel + Render)
+        } else {
+            sameSite = 'lax'; // Same-origin production
         }
 
-        res.clearCookie('sessionId', cookieOptions);
+        // Determine Secure
+        let secure: boolean;
+        if (manualSecure !== undefined) {
+            secure = manualSecure === 'true';
+        } else if (!isProduction) {
+            secure = false; // Local development (HTTP)
+        } else {
+            // Production: always true (HTTPS required)
+            // Note: SameSite=None REQUIRES Secure=true
+            secure = true;
+        }
+
+        // Validate: SameSite=None requires Secure=true
+        if (sameSite === 'none' && !secure) {
+            this.logger?.warn?.('[Cookie] WARNING: SameSite=None requires Secure=true. Forcing Secure=true.');
+            secure = true;
+        }
+
+        // Domain (for subdomain sharing like .example.com)
+        const domain = cookieDomain && cookieDomain !== 'localhost' ? cookieDomain : undefined;
+
+        return { secure, sameSite, domain };
+    }
+
+    /**
+     * Detect if frontend and backend are on different origins
+     */
+    private detectCrossOrigin(corsOrigin: string, backendUrl: string): boolean {
+        if (!corsOrigin || !backendUrl) return false;
+
+        try {
+            const frontendOrigins = corsOrigin.split(',').map(o => o.trim());
+            const backendHost = new URL(backendUrl).hostname;
+
+            // Check if any frontend origin has a different hostname than backend
+            for (const origin of frontendOrigins) {
+                if (!origin) continue;
+                const frontendHost = new URL(origin).hostname;
+                
+                // Different hosts = cross-origin
+                if (frontendHost !== backendHost) {
+                    // Check if they share a parent domain (e.g., app.example.com and api.example.com)
+                    const frontendParts = frontendHost.split('.');
+                    const backendParts = backendHost.split('.');
+                    
+                    // Get root domains (last 2 parts)
+                    const frontendRoot = frontendParts.slice(-2).join('.');
+                    const backendRoot = backendParts.slice(-2).join('.');
+                    
+                    // If root domains are different, it's cross-origin
+                    if (frontendRoot !== backendRoot) {
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {
+            // URL parsing failed, assume cross-origin for safety
+            return true;
+        }
+
+        return false;
     }
 
     @Get('me')

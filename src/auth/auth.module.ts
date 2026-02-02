@@ -5,15 +5,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { SessionAuthGuard } from './guards/session-auth.guard';
 import { NotificationModule } from '../notification/notification.module';
 import { RedisModule } from '../redis/redis.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
     imports: [
         NotificationModule,
-        forwardRef(() => RedisModule), // For session validation in JwtStrategy
+        forwardRef(() => RedisModule),
+        PrismaModule,
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -27,7 +30,7 @@ import { RedisModule } from '../redis/redis.module';
         }),
     ],
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy, RolesGuard, SessionAuthGuard],
-    exports: [AuthService, JwtStrategy, PassportModule, RolesGuard, SessionAuthGuard],
+    providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, SessionAuthGuard],
+    exports: [AuthService, JwtStrategy, JwtAuthGuard, PassportModule, RolesGuard, SessionAuthGuard],
 })
 export class AuthModule { }
