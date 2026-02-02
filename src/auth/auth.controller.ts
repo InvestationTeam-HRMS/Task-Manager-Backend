@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, Res, UseGuards, Get, Patch } from '@nestjs/common';
+import { Controller, Post, Body, Req, Res, UseGuards, Get, Patch, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
     RegisterDto,
@@ -46,22 +46,21 @@ export class AuthController {
 
         // If OTP is disabled, automatically complete the login flow
         if (loginResult.otpSkipped) {
-            // OTP was skipped - proceed directly to token generation
+            // OTP was skipped - proceed directly to session creation
             const verifyDto: VerifyLoginDto = {
                 email: dto.email,
                 otp: '', // Not needed when OTP is disabled
             };
 
             const result = await this.authService.verifyLogin(verifyDto, ipAddress, userAgent);
-            this.setCookies(res, result.accessToken, result.refreshToken);
 
-            // Ensure otpSkipped is sent back so FE knows to bypass OTP Screen
-            const { accessToken, refreshToken, ...userPart } = result;
+            // Set ONLY sessionId cookie (WhatsApp-style)
+            this.setSessionCookie(res, result.sessionId);
+
+            // Return user data ONLY (no tokens)
             return {
-                ...userPart,
-                accessToken, // Return for FE persistence
-                refreshToken, // Return for FE persistence
-                otpSkipped: true
+                user: result.user,
+                message: 'Login successful'
             };
         }
 
@@ -79,46 +78,48 @@ export class AuthController {
         const userAgent = req.headers['user-agent'];
         const result = await this.authService.verifyLogin(dto, ipAddress, userAgent);
 
-        this.setCookies(res, result.accessToken, result.refreshToken);
+        // Set ONLY sessionId cookie (WhatsApp-style)
+        this.setSessionCookie(res, result.sessionId);
 
-        const { ...userPart } = result;
-        // Return tokens in body too (Hybrid approach for localStorage support)
+        // Return user data ONLY (no tokens)
         return {
-            ...userPart,
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken,
+            user: result.user,
+            message: 'Login successful'
         };
     }
 
     @Post('refresh')
     async refresh(
-        @Body() dto: RefreshTokenDto,
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ) {
-        // Fallback for dto.refreshToken if not provided in body (get from cookie)
-        const rfToken = dto.refreshToken || req.cookies['refreshToken'];
-        if (!rfToken) {
-            throw new Error('Refresh token missing');
+        const sessionId = req.cookies['sessionId'];
+        if (!sessionId) {
+            throw new Error('Session not found');
         }
 
-        const ipAddress = req.ip || req.socket.remoteAddress || '';
-        const result = await this.authService.refreshTokens({ refreshToken: rfToken }, ipAddress);
+        const session = await this.authService.validateSession(sessionId);
+        if (!session) {
+            throw new Error('Invalid session');
+        }
 
-        this.setCookies(res, result.accessToken, result.refreshToken);
-
-        return { message: 'Token refreshed' };
+        return { message: 'Session is valid' };
     }
 
     @Post('logout')
-    @UseGuards(JwtAuthGuard)
     async logout(
-        @GetUser('id') userId: string,
-        @Body('sessionId') sessionId: string,
+        @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ) {
-        this.clearCookies(res);
-        return this.authService.logout(userId, sessionId);
+        const sessionId = req.cookies['sessionId'];
+
+        if (sessionId) {
+            await this.authService.logoutBySession(sessionId);
+        }
+
+        this.clearSessionCookie(res);
+
+        return { message: 'Logged out successfully' };
     }
 
     @Patch('change-password')
@@ -154,28 +155,26 @@ export class AuthController {
         return this.authService.setPassword(dto, ipAddress);
     }
 
-    private setCookies(res: Response, accessToken: string, refreshToken: string) {
+    private setSessionCookie(res: Response, sessionId: string) {
         const isProduction = process.env.NODE_ENV === 'production';
         const domain = process.env.COOKIE_DOMAIN || 'localhost';
 
         const cookieOptions: any = {
             httpOnly: true,
-            secure: isProduction, // Strict true in production
-            sameSite: isProduction ? 'none' : 'lax', // Must be 'none' for cross-site
-            maxAge: 30 * 24 * 60 * 60 * 1000,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
+            maxAge: 365 * 24 * 60 * 60 * 1000,
             path: '/',
         };
 
-        // Only set domain if it's NOT localhost to avoid issues on subdomains
         if (domain !== 'localhost') {
             cookieOptions.domain = domain;
         }
 
-        res.cookie('accessToken', accessToken, cookieOptions);
-        res.cookie('refreshToken', refreshToken, cookieOptions);
+        res.cookie('sessionId', sessionId, cookieOptions);
     }
 
-    private clearCookies(res: Response) {
+    private clearSessionCookie(res: Response) {
         const isProduction = process.env.NODE_ENV === 'production';
         const domain = process.env.COOKIE_DOMAIN || 'localhost';
 
@@ -190,16 +189,28 @@ export class AuthController {
             cookieOptions.domain = domain;
         }
 
-        res.clearCookie('accessToken', cookieOptions);
-        res.clearCookie('refreshToken', cookieOptions);
+        res.clearCookie('sessionId', cookieOptions);
     }
 
-    @Get('profile')
-    @UseGuards(JwtAuthGuard)
-    getProfile(@GetUser() user: any) {
+    @Get('me')
+    async getProfile(
+        @Req() req: Request
+    ) {
+        const sessionId = req.cookies['sessionId'];
+
+        if (!sessionId) {
+            throw new UnauthorizedException('No active session');
+        }
+
+        const result = await this.authService.validateSessionAndGetUser(sessionId);
+
+        if (!result) {
+            throw new UnauthorizedException('Invalid or expired session');
+        }
+
         return {
-            user,
-            sessionId: user.sessionId
+            user: result.user,
+            sessionId: result.sessionId
         };
     }
 

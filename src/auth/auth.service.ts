@@ -647,4 +647,70 @@ export class AuthService {
             }
         };
     }
+
+    async validateSession(sessionId: string): Promise<boolean> {
+        const redisSession = await this.redisService.getSession(sessionId);
+        if (redisSession) {
+            return true;
+        }
+
+        const dbSession = await this.prisma.session.findUnique({
+            where: { sessionId },
+        });
+
+        if (!dbSession || !dbSession.isActive || dbSession.expiresAt < new Date()) {
+            return false;
+        }
+
+        const sessionExpiry = Math.floor((dbSession.expiresAt.getTime() - Date.now()) / 1000);
+        await this.redisService.setSession(
+            sessionId,
+            { teamId: dbSession.teamId, email: '', role: '' },
+            sessionExpiry,
+        );
+
+        return true;
+    }
+
+    async validateSessionAndGetUser(sessionId: string): Promise<{ user: any; sessionId: string } | null> {
+        let sessionData = await this.redisService.getSession(sessionId);
+
+        if (!sessionData) {
+            const dbSession = await this.prisma.session.findUnique({
+                where: { sessionId },
+                include: { team: true },
+            });
+
+            if (!dbSession || !dbSession.isActive || dbSession.expiresAt < new Date()) {
+                return null;
+            }
+
+            sessionData = {
+                teamId: dbSession.teamId,
+                email: dbSession.team?.email || '',
+                role: dbSession.team?.role || '',
+            };
+
+            const sessionExpiry = Math.floor((dbSession.expiresAt.getTime() - Date.now()) / 1000);
+            await this.redisService.setSession(sessionId, sessionData, sessionExpiry);
+        }
+
+        const user = await this.getUserWithPermissions(sessionData.teamId);
+        if (!user) {
+            return null;
+        }
+
+        return { user, sessionId };
+    }
+
+    async logoutBySession(sessionId: string) {
+        await this.prisma.session.updateMany({
+            where: { sessionId },
+            data: { isActive: false },
+        });
+
+        await this.redisService.deleteSession(sessionId);
+
+        return { message: 'Logged out successfully' };
+    }
 }
