@@ -1,10 +1,8 @@
 import { Controller, Post, Body, Req, Res, UseGuards, Get, Patch, UnauthorizedException, Logger } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
-    RegisterDto,
     LoginDto,
     VerifyLoginDto,
-    VerifyOtpDto,
     RefreshTokenDto,
     ChangePasswordDto,
     ForgotPasswordDto,
@@ -12,6 +10,7 @@ import {
     ResendOtpDto,
     SetPasswordDto,
     UpdateProfileDto,
+
 } from './dto/auth.dto';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -20,20 +19,10 @@ import { GetUser } from './decorators/get-user.decorator';
 @Controller('auth')
 export class AuthController {
     private readonly logger = new Logger(AuthController.name);
-    
+
     constructor(private authService: AuthService) { }
 
-    @Post('register')
-    async register(@Body() dto: RegisterDto, @Req() req: Request) {
-        const ipAddress = req.ip || req.socket.remoteAddress || '';
-        return this.authService.register(dto, ipAddress);
-    }
 
-    @Post('verify-otp')
-    async verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request) {
-        const ipAddress = req.ip || req.socket.remoteAddress || '';
-        return this.authService.verifyOtp(dto, ipAddress);
-    }
 
     @Post('login')
     async login(
@@ -169,7 +158,7 @@ export class AuthController {
      */
     private setSessionCookie(res: Response, sessionId: string) {
         const cookieConfig = this.getCookieConfig();
-        
+
         res.cookie('sessionId', sessionId, {
             httpOnly: true,
             secure: cookieConfig.secure,
@@ -178,7 +167,7 @@ export class AuthController {
             path: '/',
             ...(cookieConfig.domain && { domain: cookieConfig.domain }),
         });
-        
+
         this.logger?.log?.(`[Cookie] Set: secure=${cookieConfig.secure}, sameSite=${cookieConfig.sameSite}, domain=${cookieConfig.domain || 'auto'}`);
     }
 
@@ -192,7 +181,7 @@ export class AuthController {
             sameSite: cookieConfig.sameSite,
             ...(cookieConfig.domain && { domain: cookieConfig.domain }),
         });
-        
+
         this.logger?.log?.(`[Cookie] Cleared sessionId`);
     }
 
@@ -203,7 +192,7 @@ export class AuthController {
         const isProduction = process.env.NODE_ENV === 'production';
         const corsOrigin = process.env.CORS_ORIGIN || '';
         const backendUrl = process.env.APP_URL || process.env.BACKEND_URL || '';
-        
+
         // Manual overrides from environment
         const manualSameSite = process.env.COOKIE_SAME_SITE as 'none' | 'lax' | 'strict' | undefined;
         const manualSecure = process.env.COOKIE_SECURE;
@@ -262,17 +251,17 @@ export class AuthController {
             for (const origin of frontendOrigins) {
                 if (!origin) continue;
                 const frontendHost = new URL(origin).hostname;
-                
+
                 // Different hosts = cross-origin
                 if (frontendHost !== backendHost) {
                     // Check if they share a parent domain (e.g., app.example.com and api.example.com)
                     const frontendParts = frontendHost.split('.');
                     const backendParts = backendHost.split('.');
-                    
+
                     // Get root domains (last 2 parts)
                     const frontendRoot = frontendParts.slice(-2).join('.');
                     const backendRoot = backendParts.slice(-2).join('.');
-                    
+
                     // If root domains are different, it's cross-origin
                     if (frontendRoot !== backendRoot) {
                         return true;

@@ -6,10 +6,8 @@ import { RedisService } from '../redis/redis.service';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import {
-    RegisterDto,
     LoginDto,
     VerifyLoginDto,
-    VerifyOtpDto,
     RefreshTokenDto,
     ChangePasswordDto,
     ForgotPasswordDto,
@@ -34,82 +32,7 @@ export class AuthService {
         private cloudinaryService: CloudinaryService,
     ) { }
 
-    async register(dto: RegisterDto, ipAddress: string) {
-        const existingTeam = await this.prisma.team.findUnique({
-            where: { email: dto.email },
-        });
 
-        if (existingTeam) {
-            throw new ConflictException('Email already registered');
-        }
-
-        // Default to EMAIL
-        const channel = OtpChannel.EMAIL;
-
-        // Store registration data locally (Redis) instead of creating user
-        const hashedPassword = await bcrypt.hash(
-            dto.password,
-            parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
-        );
-
-        const tempUserData = {
-            ...dto,
-            password: hashedPassword,
-            ipAddress,
-            otpChannel: channel,
-        };
-
-        const ttl = parseInt(this.configService.get('OTP_EXPIRATION', '600'));
-        await this.redisService.setTempUser(dto.email, tempUserData, ttl);
-
-        // Generate and send OTP
-        const otp = this.generateOTP();
-        await this.redisService.setOTP(dto.email, otp, ttl);
-
-        const recipient = dto.email;
-        await this.notificationService.sendOtp(recipient, otp, channel);
-
-        return {
-            message: `OTP sent to email. Please verify to complete registration.`,
-            email: dto.email,
-            channel,
-        };
-    }
-
-    async verifyOtp(dto: VerifyOtpDto, ipAddress: string) {
-        const storedOtp = await this.redisService.getOTP(dto.email);
-        const tempUser = await this.redisService.getTempUser(dto.email);
-
-        if (!storedOtp || storedOtp !== dto.otp) {
-            throw new BadRequestException('Invalid or expired OTP');
-        }
-
-        if (!tempUser) {
-            throw new BadRequestException('Registration session expired. Please register again.');
-        }
-
-        // Create the team now
-        const team = await this.prisma.team.create({
-            data: {
-                teamName: tempUser.teamName,
-                teamNo: `TM-${Date.now()}`, // Auto-generated team identifier
-                email: tempUser.email,
-                password: tempUser.password,
-                phone: tempUser.phoneNumber,
-                role: 'EMPLOYEE',
-                status: 'Active',
-                isEmailVerified: true,
-                allowedIps: [ipAddress],
-            },
-        });
-
-        await this.redisService.deleteOTP(dto.email);
-        await this.redisService.deleteTempUser(dto.email);
-
-        await this.logActivity(team.id, 'CREATE', 'Team registered and verified', ipAddress, true);
-
-        return { message: 'Account created and verified successfully. You can now login.' };
-    }
 
     async login(dto: LoginDto, ipAddress: string, userAgent?: string) {
         const identity = await this.prisma.team.findUnique({

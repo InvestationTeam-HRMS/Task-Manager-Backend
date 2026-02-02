@@ -17,7 +17,7 @@ import { TeamModule } from './team/team.module';
 import { GroupModule } from './group/group.module';
 import { IpAddressModule } from './ip-address/ip-address.module';
 import { PdfModule } from './pdf/pdf.module';
-import { DemoModule } from './demo/demo.module';
+
 import { NotificationModule } from './notification/notification.module';
 import { TaskModule } from './task/task.module';
 import { RoleModule } from './role/role.module';
@@ -91,7 +91,6 @@ import { AppService } from './app.service';
 
     // Other Modules
     PdfModule,
-    DemoModule,
     NotificationModule,
     TaskModule,
     RoleModule,

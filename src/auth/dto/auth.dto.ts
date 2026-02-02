@@ -4,27 +4,6 @@ export enum OtpChannel {
     EMAIL = 'EMAIL'
 }
 
-export class RegisterDto {
-    @IsEmail()
-    email: string;
-
-    @IsString()
-    @MinLength(4)
-    password: string;
-
-    @IsString()
-    teamName: string;
-
-    @IsString()
-    @IsOptional()
-    @Length(10, 10, { message: 'Phone number must be exactly 10 characters' })
-    phoneNumber?: string;
-
-    @IsEnum(OtpChannel)
-    @IsOptional()
-    otpChannel?: OtpChannel;
-}
-
 export class LoginDto {
     @IsEmail()
     email: string;
@@ -41,13 +20,7 @@ export class VerifyLoginDto {
     otp: string;
 }
 
-export class VerifyOtpDto {
-    @IsEmail()
-    email: string;
 
-    @IsString()
-    otp: string;
-}
 
 export class ResendOtpDto {
     @IsEmail()
