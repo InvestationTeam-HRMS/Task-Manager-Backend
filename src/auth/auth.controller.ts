@@ -51,9 +51,10 @@ export class AuthController {
             // Set ONLY sessionId cookie (WhatsApp-style)
             this.setSessionCookie(res, loginResult.sessionId);
 
-            // Return user data ONLY (no tokens exposed to JS)
+            // Return user data AND sessionId (for incognito/header fallback)
             return {
                 user: loginResult.user,
+                sessionId: loginResult.sessionId,  // 🔐 For incognito mode
                 message: 'Login successful'
             };
         }
@@ -75,9 +76,10 @@ export class AuthController {
         // Set ONLY sessionId cookie (WhatsApp-style)
         this.setSessionCookie(res, result.sessionId);
 
-        // Return user data ONLY (no tokens)
+        // Return user data AND sessionId (for incognito/header fallback)
         return {
             user: result.user,
+            sessionId: result.sessionId,  // 🔐 For incognito mode
             message: 'Login successful'
         };
     }
@@ -87,7 +89,8 @@ export class AuthController {
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ) {
-        const sessionId = req.cookies['sessionId'];
+        // 🔐 HYBRID AUTH: Check cookie first, then X-Session-Id header (for incognito)
+        const sessionId = req.cookies['sessionId'] || req.headers['x-session-id'] as string;
         if (!sessionId) {
             throw new Error('Session not found');
         }
@@ -105,7 +108,8 @@ export class AuthController {
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ) {
-        const sessionId = req.cookies['sessionId'];
+        // 🔐 HYBRID AUTH: Check cookie first, then X-Session-Id header (for incognito)
+        const sessionId = req.cookies['sessionId'] || req.headers['x-session-id'] as string;
 
         if (sessionId) {
             await this.authService.logoutBySession(sessionId);
@@ -287,7 +291,8 @@ export class AuthController {
     async getProfile(
         @Req() req: Request
     ) {
-        const sessionId = req.cookies['sessionId'];
+        // 🔐 HYBRID AUTH: Check cookie first, then X-Session-Id header (for incognito)
+        const sessionId = req.cookies['sessionId'] || req.headers['x-session-id'] as string;
 
         if (!sessionId) {
             throw new UnauthorizedException('No active session');
@@ -301,7 +306,7 @@ export class AuthController {
 
         return {
             user: result.user,
-            sessionId: result.sessionId
+            sessionId: result.sessionId  // 🔐 Return sessionId for frontend memory storage
         };
     }
 

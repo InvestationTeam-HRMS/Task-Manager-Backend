@@ -5,14 +5,16 @@ import { RedisService } from '../../redis/redis.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * 🔐 Hybrid Auth Guard (Session + JWT)
+ * 🔐 Hybrid Auth Guard (Session + JWT + Header Fallback)
  * 
- * Supports BOTH authentication methods:
+ * Supports THREE authentication methods:
  * 1. Session Cookie (Primary) - httpOnly sessionId cookie
- * 2. JWT Bearer Token (Fallback) - for API clients/mobile apps
+ * 2. X-Session-Id Header (Incognito Fallback) - for browsers blocking third-party cookies
+ * 3. JWT Bearer Token (API Fallback) - for API clients/mobile apps
  * 
  * Priority:
  * - If sessionId cookie exists → validate session
+ * - Else if X-Session-Id header exists → validate session (incognito mode support)
  * - Else if Authorization header exists → validate JWT
  * - Else → throw Unauthorized
  */
@@ -30,7 +32,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         const request = context.switchToHttp().getRequest();
         
         // 1️⃣ Check for sessionId cookie first (preferred method)
-        const sessionId = request.cookies?.['sessionId'];
+        let sessionId = request.cookies?.['sessionId'];
+        
+        // 2️⃣ Fallback to X-Session-Id header (for incognito/cross-origin when cookies are blocked)
+        if (!sessionId) {
+            sessionId = request.headers?.['x-session-id'];
+        }
+
         if (sessionId) {
             try {
                 const user = await this.validateSessionAndGetUser(sessionId);
@@ -44,7 +52,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
             }
         }
 
-        // 2️⃣ Fallback to JWT Bearer token
+        // 3️⃣ Fallback to JWT Bearer token (for mobile apps/API clients)
         const authHeader = request.headers?.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
             try {
@@ -55,7 +63,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
             }
         }
 
-        // 3️⃣ No valid authentication found
+        // 4️⃣ No valid authentication found
         throw new UnauthorizedException('Authentication required');
     }
 

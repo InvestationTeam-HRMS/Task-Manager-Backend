@@ -7,11 +7,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 
 /**
- * 🔐 WhatsApp-Style JWT Strategy
+ * 🔐 WhatsApp-Style JWT Strategy (with Incognito Support)
  * 
- * Validates either:
+ * Validates using (in order of priority):
  * 1. SessionId cookie -> validates session in Redis/DB, then loads user
- * 2. Bearer token (legacy) -> validates JWT and loads user
+ * 2. X-Session-Id header -> validates session (incognito/cross-origin fallback)
+ * 3. Bearer token (legacy) -> validates JWT and loads user
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -36,8 +37,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     async validate(request: any, payload: any) {
-        // Check for sessionId cookie first (WhatsApp-style)
-        const sessionId = request?.cookies?.['sessionId'];
+        // 🔐 HYBRID AUTH: Check cookie first, then X-Session-Id header (for incognito)
+        const sessionId = request?.cookies?.['sessionId'] || request?.headers?.['x-session-id'];
         
         if (sessionId) {
             // Session-based authentication

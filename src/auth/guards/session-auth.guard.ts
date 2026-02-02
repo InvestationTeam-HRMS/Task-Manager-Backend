@@ -2,9 +2,12 @@ import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from
 import { AuthService } from '../auth.service';
 
 /**
- * 🔐 WhatsApp-Style Session Auth Guard
+ * 🔐 WhatsApp-Style Session Auth Guard (with Incognito Support)
  * 
- * Validates requests using httpOnly sessionId cookie.
+ * Validates requests using:
+ * 1. httpOnly sessionId cookie (primary - most secure)
+ * 2. X-Session-Id header (fallback for incognito/cross-origin when cookies are blocked)
+ * 
  * Backend is the single source of truth - no JWT tokens exposed to JavaScript.
  */
 @Injectable()
@@ -13,7 +16,9 @@ export class SessionAuthGuard implements CanActivate {
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
-        const sessionId = request.cookies?.['sessionId'];
+        
+        // 🔐 HYBRID AUTH: Check cookie first, then X-Session-Id header
+        const sessionId = request.cookies?.['sessionId'] || request.headers?.['x-session-id'];
 
         if (!sessionId) {
             throw new UnauthorizedException('No active session');

@@ -52,6 +52,7 @@ async function bootstrap() {
       'X-Requested-With',
       'X-Client-Host',
       'X-User-Agent',
+      'X-Session-Id',  // 🔐 For incognito/cross-origin session fallback
       'Accept',
     ],
   });
