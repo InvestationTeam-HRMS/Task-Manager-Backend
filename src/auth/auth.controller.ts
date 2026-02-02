@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, Res, UseGuards, Get, Patch, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Req, Res, UseGuards, Get, Patch, UnauthorizedException, Logger } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
     RegisterDto,
@@ -19,6 +19,8 @@ import { GetUser } from './decorators/get-user.decorator';
 
 @Controller('auth')
 export class AuthController {
+    private readonly logger = new Logger(AuthController.name);
+    
     constructor(private authService: AuthService) { }
 
     @Post('register')
@@ -150,38 +152,43 @@ export class AuthController {
     /**
      * WhatsApp-style cookie configuration
      * Works on: Chrome, Edge, Firefox, Incognito, across restarts
+     * Supports both HTTP and HTTPS in production
      */
     private setSessionCookie(res: Response, sessionId: string) {
         const isProduction = process.env.NODE_ENV === 'production';
         const domain = process.env.COOKIE_DOMAIN || '';
+        const isSecure = process.env.COOKIE_SECURE !== 'false'; // Check explicit override
 
-        // For localhost development: use 'lax' + secure:false
-        // For production: use 'none' + secure:true (requires HTTPS)
+        // Cookie configuration that works in all scenarios
         const cookieOptions: any = {
             httpOnly: true,
-            secure: isProduction, // false for localhost, true for production
-            sameSite: isProduction ? 'none' : 'lax', // 'lax' works for localhost
+            secure: isProduction ? isSecure : false, // Respect COOKIE_SECURE env var in production
+            sameSite: (isProduction && isSecure) ? 'none' : 'lax', // Use 'lax' if not HTTPS
             maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year - WhatsApp style
             path: '/',
         };
 
-        // Only set domain in production with actual domain
+        // Set domain only for production with valid domain
         if (isProduction && domain && domain !== 'localhost') {
             cookieOptions.domain = domain;
         }
 
         res.cookie('sessionId', sessionId, cookieOptions);
+        
+        // Log for debugging
+        this.logger?.log?.(`Cookie set: secure=${cookieOptions.secure}, sameSite=${cookieOptions.sameSite}, domain=${cookieOptions.domain || 'none'}`);
     }
 
     private clearSessionCookie(res: Response) {
         const isProduction = process.env.NODE_ENV === 'production';
         const domain = process.env.COOKIE_DOMAIN || '';
+        const isSecure = process.env.COOKIE_SECURE !== 'false';
 
         const cookieOptions: any = {
             path: '/',
             httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? 'none' : 'lax',
+            secure: isProduction ? isSecure : false,
+            sameSite: (isProduction && isSecure) ? 'none' : 'lax',
         };
 
         if (isProduction && domain && domain !== 'localhost') {
