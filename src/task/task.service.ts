@@ -256,16 +256,25 @@ export class TaskService {
         const skip = (page - 1) * limit;
         const { toTitleCase } = await import('../common/utils/string-helper');
 
-        const isCompletedView = filter.viewMode === TaskViewMode.MY_COMPLETED ||
+        const isStrictlyCompleted =
+            filter.viewMode === TaskViewMode.MY_COMPLETED ||
             filter.viewMode === TaskViewMode.TEAM_COMPLETED ||
-            (Array.isArray(filter.taskStatus)
-                ? filter.taskStatus.includes(TaskStatus.Completed)
-                : filter.taskStatus === TaskStatus.Completed);
+            (Array.isArray(filter.taskStatus) && filter.taskStatus.every(s => s === TaskStatus.Completed)) ||
+            (filter.taskStatus === TaskStatus.Completed);
 
-        const model: any = isCompletedView ? this.prisma.completedTask : this.prisma.pendingTask;
+        const isStrictlyPending =
+            filter.viewMode === TaskViewMode.MY_PENDING ||
+            filter.viewMode === TaskViewMode.TEAM_PENDING ||
+            filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_ME ||
+            filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_TEAM ||
+            (Array.isArray(filter.taskStatus) && filter.taskStatus.every(s => s !== TaskStatus.Completed)) ||
+            (filter.taskStatus && filter.taskStatus !== TaskStatus.Completed && typeof filter.taskStatus === 'string');
+
+        // Mixed view if neither strictly pending nor strictly completed
+        const isMixedView = !isStrictlyCompleted && !isStrictlyPending;
+
         const andArray: any[] = [];
         const isAdmin = role?.toUpperCase() === 'ADMIN' || role?.toUpperCase() === 'HR' || role?.toUpperCase() === 'MANAGER';
-
         const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
         // 1. Priority Filters (Project, Priority, Search)
@@ -344,46 +353,18 @@ export class TaskService {
             });
         }
 
-        // ══════════════════════════════════════════════════════════════════════════════
-        // HRMS TASK VISIBILITY RULES - PRODUCTION GRADE LOGIC
-        // ══════════════════════════════════════════════════════════════════════════════
-        // 
-        // CORE PRINCIPLE: Once a GROUP TASK is ACCEPTED by ONE member:
-        //   → Task is LOCKED to that single owner (acceptor)
-        //   → Other group members who rejected/didn't accept MUST NOT see the task
-        //   → Only Creator and Acceptor can see the task from that point forward
-        //
-        // VISIBILITY TABLE (After Acceptance):
-        // ┌─────────────────────┬────────────┬─────────────┬──────────────┬────────────────┬──────────────┬────────────────┐
-        // │ Role                │ My Pending │ Team Pending│ Review by Me │ Review by Team │ My Completed │ Team Completed │
-        // ├─────────────────────┼────────────┼─────────────┼──────────────┼────────────────┼──────────────┼────────────────┤
-        // │ Acceptor            │ ✅ YES     │ ❌ NO       │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
-        // │ Creator/Manager     │ ❌ NO      │ ✅ YES      │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
-        // │ Other Group Members │ ❌ NO      │ ❌ NO       │ ❌ NO        │ ❌ NO          │ ❌ NO        │ ❌ NO          │
-        // └─────────────────────┴────────────┴─────────────┴──────────────┴────────────────┴──────────────┴────────────────┘
-        //
-        // WHY THIS DESIGN:
-        //   1. Avoids confusion → No duplicate ownership
-        //   2. Clean handoff → Task flows: Creator → Acceptor → Review → Complete
-        //   3. Rejected members are excluded → They can't accidentally work on it
-        // ══════════════════════════════════════════════════════════════════════════════
-
+        // Visibility Rules logic (unchanged structure)
         if (filter.viewMode && userId) {
             switch (filter.viewMode) {
                 case TaskViewMode.ALL:
-                    // Admin sees all - restricted only if not admin
+                    // Admin/User sees all dependent on default rules
                     break;
-
                 case TaskViewMode.MY_PENDING:
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
-                        OR: [
-                            { assignedTo: userId },
-                            { targetTeamId: userId }
-                        ]
+                        OR: [{ assignedTo: userId }, { targetTeamId: userId }]
                     });
                     break;
-
                 case TaskViewMode.TEAM_PENDING:
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
@@ -395,11 +376,9 @@ export class TaskService {
                         ]
                     });
                     break;
-
                 case TaskViewMode.MY_COMPLETED:
                     andArray.push({ workingBy: userId });
                     break;
-
                 case TaskViewMode.TEAM_COMPLETED:
                     andArray.push({
                         createdBy: userId,
@@ -407,14 +386,12 @@ export class TaskService {
                         OR: [{ workingBy: { not: userId } }, { workingBy: null }]
                     });
                     break;
-
                 case TaskViewMode.REVIEW_PENDING_BY_ME:
                     andArray.push({
                         createdBy: userId,
                         taskStatus: TaskStatus.ReviewPending
                     });
                     break;
-
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
                     andArray.push({
                         taskStatus: TaskStatus.ReviewPending,
@@ -425,9 +402,6 @@ export class TaskService {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════════════
-        // ADDITIVE FILTERS (Applicable in any view mode, especially ALL)
-        // ══════════════════════════════════════════════════════════════════════════════
         if (!isAdmin && userId && !filter.viewMode) {
             andArray.push({
                 OR: [
@@ -440,7 +414,6 @@ export class TaskService {
             });
         }
 
-        // These filters apply regardless of viewMode (if provided)
         if (filter.taskStatus) {
             const statusValues = typeof filter.taskStatus === 'string'
                 ? filter.taskStatus.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
@@ -454,24 +427,81 @@ export class TaskService {
         }
 
         const where = { AND: andArray };
+        const include = {
+            project: { select: { id: true, projectName: true, projectNo: true } },
+            assignee: { select: { id: true, teamName: true, email: true } },
+            creator: { select: { id: true, teamName: true, email: true } },
+            targetTeam: { select: { id: true, teamName: true, email: true } },
+            targetGroup: { select: { id: true, groupName: true } },
+            worker: { select: { id: true, teamName: true, email: true } }
+        };
 
-        const [data, total] = await Promise.all([
-            model.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: isCompletedView ? { completedAt: 'desc' } : { createdTime: 'desc' },
-                include: {
-                    project: { select: { id: true, projectName: true, projectNo: true } },
-                    assignee: { select: { id: true, teamName: true, email: true } },
-                    creator: { select: { id: true, teamName: true, email: true } },
-                    targetTeam: { select: { id: true, teamName: true, email: true } },
-                    targetGroup: { select: { id: true, groupName: true } },
-                    worker: { select: { id: true, teamName: true, email: true } }
-                },
-            }),
-            model.count({ where }),
-        ]);
+        let data: any[] = [];
+        let total = 0;
+
+        if (isMixedView) {
+            // MERGE STRATEGY: Fetch from both
+            // We fetch (skip + limit) from both to ensure we have enough candidates for globally sorted page
+            const fetchTake = skip + limit;
+
+            const [pendingData, pendingCount, completedData, completedCount] = await Promise.all([
+                this.prisma.pendingTask.findMany({
+                    where: where as any,
+                    take: fetchTake,
+                    orderBy: { createdTime: 'desc' },
+                    include
+                }),
+                this.prisma.pendingTask.count({ where: where as any }),
+                this.prisma.completedTask.findMany({
+                    where: where as any,
+                    take: fetchTake,
+                    orderBy: { createdTime: 'desc' }, // Use createdTime for consistent merging
+                    include
+                }),
+                this.prisma.completedTask.count({ where: where as any })
+            ]);
+
+            total = pendingCount + completedCount;
+            const combined = [...pendingData, ...completedData];
+
+            // Sort combined in memory
+            combined.sort((a, b) => {
+                const da = new Date(a.createdTime).getTime();
+                const db = new Date(b.createdTime).getTime();
+                return db - da; // Descending
+            });
+
+            // Slice the requested page
+            data = combined.slice(skip, skip + limit);
+
+        } else if (isStrictlyCompleted) {
+            const [cData, cCount] = await Promise.all([
+                this.prisma.completedTask.findMany({
+                    where: where as any,
+                    skip,
+                    take: limit,
+                    orderBy: { completedAt: 'desc' },
+                    include
+                }),
+                this.prisma.completedTask.count({ where: where as any })
+            ]);
+            data = cData;
+            total = cCount;
+        } else {
+            // Pending (Default)
+            const [pData, pCount] = await Promise.all([
+                this.prisma.pendingTask.findMany({
+                    where: where as any,
+                    skip,
+                    take: limit,
+                    orderBy: { createdTime: 'desc' },
+                    include
+                }),
+                this.prisma.pendingTask.count({ where: where as any })
+            ]);
+            data = pData;
+            total = pCount;
+        }
 
         return {
             data: data.map(task => this.sortTaskDates(task)),
