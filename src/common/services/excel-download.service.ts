@@ -68,7 +68,10 @@ export class ExcelDownloadService {
                 row.height = 20;
 
                 row.eachCell({ includeEmpty: true }, (cell) => {
-                    // ❌ NO BORDER ON DATA
+                    // Set dash for empty cells
+                    if (cell.value === undefined || cell.value === null || cell.value === '') {
+                        cell.value = '-';
+                    }
 
                     // Data alignment + indent
                     cell.alignment = {

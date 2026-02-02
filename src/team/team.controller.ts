@@ -36,21 +36,21 @@ export class TeamController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:create')
+  @Permissions('team:create')
   create(@Body() dto: CreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.create(dto, userId);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:view')
+  @Permissions('team:view')
   findAll(@Query() query: any) {
     return this.teamService.findAll(query, query);
   }
 
   @Get('export/excel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:download')
+  @Permissions('team:download')
   async exportExcel(
     @Query() query: any,
     @GetUser('id') userId: string,
@@ -73,7 +73,7 @@ export class TeamController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:edit')
+  @Permissions('team:edit')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTeamDto,
@@ -84,7 +84,7 @@ export class TeamController {
 
   @Patch(':id/status')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:edit')
+  @Permissions('team:edit')
   changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeStatusDto,
@@ -95,42 +95,42 @@ export class TeamController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:delete')
+  @Permissions('team:delete')
   delete(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.delete(id, userId);
   }
 
   @Post('bulk/create')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:create')
+  @Permissions('team:create')
   bulkCreate(@Body() dto: BulkCreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkCreate(dto, userId);
   }
 
   @Put('bulk/update')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:edit')
+  @Permissions('team:edit')
   bulkUpdate(@Body() dto: BulkUpdateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkUpdate(dto, userId);
   }
 
   @Post('bulk/delete-records')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:delete')
+  @Permissions('team:delete')
   bulkDelete(@Body() dto: BulkDeleteTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkDelete(dto, userId);
   }
 
   @Post(':id/resend-invitation')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:edit')
+  @Permissions('team:edit')
   resendInvitation(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.resendInvitation(id, userId);
   }
 
   @Post('upload/excel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('users:upload')
+  @Permissions('team:upload')
   @UseInterceptors(FileInterceptor('file'))
   uploadExcel(
     @UploadedFile() file: Express.Multer.File,
