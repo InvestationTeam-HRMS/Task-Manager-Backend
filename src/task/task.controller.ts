@@ -36,8 +36,9 @@ export class TaskController {
         @GetUser('role') role: string,
         @Query('activityIndex') activityIndex: number = 1,
         @Query('taskNo') taskNo?: string,
+        @Query('mentionedOnly') mentionedOnly: string = 'false',
     ) {
-        return this.taskService.getActivityLogs(userId, activityIndex, taskNo, role);
+        return this.taskService.getActivityLogs(userId, activityIndex, taskNo, role, mentionedOnly === 'true');
     }
 
     @Post()

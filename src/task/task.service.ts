@@ -1177,93 +1177,141 @@ export class TaskService {
     /**
      * Get activity logs for task-related notifications
      */
-    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string, role?: string) {
+    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string, role?: string, mentionedOnly: boolean = false) {
         const PAGE_SIZE = 20;
         const skip = (activityIndex - 1) * PAGE_SIZE;
 
-        const isAdmin = role === 'ADMIN' || role === 'HR';
+        const isAdmin = role === 'Admin' || role === 'HR';
 
-        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}`);
+        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}, mentionedOnly: ${mentionedOnly}`);
 
         const where: Prisma.NotificationWhereInput = {};
 
+        if (mentionedOnly) {
+            where.type = 'COMMENT_MENTION';
+            if (!isAdmin) {
+                where.teamId = userId;
+            }
+        }
+
+        let taskDetails: any = null;
+
         if (taskNo) {
-            const cleanNo = taskNo.replace(/^#/, '').replace(/^T-/, '');
-            // Search globally for any notification mentionining this taskNo
+            const cleanNo = taskNo.replace(/^#/, '').replace(/^T-/, '').trim();
+            const digitOnly = taskNo.replace(/\D/g, '');
+
+            const searchPatterns = [taskNo, cleanNo, `#${cleanNo}`, `T-${cleanNo}`];
+            if (digitOnly) searchPatterns.push(digitOnly);
+
+            const findTask = async (model: any) => {
+                return await model.findFirst({
+                    where: { taskNo: { in: searchPatterns, mode: 'insensitive' as Prisma.QueryMode } },
+                    include: {
+                        project: { select: { projectName: true } },
+                        assignee: { select: { teamName: true, avatar: true } },
+                        creator: { select: { teamName: true, avatar: true } },
+                        targetTeam: { select: { teamName: true, avatar: true } },
+                        targetGroup: { select: { groupName: true } },
+                        worker: { select: { teamName: true, avatar: true } }
+                    }
+                });
+            };
+
+            taskDetails = await findTask(this.prisma.pendingTask);
+            if (!taskDetails) taskDetails = await findTask(this.prisma.completedTask);
+
+            // Search globally for any notification mentioning this task
             where.OR = [
-                { description: { contains: cleanNo, mode: 'insensitive' } },
-                { title: { contains: cleanNo, mode: 'insensitive' } },
-                { description: { contains: taskNo, mode: 'insensitive' } },
-                { title: { contains: taskNo, mode: 'insensitive' } },
+                { description: { contains: cleanNo, mode: 'insensitive' as Prisma.QueryMode } },
+                { title: { contains: cleanNo, mode: 'insensitive' as Prisma.QueryMode } },
                 { metadata: { path: ['taskNo'], equals: taskNo } },
                 { metadata: { path: ['taskNo'], equals: cleanNo } },
-                { metadata: { path: ['taskNo'], equals: `T-${cleanNo}` } },
             ];
         } else if (!isAdmin) {
-            // For regular users (non-admin/non-hr), only show their own notifications
             where.teamId = userId;
         }
-        // For Admins/HR, 'where' stays empty if no taskNo, showing ALL notifications globally.
 
         const notifications = await this.prisma.notification.findMany({
             where,
             orderBy: { createdAt: 'desc' },
             skip,
-            take: PAGE_SIZE + 1, // Fetch one extra to check if there are more
+            take: PAGE_SIZE + 1,
             include: {
-                team: {
-                    select: { teamName: true, avatar: true }
-                }
+                team: { select: { teamName: true, avatar: true } }
             }
         });
-
-        this.logger.log(`[ActivityLogs] Found ${notifications.length} notifications`);
 
         const hasMore = notifications.length > PAGE_SIZE;
         const items = hasMore ? notifications.slice(0, PAGE_SIZE) : notifications;
 
-        // Group by date
-        const groupedByDate = new Map<string, any[]>();
-
-        items.forEach(notification => {
-            const dateKey = notification.createdAt.toISOString().split('T')[0];
-
-            if (!groupedByDate.has(dateKey)) {
-                groupedByDate.set(dateKey, []);
-            }
-
-            // Map notification type to activity event type
-            let eventType = 'UPDATE_TASK';
-            if (notification.type === 'TASK_ASSIGNED') eventType = 'ASSIGN_TASK';
-            else if (notification.type === 'TASK') eventType = 'UPDATE_TASK';
-
+        const events: any[] = items.map(notification => {
             const metadata = notification.metadata as any || {};
+            let eventType = 'UPDATE_TASK';
 
-            groupedByDate.get(dateKey)!.push({
+            // Map types based on description/meta or type
+            if (notification.type === 'TASK_ASSIGNED') eventType = 'ASSIGN_TASK';
+            else if (notification.type === 'COMMENT_MENTION') eventType = 'COMMENT_MENTION';
+            else if (notification.description?.toLowerCase().includes('remark') || notification.description?.toLowerCase().includes('comment')) eventType = 'COMMENT';
+            else if (notification.description?.toLowerCase().includes('tag')) eventType = 'ADD_TAGS_TO_TASK';
+            else if (notification.description?.toLowerCase().includes('file') || notification.description?.toLowerCase().includes('document')) eventType = 'ADD_FILES_TO_TASK';
+
+            return {
                 type: eventType,
                 dateTime: Math.floor(notification.createdAt.getTime() / 1000),
                 taskNo: metadata.taskNo || '',
-                status: metadata.status || 'Pending',
                 userName: notification.team?.teamName || 'System',
-                userImg: (notification.team as any)?.avatar || '',
+                userImg: notification.team?.avatar || '',
                 comment: notification.description,
-                notificationType: notification.type,
-                title: notification.title,
-            });
+                status: (notification as any).status,
+                tags: metadata.tags || [],
+                files: metadata.files || [],
+                assignee: metadata.assigneeName
+            };
         });
 
-        // Convert to array format expected by frontend
-        const data = Array.from(groupedByDate.entries()).map(([dateKey, events]) => ({
-            id: dateKey,
-            date: Math.floor(new Date(dateKey).getTime() / 1000),
-            events: events.sort((a, b) => b.dateTime - a.dateTime), // Sort by time descending within day
-        }));
+        // Add Synthetic Events
+        if (taskNo && taskDetails && activityIndex === 1) {
+            // Creation
+            events.push({
+                type: 'CREATE_TASK',
+                dateTime: Math.floor(new Date(taskDetails.createdTime).getTime() / 1000),
+                taskNo: taskDetails.taskNo,
+                userName: taskDetails.creator?.teamName || 'System',
+                userImg: taskDetails.creator?.avatar || '',
+                comment: taskDetails.remarkChat || `Task created: ${taskDetails.taskTitle}`,
+                files: taskDetails.document ? taskDetails.document.split(',') : []
+            });
 
-        this.logger.log(`[ActivityLogs] Returning ${data.length} date groups`);
+            // Completion
+            if (taskDetails.taskStatus === 'Completed' || (taskDetails as any).completeTime) {
+                events.push({
+                    type: 'UPDATE_TASK',
+                    dateTime: Math.floor(new Date((taskDetails as any).completeTime || taskDetails.updatedAt).getTime() / 1000),
+                    taskNo: taskDetails.taskNo,
+                    userName: taskDetails.worker?.teamName || 'System',
+                    userImg: taskDetails.worker?.avatar || '',
+                    status: 'Completed',
+                    comment: `Task finalized and completed.`
+                });
+            }
+        }
 
-        return {
-            data,
-            loadable: hasMore,
-        };
+        // Group by date
+        const groupedByDate = new Map<string, any[]>();
+        events.forEach(event => {
+            const dateKey = new Date(event.dateTime * 1000).toISOString().split('T')[0];
+            if (!groupedByDate.has(dateKey)) groupedByDate.set(dateKey, []);
+            groupedByDate.get(dateKey)!.push(event);
+        });
+
+        const data = Array.from(groupedByDate.entries())
+            .map(([dateKey, entries]) => ({
+                id: dateKey,
+                date: Math.floor(new Date(dateKey).getTime() / 1000),
+                events: entries.sort((a, b) => b.dateTime - a.dateTime),
+            }))
+            .sort((a, b) => b.date - a.date);
+
+        return { data, loadable: hasMore, taskDetails };
     }
 }
