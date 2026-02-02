@@ -61,6 +61,10 @@ export class UpdateTaskDto {
     priority?: string;
 
     @IsOptional()
+    @IsEnum(TaskStatus)
+    taskStatus?: TaskStatus;
+
+    @IsOptional()
     @IsString()
     additionalNote?: string;
 

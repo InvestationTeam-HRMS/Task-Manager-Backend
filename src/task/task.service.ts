@@ -577,6 +577,20 @@ export class TaskService {
             }
         }
 
+        // Logic for Status Change Notification (e.g., Manually setting to Pending/Completed)
+        if (dto.taskStatus && dto.taskStatus !== (existingTask as any).taskStatus) {
+            const workerId = updated.workingBy || updated.assignedTo || updated.targetTeamId;
+            // Notify the worker if they are NOT the one making the change (e.g. Admin changed it)
+            if (workerId && workerId !== userId) {
+                await this.notificationService.createNotification(workerId, {
+                    title: 'Task Status Updated',
+                    description: `The status of task "${updated.taskTitle}" has been updated to ${dto.taskStatus}.`,
+                    type: 'TASK',
+                    metadata: { taskId: updated.id, taskNo: updated.taskNo, status: dto.taskStatus },
+                });
+            }
+        }
+
         await this.invalidateCache();
         return this.sortTaskDates(updated);
     }
@@ -971,23 +985,6 @@ export class TaskService {
     async delete(id: string, userId: string, role: string) {
         // User requested to remove delete logic completely for tasks
         throw new ForbiddenException('Task deletion is disabled.');
-
-        /* 
-        const existing = await this.findById(id);
-
-        // Security Check: Only ADMIN or the Creator can delete
-        const isOwner = (existing as any).createdBy === userId;
-        const isAdmin = role === 'ADMIN' || role === 'ADMIN';
-
-        if (!isOwner && !isAdmin) {
-            throw new ForbiddenException('You do not have permission to delete this task. Only the creator or an admin can delete tasks.');
-        }
-
-        const model: any = (existing as any).taskStatus === TaskStatus.Completed ? this.prisma.completedTask : this.prisma.pendingTask;
-        const deleted = await model.delete({ where: { id } });
-        await this.invalidateCache();
-        return deleted;
-        */
     }
 
 
