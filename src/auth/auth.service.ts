@@ -199,13 +199,12 @@ export class AuthService {
             // Fetch user with permissions
             const userWithPermissions = await this.getUserWithPermissions(identity.id);
 
+            // WhatsApp-style: Only return sessionId (for cookie), no tokens exposed to JS
             return {
                 message: `Login successful (${reason})`,
                 email: identity.email,
                 otpSkipped: true,
-                accessToken,
-                refreshToken,
-                sessionId,
+                sessionId, // This goes into httpOnly cookie
                 user: userWithPermissions,
             };
         }
@@ -331,9 +330,8 @@ export class AuthService {
         // Fetch user with permissions
         const userWithPermissions = await this.getUserWithPermissions(identity.id);
 
+        // WhatsApp-style: Only return sessionId (for cookie), no tokens exposed to JS
         return {
-            accessToken,
-            refreshToken,
             sessionId,
             user: userWithPermissions,
         };

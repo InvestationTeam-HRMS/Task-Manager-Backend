@@ -44,22 +44,14 @@ export class AuthController {
 
         const loginResult = await this.authService.login(dto, ipAddress, userAgent);
 
-        // If OTP is disabled, automatically complete the login flow
-        if (loginResult.otpSkipped) {
-            // OTP was skipped - proceed directly to session creation
-            const verifyDto: VerifyLoginDto = {
-                email: dto.email,
-                otp: '', // Not needed when OTP is disabled
-            };
-
-            const result = await this.authService.verifyLogin(verifyDto, ipAddress, userAgent);
-
+        // If OTP is disabled, session is already created in login()
+        if (loginResult.otpSkipped && loginResult.sessionId) {
             // Set ONLY sessionId cookie (WhatsApp-style)
-            this.setSessionCookie(res, result.sessionId);
+            this.setSessionCookie(res, loginResult.sessionId);
 
-            // Return user data ONLY (no tokens)
+            // Return user data ONLY (no tokens exposed to JS)
             return {
-                user: result.user,
+                user: loginResult.user,
                 message: 'Login successful'
             };
         }
@@ -155,19 +147,26 @@ export class AuthController {
         return this.authService.setPassword(dto, ipAddress);
     }
 
+    /**
+     * WhatsApp-style cookie configuration
+     * Works on: Chrome, Edge, Firefox, Incognito, across restarts
+     */
     private setSessionCookie(res: Response, sessionId: string) {
         const isProduction = process.env.NODE_ENV === 'production';
-        const domain = process.env.COOKIE_DOMAIN || 'localhost';
+        const domain = process.env.COOKIE_DOMAIN || '';
 
+        // For localhost development: use 'lax' + secure:false
+        // For production: use 'none' + secure:true (requires HTTPS)
         const cookieOptions: any = {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? 'none' : 'lax',
-            maxAge: 365 * 24 * 60 * 60 * 1000,
+            secure: isProduction, // false for localhost, true for production
+            sameSite: isProduction ? 'none' : 'lax', // 'lax' works for localhost
+            maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year - WhatsApp style
             path: '/',
         };
 
-        if (domain !== 'localhost') {
+        // Only set domain in production with actual domain
+        if (isProduction && domain && domain !== 'localhost') {
             cookieOptions.domain = domain;
         }
 
@@ -176,7 +175,7 @@ export class AuthController {
 
     private clearSessionCookie(res: Response) {
         const isProduction = process.env.NODE_ENV === 'production';
-        const domain = process.env.COOKIE_DOMAIN || 'localhost';
+        const domain = process.env.COOKIE_DOMAIN || '';
 
         const cookieOptions: any = {
             path: '/',
@@ -185,7 +184,7 @@ export class AuthController {
             sameSite: isProduction ? 'none' : 'lax',
         };
 
-        if (domain !== 'localhost') {
+        if (isProduction && domain && domain !== 'localhost') {
             cookieOptions.domain = domain;
         }
 

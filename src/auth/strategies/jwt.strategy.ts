@@ -4,28 +4,100 @@ import * as PassportJWT from 'passport-jwt';
 const { ExtractJwt, Strategy } = PassportJWT;
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 
+/**
+ * 🔐 WhatsApp-Style JWT Strategy
+ * 
+ * Validates either:
+ * 1. SessionId cookie -> validates session in Redis/DB, then loads user
+ * 2. Bearer token (legacy) -> validates JWT and loads user
+ */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
     constructor(
         private configService: ConfigService,
         private prisma: PrismaService,
+        private redisService: RedisService,
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromExtractors([
+                // Extract from Authorization header (legacy API clients)
                 ExtractJwt.fromAuthHeaderAsBearerToken(),
+                // Extract from accessToken cookie (legacy)
                 (request: any) => {
                     return request?.cookies?.['accessToken'] || request?.query?.token;
                 },
             ]),
             ignoreExpiration: false,
             secretOrKey: configService.get<string>('JWT_ACCESS_SECRET')!,
+            passReqToCallback: true, // We need request for session-based auth
         })
     }
 
-    async validate(payload: any) {
+    async validate(request: any, payload: any) {
+        // Check for sessionId cookie first (WhatsApp-style)
+        const sessionId = request?.cookies?.['sessionId'];
+        
+        if (sessionId) {
+            // Session-based authentication
+            const sessionData = await this.validateSession(sessionId);
+            if (sessionData) {
+                const user = await this.loadUser(sessionData.teamId);
+                if (user) {
+                    return { ...user, sessionId };
+                }
+            }
+            throw new UnauthorizedException('Invalid or expired session');
+        }
+
+        // Fallback to JWT payload-based authentication
+        const identity = await this.loadUser(payload.sub);
+
+        if (!identity) {
+            throw new UnauthorizedException('Account not found or inactive');
+        }
+
+        return {
+            ...identity,
+            sessionId: payload.sid,
+        };
+    }
+
+    private async validateSession(sessionId: string): Promise<any> {
+        // First try Redis
+        let sessionData = await this.redisService.getSession(sessionId);
+        
+        if (!sessionData) {
+            // Fallback to database
+            const dbSession = await this.prisma.session.findUnique({
+                where: { sessionId },
+                include: { team: true },
+            });
+
+            if (!dbSession || !dbSession.isActive || dbSession.expiresAt < new Date()) {
+                return null;
+            }
+
+            // Cache in Redis for future requests
+            sessionData = {
+                teamId: dbSession.teamId,
+                email: dbSession.team?.email || '',
+                role: dbSession.team?.role || '',
+            };
+
+            const sessionExpiry = Math.floor((dbSession.expiresAt.getTime() - Date.now()) / 1000);
+            if (sessionExpiry > 0) {
+                await this.redisService.setSession(sessionId, sessionData, sessionExpiry);
+            }
+        }
+
+        return sessionData;
+    }
+
+    private async loadUser(userId: string) {
         const identity = await this.prisma.team.findUnique({
-            where: { id: payload.sub },
+            where: { id: userId },
             select: {
                 id: true,
                 email: true,
@@ -51,7 +123,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         });
 
         if (!identity || identity.status !== 'Active') {
-            throw new UnauthorizedException('Account not found or inactive');
+            return null;
         }
 
         // Get permissions from custom role if assigned, otherwise empty
@@ -75,7 +147,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
         return {
             ...identity,
-            sessionId: payload.sid,
             permissions,
             roleName: identity.customRole?.name || identity.role,
         };

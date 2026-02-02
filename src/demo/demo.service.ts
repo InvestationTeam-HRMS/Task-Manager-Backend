@@ -90,18 +90,17 @@ export class DemoService {
 
                 if (verifyLoginResult.user) {
                     userId = verifyLoginResult.user.id;
-                    token = verifyLoginResult.accessToken;
+                    token = verifyLoginResult.sessionId; // Use sessionId instead of accessToken
 
                     authSection.apis.push({
                         name: 'Verify Login OTP (Step 2)',
                         endpoint: '/api/v1/auth/verify-login',
                         method: 'POST',
-                        description: 'Complete Login & Get Tokens',
+                        description: 'Complete Login & Get Session',
                         authRequired: false,
                         requestExample: { email, otp: loginOtp },
                         responseExample: {
-                            accessToken: '********',
-                            refreshToken: '********',
+                            sessionId: '********',
                             user: verifyLoginResult.user
                         }
                     });
