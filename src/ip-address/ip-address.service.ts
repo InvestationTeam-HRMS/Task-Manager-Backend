@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
+import { ExcelDownloadService } from '../common/services/excel-download.service';
 import {
     CreateIpAddressDto,
     UpdateIpAddressDto,
@@ -33,6 +34,7 @@ export class IpAddressService {
         private redisService: RedisService,
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
+        private excelDownloadService: ExcelDownloadService,
     ) { }
 
     async create(dto: CreateIpAddressDto, userId: string) {
@@ -321,6 +323,38 @@ export class IpAddressService {
         await this.logAudit(userId, 'HARD_DELETE', id, ipAddress, null);
 
         return { message: 'IP address permanently deleted successfully' };
+    }
+
+    async downloadExcel(query: any, userId: string, res: any) {
+        const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+
+        const mappedData = data.map((item, index) => ({
+            srNo: index + 1,
+            ipNo: item.ipNo,
+            ipAddress: item.ipAddress,
+            ipAddressName: item.ipAddressName,
+            groupName: item.clientGroup?.groupName || '',
+            companyName: item.company?.companyName || '',
+            locationName: item.location?.locationName || '',
+            subLocationName: item.subLocation?.subLocationName || '',
+            status: item.status,
+            remark: item.remark || '',
+        }));
+
+        const columns = [
+            { header: '#', key: 'srNo', width: 10 },
+            { header: 'IP No', key: 'ipNo', width: 15 },
+            { header: 'IP Address', key: 'ipAddress', width: 20 },
+            { header: 'IP Name', key: 'ipAddressName', width: 25 },
+            { header: 'Client Group', key: 'groupName', width: 20 },
+            { header: 'Company', key: 'companyName', width: 20 },
+            { header: 'Location', key: 'locationName', width: 20 },
+            { header: 'Sublocation', key: 'subLocationName', width: 20 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Remark', key: 'remark', width: 30 },
+        ];
+
+        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'ip_addresses.xlsx', 'IP Addresses');
     }
 
     async bulkCreate(dto: BulkCreateIpAddressDto, userId: string) {

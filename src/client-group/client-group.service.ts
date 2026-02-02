@@ -207,7 +207,7 @@ export class ClientGroupService {
             groupCode: item.groupCode,
             country: item.country,
             status: item.status,
-            remark: item.remark || 'N/A',
+            remark: item.remark || '',
         }));
 
         const columns = [

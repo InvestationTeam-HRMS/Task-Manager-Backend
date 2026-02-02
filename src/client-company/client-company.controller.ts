@@ -27,8 +27,8 @@ import {
 } from './dto/client-company.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 // Removed UserRole import from @prisma/client
 
@@ -37,15 +37,15 @@ export class ClientCompanyController {
     constructor(private clientCompanyService: ClientCompanyService) { }
 
     @Post()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:create')
     create(@Body() dto: CreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.create(dto, userId);
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:view')
     findAll(@Query() query: any) {
         return this.clientCompanyService.findAll(query, query);
     }
@@ -69,8 +69,8 @@ export class ClientCompanyController {
     }
 
     @Get('export/excel')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:download')
     async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
@@ -80,8 +80,8 @@ export class ClientCompanyController {
     }
 
     @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientCompanyDto,
@@ -91,8 +91,8 @@ export class ClientCompanyController {
     }
 
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -102,29 +102,29 @@ export class ClientCompanyController {
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:delete')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientCompanyService.delete(id, userId);
     }
 
     @Post('bulk/create')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:create')
     bulkCreate(@Body() dto: BulkCreateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     bulkUpdate(@Body() dto: BulkUpdateClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:delete')
     bulkDelete(@Body() dto: BulkDeleteClientCompanyDto, @GetUser('id') userId: string) {
         return this.clientCompanyService.bulkDelete(dto, userId);
     }
@@ -132,13 +132,8 @@ export class ClientCompanyController {
 
 
     @Post('upload/excel')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(
-        'ADMIN',
-        'HR',
-        'EMPLOYEE',
-        'MANAGER',
-    )
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:upload')
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,

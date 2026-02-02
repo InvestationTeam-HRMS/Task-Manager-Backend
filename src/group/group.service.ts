@@ -356,13 +356,13 @@ export class GroupService {
             srNo: index + 1,
             groupNo: item.groupNo,
             groupName: item.groupName,
-            clientGroupName: item.clientGroupName || '-',
-            companyName: item.companyName || '-',
-            locationName: item.locationName || '-',
-            subLocationName: item.subLocationName || '-',
-            teamMemberEmails: item.teamMemberEmails || '-',
+            clientGroupName: item.clientGroupName || '',
+            companyName: item.companyName || '',
+            locationName: item.locationName || '',
+            subLocationName: item.subLocationName || '',
+            teamMemberEmails: item.teamMemberEmails || '',
             status: item.status,
-            remark: item.remark || 'N/A',
+            remark: item.remark || '',
         }));
 
         const columns = [

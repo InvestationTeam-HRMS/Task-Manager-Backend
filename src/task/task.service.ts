@@ -1117,23 +1117,30 @@ export class TaskService {
                     project: { select: { projectName: true } },
                     assignee: { select: { teamName: true } },
                     worker: { select: { teamName: true } },
+                    creator: { select: { teamName: true } },
                 }
             })
         ]);
 
         const allTasks = [...pendingTasks, ...completedTasks];
 
-        const mappedData = allTasks.map((task, index) => ({
+        const mappedData = allTasks.map((task: any, index) => ({
             srNo: index + 1,
             taskNo: task.taskNo,
             taskTitle: task.taskTitle,
             priority: task.priority,
             taskStatus: task.taskStatus,
-            project: task.project?.projectName || 'N/A',
-            assignee: task.assignee?.teamName || 'N/A',
-            worker: task.worker?.teamName || 'N/A',
-            createdTime: task.createdTime ? new Date(task.createdTime).toLocaleString() : 'N/A',
-            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : 'N/A',
+            project: task.project?.projectName || '',
+            assignee: task.assignee?.teamName || '',
+            worker: task.worker?.teamName || '',
+            createdBy: task.creator?.teamName || '',
+            createdTime: task.createdTime ? new Date(task.createdTime).toLocaleString() : '',
+            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
+            editTime: Array.isArray(task.editTime) && task.editTime.length > 0 ? task.editTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
+            reminderTime: Array.isArray(task.reminderTime) && task.reminderTime.length > 0 ? task.reminderTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
+            reviewedTime: Array.isArray(task.reviewedTime) && task.reviewedTime.length > 0 ? task.reviewedTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
+            completeTime: task.completeTime ? new Date(task.completeTime).toLocaleString() : '',
+            remark: task.remarkChat || task.additionalNote || '',
         }));
 
         const columns = [
@@ -1145,8 +1152,14 @@ export class TaskService {
             { header: 'Project', key: 'project', width: 25 },
             { header: 'Assignee', key: 'assignee', width: 25 },
             { header: 'Worker', key: 'worker', width: 25 },
+            { header: 'Created By', key: 'createdBy', width: 25 },
             { header: 'Created Time', key: 'createdTime', width: 25 },
             { header: 'Deadline', key: 'deadline', width: 25 },
+            { header: 'Edit Time', key: 'editTime', width: 25 },
+            { header: 'Reminder Time', key: 'reminderTime', width: 25 },
+            { header: 'In Review Time', key: 'reviewedTime', width: 25 },
+            { header: 'Completed Time', key: 'completeTime', width: 25 },
+            { header: 'Remark', key: 'remark', width: 35 },
         ];
 
         await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'tasks_export.xlsx', 'Tasks');

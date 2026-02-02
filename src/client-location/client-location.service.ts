@@ -315,10 +315,10 @@ export class ClientLocationService {
             locationNo: item.locationNo,
             locationName: item.locationName,
             locationCode: item.locationCode,
-            company: item.company?.companyName || 'N/A',
-            address: item.address || 'N/A',
+            company: item.company?.companyName || '',
+            address: item.address || '',
             status: item.status,
-            remark: item.remark || 'N/A',
+            remark: item.remark || '',
         }));
 
         const columns = [

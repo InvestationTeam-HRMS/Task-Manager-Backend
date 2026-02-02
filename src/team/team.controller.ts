@@ -26,32 +26,31 @@ import {
 } from './dto/team.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-// Removed UserRole import from @prisma/client
 
 @Controller('teams')
 export class TeamController {
   constructor(private teamService: TeamService) { }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR', 'EMPLOYEE')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:create')
   create(@Body() dto: CreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.create(dto, userId);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR', 'EMPLOYEE')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:view')
   findAll(@Query() query: any) {
     return this.teamService.findAll(query, query);
   }
 
   @Get('export/excel')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR', 'EMPLOYEE')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:download')
   async exportExcel(
     @Query() query: any,
     @GetUser('id') userId: string,
@@ -73,8 +72,8 @@ export class TeamController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:edit')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTeamDto,
@@ -84,8 +83,8 @@ export class TeamController {
   }
 
   @Patch(':id/status')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:edit')
   changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeStatusDto,
@@ -95,48 +94,43 @@ export class TeamController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:delete')
   delete(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.delete(id, userId);
   }
 
   @Post('bulk/create')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:create')
   bulkCreate(@Body() dto: BulkCreateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkCreate(dto, userId);
   }
 
   @Put('bulk/update')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:edit')
   bulkUpdate(@Body() dto: BulkUpdateTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkUpdate(dto, userId);
   }
 
   @Post('bulk/delete-records')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:delete')
   bulkDelete(@Body() dto: BulkDeleteTeamDto, @GetUser('id') userId: string) {
     return this.teamService.bulkDelete(dto, userId);
   }
 
   @Post(':id/resend-invitation')
-  @UseGuards(JwtAuthGuard)
-  @Roles('ADMIN', 'HR')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:edit')
   resendInvitation(@Param('id') id: string, @GetUser('id') userId: string) {
     return this.teamService.resendInvitation(id, userId);
   }
 
   @Post('upload/excel')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(
-    'ADMIN',
-    'HR',
-    'EMPLOYEE',
-    'MANAGER',
-  )
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('users:upload')
   @UseInterceptors(FileInterceptor('file'))
   uploadExcel(
     @UploadedFile() file: Express.Multer.File,

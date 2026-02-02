@@ -19,14 +19,14 @@ import { TaskService } from './task.service';
 import { CreateTaskDto, UpdateTaskDto, FilterTaskDto } from './dto/task.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AcceptanceStatus } from '@prisma/client';
 import { UpdateTaskAcceptanceDto } from './dto/task-acceptance.dto';
 
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 export class TaskController {
     constructor(private readonly taskService: TaskService) { }
 
@@ -41,7 +41,8 @@ export class TaskController {
     }
 
     @Post()
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:create')
     @UseInterceptors(FilesInterceptor('files'))
     async create(
         @UploadedFiles() files: Express.Multer.File[],
@@ -53,6 +54,8 @@ export class TaskController {
     }
 
     @Get()
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:view')
     findAll(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
@@ -62,8 +65,9 @@ export class TaskController {
     }
 
     @Post('bulk-upload')
-    @Roles('ADMIN', 'MANAGER')
-    @UseInterceptors(FilesInterceptor('file', 1)) // 'file' matches the frontend key
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:upload')
+    @UseInterceptors(FilesInterceptor('file', 1))
     bulkUpload(
         @UploadedFiles() files: Express.Multer.File[],
         @GetUser('id') userId: string
@@ -73,7 +77,8 @@ export class TaskController {
     }
 
     @Get('export/excel')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:download')
     async exportExcel(
         @Query() filter: FilterTaskDto,
         @GetUser('id') userId: string,
@@ -88,6 +93,8 @@ export class TaskController {
     }
 
     @Patch('acceptances/:id')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     updateAcceptanceStatus(
         @Param('id') id: string,
         @Body() dto: UpdateTaskAcceptanceDto,
@@ -97,17 +104,17 @@ export class TaskController {
     }
 
     @Get(':id')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:view')
     async findById(@Param('id') id: string) {
         const result = await this.taskService.findById(id);
         return { data: result };
     }
 
-    // ... rest of the methods
-
     @Patch(':id')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     @UseInterceptors(FilesInterceptor('files'))
-
     async update(
         @Param('id') id: string,
         @Body() dto: UpdateTaskDto,
@@ -120,7 +127,8 @@ export class TaskController {
     }
 
     @Patch(':id/submit-review')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     @UseInterceptors(FilesInterceptor('attachments'))
     async submitReview(
         @Param('id') id: string,
@@ -133,7 +141,8 @@ export class TaskController {
     }
 
     @Patch(':id/finalize-complete')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     @UseInterceptors(FilesInterceptor('attachments'))
     async finalizeComplete(
         @Param('id') id: string,
@@ -146,7 +155,8 @@ export class TaskController {
     }
 
     @Patch(':id/reminder')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     sendReminder(
         @Param('id') id: string,
         @GetUser('id') userId: string,
@@ -155,7 +165,8 @@ export class TaskController {
     }
 
     @Patch(':id/reject')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     @UseInterceptors(FilesInterceptor('attachments'))
     async rejectTask(
         @Param('id') id: string,
@@ -168,7 +179,8 @@ export class TaskController {
     }
 
     @Patch(':id/revert-to-pending')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:edit')
     async revertToPending(
         @Param('id') id: string,
         @GetUser('id') userId: string,
@@ -178,7 +190,8 @@ export class TaskController {
     }
 
     @Delete(':id')
-    @Roles('ADMIN', 'MANAGER', 'HR', 'EMPLOYEE')
+    @UseGuards(PermissionsGuard)
+    @Permissions('task:delete')
     delete(
         @Param('id') id: string,
         @GetUser('id') userId: string,

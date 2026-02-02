@@ -26,8 +26,8 @@ import {
 } from './dto/project.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
 
@@ -36,22 +36,22 @@ export class ProjectController {
     constructor(private projectService: ProjectService) { }
 
     @Post()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:create')
     create(@Body() dto: CreateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.create(dto, userId);
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:view')
     findAll(@Query() query: any) {
         return this.projectService.findAll(query, query);
     }
 
     @Get('export/excel')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:download')
     async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
@@ -73,8 +73,8 @@ export class ProjectController {
     }
 
     @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:edit')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateProjectDto,
@@ -84,8 +84,8 @@ export class ProjectController {
     }
 
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:edit')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -95,43 +95,36 @@ export class ProjectController {
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:delete')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.projectService.delete(id, userId);
     }
 
     @Post('bulk/create')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:create')
     bulkCreate(@Body() dto: BulkCreateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:edit')
     bulkUpdate(@Body() dto: BulkUpdateProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:delete')
     bulkDelete(@Body() dto: BulkDeleteProjectDto, @GetUser('id') userId: string) {
         return this.projectService.bulkDelete(dto, userId);
     }
 
-
-
     @Post('upload/excel')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(
-        'ADMIN',
-        'HR',
-        'EMPLOYEE',
-        'MANAGER',
-    )
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('project:upload')
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,

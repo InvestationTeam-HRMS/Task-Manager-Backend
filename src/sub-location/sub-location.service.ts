@@ -265,10 +265,10 @@ export class SubLocationService {
             subLocationNo: item.subLocationNo,
             subLocationName: item.subLocationName,
             subLocationCode: item.subLocationCode,
-            location: item.location?.locationName || 'N/A',
-            address: item.address || 'N/A',
+            location: item.location?.locationName || '',
+            address: item.address || '',
             status: item.status,
-            remark: item.remark || 'N/A',
+            remark: item.remark || '',
         }));
 
         const columns = [

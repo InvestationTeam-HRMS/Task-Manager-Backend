@@ -23,11 +23,12 @@ import {
     BulkUpdateClientLocationDto,
     BulkDeleteClientLocationDto,
     ChangeStatusDto,
+    FilterClientLocationDto,
 } from './dto/client-location.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
 
@@ -36,17 +37,28 @@ export class ClientLocationController {
     constructor(private clientLocationService: ClientLocationService) { }
 
     @Post()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:create')
     create(@Body() dto: CreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.create(dto, userId);
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:view')
     findAll(@Query() query: any) {
         return this.clientLocationService.findAll(query, query);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:download')
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response,
+    ) {
+        return this.clientLocationService.downloadExcel(query, userId, res);
     }
 
     @Get('active')
@@ -61,20 +73,9 @@ export class ClientLocationController {
         return this.clientLocationService.findById(id);
     }
 
-    @Get('export/excel')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
-    async exportExcel(
-        @Query() query: any,
-        @GetUser('id') userId: string,
-        @Res() res: Response
-    ) {
-        return this.clientLocationService.downloadExcel(query, userId, res);
-    }
-
     @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateClientLocationDto,
@@ -84,8 +85,8 @@ export class ClientLocationController {
     }
 
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -95,43 +96,36 @@ export class ClientLocationController {
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:delete')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.clientLocationService.delete(id, userId);
     }
 
     @Post('bulk/create')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:create')
     bulkCreate(@Body() dto: BulkCreateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:edit')
     bulkUpdate(@Body() dto: BulkUpdateClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:delete')
     bulkDelete(@Body() dto: BulkDeleteClientLocationDto, @GetUser('id') userId: string) {
         return this.clientLocationService.bulkDelete(dto, userId);
     }
 
-
-
     @Post('upload/excel')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(
-        'ADMIN',
-        'HR',
-        'EMPLOYEE',
-        'MANAGER',
-    )
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('organization:upload')
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,

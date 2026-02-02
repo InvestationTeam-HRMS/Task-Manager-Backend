@@ -23,11 +23,12 @@ import {
     BulkUpdateGroupDto,
     BulkDeleteGroupDto,
     ChangeStatusDto,
+    FilterGroupDto,
 } from './dto/group.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
 
@@ -36,26 +37,26 @@ export class GroupController {
     constructor(private groupService: GroupService) { }
 
     @Post()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:create')
     create(@Body() dto: CreateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.create(dto, userId);
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:view')
     findAll(@Query() query: any) {
         return this.groupService.findAll(query, query);
     }
 
     @Get('export/excel')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:download')
     async exportExcel(
         @Query() query: any,
         @GetUser('id') userId: string,
-        @Res() res: Response
+        @Res() res: Response,
     ) {
         return this.groupService.downloadExcel(query, userId, res);
     }
@@ -79,8 +80,8 @@ export class GroupController {
     }
 
     @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:edit')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateGroupDto,
@@ -90,8 +91,8 @@ export class GroupController {
     }
 
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:edit')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -101,43 +102,36 @@ export class GroupController {
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:delete')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.groupService.delete(id, userId);
     }
 
     @Post('bulk/create')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:create')
     bulkCreate(@Body() dto: BulkCreateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:edit')
     bulkUpdate(@Body() dto: BulkUpdateGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:delete')
     bulkDelete(@Body() dto: BulkDeleteGroupDto, @GetUser('id') userId: string) {
         return this.groupService.bulkDelete(dto, userId);
     }
 
-
-
     @Post('upload/excel')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(
-        'ADMIN',
-        'HR',
-        'EMPLOYEE',
-        'MANAGER',
-    )
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('group:upload')
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,

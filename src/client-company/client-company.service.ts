@@ -250,10 +250,10 @@ export class ClientCompanyService {
             companyNo: item.companyNo,
             companyName: item.companyName,
             companyCode: item.companyCode,
-            group: item.group?.groupName || 'N/A',
-            address: item.address || 'N/A',
+            group: item.group?.groupName || '',
+            address: item.address || '',
             status: item.status,
-            remark: item.remark || 'N/A',
+            remark: item.remark || '',
         }));
 
         const columns = [

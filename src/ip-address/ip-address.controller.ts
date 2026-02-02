@@ -8,10 +8,12 @@ import {
     Body,
     Param,
     Query,
+    Res,
     UseGuards,
     UseInterceptors,
     UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IpAddressService } from './ip-address.service';
 import {
@@ -24,8 +26,8 @@ import {
 } from './dto/ip-address.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
 
@@ -34,17 +36,28 @@ export class IpAddressController {
     constructor(private ipAddressService: IpAddressService) { }
 
     @Post()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:create')
     create(@Body() dto: CreateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.create(dto, userId);
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR', 'EMPLOYEE')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:view')
     findAll(@Query() query: any) {
         return this.ipAddressService.findAll(query, query);
+    }
+
+    @Get('export/excel')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:download')
+    async exportExcel(
+        @Query() query: any,
+        @GetUser('id') userId: string,
+        @Res() res: Response,
+    ) {
+        return this.ipAddressService.downloadExcel(query, userId, res);
     }
 
     @Get('active')
@@ -60,8 +73,8 @@ export class IpAddressController {
     }
 
     @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:edit')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateIpAddressDto,
@@ -71,8 +84,8 @@ export class IpAddressController {
     }
 
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:edit')
     changeStatus(
         @Param('id') id: string,
         @Body() dto: ChangeStatusDto,
@@ -82,43 +95,36 @@ export class IpAddressController {
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:delete')
     delete(@Param('id') id: string, @GetUser('id') userId: string) {
         return this.ipAddressService.delete(id, userId);
     }
 
     @Post('bulk/create')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:create')
     bulkCreate(@Body() dto: BulkCreateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkCreate(dto, userId);
     }
 
     @Put('bulk/update')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN', 'HR')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:edit')
     bulkUpdate(@Body() dto: BulkUpdateIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkUpdate(dto, userId);
     }
 
     @Post('bulk/delete-records')
-    @UseGuards(JwtAuthGuard)
-    @Roles('ADMIN')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:delete')
     bulkDelete(@Body() dto: BulkDeleteIpAddressDto, @GetUser('id') userId: string) {
         return this.ipAddressService.bulkDelete(dto, userId);
     }
 
-
-
     @Post('upload/excel')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(
-        'ADMIN',
-        'HR',
-        'EMPLOYEE',
-        'MANAGER',
-    )
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('ip_address:upload')
     @UseInterceptors(FileInterceptor('file'))
     uploadExcel(
         @UploadedFile() file: Express.Multer.File,
