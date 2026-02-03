@@ -459,7 +459,6 @@ export class TeamService {
       _count.createdCompletedTasks > 0 && `${_count.createdCompletedTasks} created completed tasks`,
       _count.assignedCompletedTasks > 0 && `${_count.assignedCompletedTasks} assigned completed tasks`,
       _count.workingCompletedTasks > 0 && `${_count.workingCompletedTasks} working completed tasks`,
-      _count.groupMembers > 0 && `${_count.groupMembers} group memberships`,
     ].filter(Boolean);
 
     if (childCounts.length > 0) {
