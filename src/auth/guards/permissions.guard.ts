@@ -40,7 +40,22 @@ export class PermissionsGuard implements CanActivate {
 
             // Check module specific permission
             const modulePermissions = userPermissions[module];
-            return Array.isArray(modulePermissions) && modulePermissions.includes(action);
+            if (!Array.isArray(modulePermissions)) {
+                return false;
+            }
+
+            // Direct match
+            if (modulePermissions.includes(action)) {
+                return true;
+            }
+
+            // Treat "view" as an implied permission when user has any action in this module.
+            // This keeps list pages visible while still blocking the specific view icon/action.
+            if (action === 'view' && modulePermissions.length > 0) {
+                return true;
+            }
+
+            return false;
         });
 
         if (!hasPermission) {
