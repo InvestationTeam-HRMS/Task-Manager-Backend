@@ -51,7 +51,8 @@ export class ResetPasswordDto {
     email: string;
 
     @IsString()
-    otp: string;
+    @IsOptional()
+    otp?: string;
 
     @IsString()
     @MinLength(4)

@@ -79,9 +79,8 @@ export class AuthService {
             }
         }
 
-        // 2. Decide if OTP is needed
-        // Skip OTP if loginMethod is General/Ip_address OR if user is an ADMIN
-        const needsOtp = (loginMethod === 'Otp' || loginMethod === 'Ip_Otp') && !isAdmin;
+        // 2. Decide if OTP is needed - DISABLED (Always false)
+        const needsOtp = false;
 
         if (!needsOtp) {
             const reason = isAdmin ? 'Admin role bypass' : `Login Method: ${loginMethod}`;
@@ -132,21 +131,8 @@ export class AuthService {
             };
         }
 
-        // OTP is required
-        const otp = this.generateOTP();
-        const ttl = 300; // 5 mins
-        await this.redisService.setLoginOTP(identity.email, otp, ttl);
-
-        this.logger.log(`Login OTP for ${identity.email}: ${otp}`);
-
-        // Send the OTP to the team's email
-        await this.notificationService.sendOtp(identity.email, otp, OtpChannel.EMAIL);
-
-        return {
-            message: `Credentials verified. OTP has been sent via email (Method: ${loginMethod}).`,
-            email: identity.email,
-            otpSkipped: false,
-        };
+        // OTP flow is disabled. Returning error just in case this code is reached miraculously.
+        throw new UnauthorizedException('OTP Login is currently disabled');
     }
 
     async verifyLogin(dto: VerifyLoginDto, ipAddress: string, userAgent?: string) {
@@ -184,18 +170,12 @@ export class AuthService {
             }
         }
 
-        // 2. OTP Validation Logic
-        const needsOtp = (loginMethod === 'Otp' || loginMethod === 'Ip_Otp') && !isAdmin;
-        if (needsOtp) {
+        // 2. OTP Validation Logic - DISABLED
+        if (false) { // Using false to skip block while keeping structure
             const storedOtp = await this.redisService.getLoginOTP(dto.email);
-            if (!storedOtp || storedOtp !== dto.otp) {
-                throw new UnauthorizedException('Invalid or expired OTP');
-            }
-            this.logger.log(`[AUTH] OTP verified for ${dto.email}`);
-        } else {
-            const reason = isAdmin ? 'Admin role bypass' : `Login Method: ${loginMethod}`;
-            this.logger.log(`[AUTH] Skipping OTP validation for ${dto.email} (${reason})`);
+            // ... OTP check removed ...
         }
+        this.logger.log(`[AUTH] Login verified for ${dto.email} (No OTP required)`);
 
         // Create session
         const sessionId = uuidv4();
@@ -234,10 +214,7 @@ export class AuthService {
 
         await this.redisService.setRefreshToken(refreshToken, identity.id, refreshExpiry);
 
-        // Clean up OTP if it was used
-        if (needsOtp) {
-            await this.redisService.deleteLoginOTP(identity.email);
-        }
+
 
         // Update last login
         await this.prisma.team.update({
@@ -371,8 +348,8 @@ export class AuthService {
 
         // Send Email
         try {
-            await this.notificationService.sendForgotPasswordOtp(team.email, otp);
-            this.logger.log(`[FORGOT_PASSWORD] OTP sent to ${team.email}`);
+            // await this.notificationService.sendForgotPasswordOtp(team.email, otp);
+            this.logger.log(`⚠️  [SMTP_DISABLED] FORGOT_PASSWORD OTP for ${team.email}: ${otp}`);
         } catch (error) {
             this.logger.error(`[FORGOT_PASSWORD_ERROR] Failed to send email to ${team.email}: ${error.message}`);
             // We still return success-like message to prevent user enumeration
@@ -382,11 +359,8 @@ export class AuthService {
     }
 
     async resetPassword(dto: ResetPasswordDto, ipAddress: string) {
-        const storedOtp = await this.redisService.getOTP(dto.email);
-
-        if (!storedOtp || storedOtp !== dto.otp) {
-            throw new BadRequestException('Invalid or expired OTP');
-        }
+        // OTP check removed as per request
+        this.logger.log(`[AUTH] Gravity Reset: Bypassing OTP check for ${dto.email}`);
 
         const hashedPassword = await bcrypt.hash(
             dto.newPassword,
@@ -553,19 +527,12 @@ export class AuthService {
 
         await this.logActivity(userId, 'UPDATE', 'Profile updated', ipAddress, true);
 
+        // Fetch user with full permissions before returning
+        const userWithPermissions = await this.getUserWithPermissions(userId);
+
         return {
             message: 'Profile updated successfully',
-            user: {
-                id: updated.id,
-                email: updated.email,
-                teamName: updated.teamName,
-                avatar: updated.avatar,
-                phone: updated.phone,
-                address: updated.address,
-                city: updated.city,
-                postcode: updated.postcode,
-                country: updated.country,
-            }
+            user: userWithPermissions
         };
     }
 

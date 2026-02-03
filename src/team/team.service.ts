@@ -604,9 +604,8 @@ export class TeamService {
       await this.redisService.set(`invitation:${token}`, email, 86400);
 
       // 2. Send email via NotificationService
-      await this.notificationService.sendInvitation(email, teamName, token);
-
-      this.logger.log(`[INVITATION] Sent to ${email}`);
+      // await this.notificationService.sendInvitation(email, teamName, token);
+      this.logger.log(`⚠️  [SMTP_DISABLED] INVITATION for ${email}. Token: ${token}`);
       return true;
     } catch (error) {
       this.logger.error(`[INVITATION_FAIL] ${error.message}`);
