@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, IsDateString, ValidateIf } from 'class-validator';
 import { ProjectStatus, ProjectPriority } from '@prisma/client';
 
 export class CreateProjectDto {
@@ -58,15 +58,18 @@ export class UpdateProjectDto {
 
     @IsUUID()
     @IsOptional()
-    companyId?: string;
+    @ValidateIf((o, v) => v !== null)
+    companyId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    locationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    locationId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    subLocationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    subLocationId?: string | null;
 
     @IsDateString()
     @IsOptional()

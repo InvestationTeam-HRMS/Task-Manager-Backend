@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, ValidateIf } from 'class-validator';
 import { IpAddressStatus } from '@prisma/client';
 
 export class CreateIpAddressDto {
@@ -58,15 +58,18 @@ export class UpdateIpAddressDto {
 
     @IsUUID()
     @IsOptional()
-    companyId?: string;
+    @ValidateIf((o, v) => v !== null)
+    companyId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    locationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    locationId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    subLocationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    subLocationId?: string | null;
 
     @IsEnum(IpAddressStatus)
     @IsOptional()

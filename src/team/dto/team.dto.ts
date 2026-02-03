@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, IsBoolean, IsEmail, MinLength, Length } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, IsBoolean, IsEmail, MinLength, Length, ValidateIf } from 'class-validator';
 import { TeamStatus, LoginMethod } from '@prisma/client';
 
 export class CreateTeamDto {
@@ -90,15 +90,18 @@ export class UpdateTeamDto {
 
     @IsUUID()
     @IsOptional()
-    companyId?: string;
+    @ValidateIf((o, v) => v !== null)
+    companyId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    locationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    locationId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    subLocationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    subLocationId?: string | null;
 
     @IsEnum(TeamStatus)
     @IsOptional()

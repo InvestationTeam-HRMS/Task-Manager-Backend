@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNotEmpty, IsArray, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { SubLocationStatus } from '@prisma/client';
 
@@ -59,11 +59,13 @@ export class UpdateSubLocationDto {
 
     @IsUUID()
     @IsOptional()
-    companyId?: string;
+    @ValidateIf((o, v) => v !== null)
+    companyId?: string | null;
 
     @IsUUID()
     @IsOptional()
-    locationId?: string;
+    @ValidateIf((o, v) => v !== null)
+    locationId?: string | null;
 
     @IsString()
     @IsOptional()
