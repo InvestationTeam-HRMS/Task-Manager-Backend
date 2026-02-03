@@ -36,40 +36,19 @@ import { AppService } from './app.service';
       envFilePath: '.env',
     }),
 
-    // Multer for file uploads (memory storage for Cloudinary)
-    // Enterprise-grade: Supports massive Excel files with 10 lakh+ (1 million+) rows
+    // Multer for file uploads
     MulterModule.register({
       storage: multer.memoryStorage(),
       limits: {
-        fileSize: 1024 * 1024 * 1024, // 1GB max file size (1024MB)
-        // Supports:
-        // - Excel files with 10 lakh (1 million) rows
-        // - Heavy CSV imports with multiple columns
-        // - Bulk document/image uploads
-        // - Large video files for training materials
-        // - Archive files (ZIP) with bulk data
-        // Future-proof for enterprise-scale operations
+        fileSize: 1024 * 1024 * 1024, // 1GB max
       },
     }),
 
-    // Rate Limiting - Protection against DDoS/brute force attacks
-    // Enterprise-grade limits for massive-scale HRMS deployment
-    // Designed for: 1000+ concurrent users with very heavy bulk operations
+    // Rate Limiting
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // 60 seconds window
-        limit: 50000, // 50,000 requests per minute (~833 per second)
-        // Maximum capacity for:
-        // - 1000+ concurrent users
-        // - Large Excel file processing (10 lakh rows)
-        // - Multiple dashboards per user (6 parallel calls each)
-        // - Real-time SSE notifications for all users
-        // - Bulk task create/update/delete operations (1000s at once)
-        // - Heavy file uploads/downloads (1GB files)
-        // - Multiple teams/departments working simultaneously
-        // - API integrations and webhooks
-        // Future-proof: Can handle 10x current load
-        // Still protects against DDoS (blocks after 50k requests/min)
+        ttl: 60000,
+        limit: 50000,
       },
     ]),
 
