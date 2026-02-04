@@ -32,6 +32,8 @@ export class GroupService {
     private readonly logger = new Logger(GroupService.name);
     private readonly CACHE_TTL = 300;
     private readonly CACHE_KEY = 'groups';
+    private readonly BACKGROUND_UPLOAD_BYTES =
+        Number(process.env.EXCEL_BACKGROUND_THRESHOLD_BYTES) || 1 * 1024 * 1024;
 
     constructor(
         private prisma: PrismaService,
@@ -769,7 +771,11 @@ export class GroupService {
         };
     }
 
-    async uploadExcel(file: Express.Multer.File, userId: string) {
+    private shouldProcessInBackground(file?: Express.Multer.File) {
+        return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
+    }
+
+    private async parseAndProcessUpload(file: Express.Multer.File) {
         const columnMapping = {
             groupNo: ['groupno', 'no', 'code'],
             groupName: ['groupname', 'name'],
@@ -787,18 +793,52 @@ export class GroupService {
             );
 
         const processedData: any[] = [];
-        for (const row of data) {
-            processedData.push({
-                ...row,
-                status: row.status
-                    ? this.excelUploadService.validateEnum(
-                        row.status,
-                        GroupStatus,
-                        'Status',
-                    )
-                    : GroupStatus.Active,
-            });
+        const processingErrors: any[] = [];
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            try {
+                processedData.push({
+                    ...row,
+                    status: row.status
+                        ? this.excelUploadService.validateEnum(
+                            row.status,
+                            GroupStatus,
+                            'Status',
+                        )
+                        : GroupStatus.Active,
+                });
+            } catch (err) {
+                processingErrors.push({ row: i + 2, error: err.message });
+            }
         }
+
+        if (processedData.length === 0 && processingErrors.length > 0) {
+            throw new BadRequestException(
+                `Validation Failed: ${processingErrors[0].error}`,
+            );
+        }
+
+        return { processedData, parseErrors, processingErrors };
+    }
+
+    async uploadExcel(file: Express.Multer.File, userId: string) {
+        if (this.shouldProcessInBackground(file)) {
+            this.eventEmitter.emit('group.bulk-upload', {
+                file,
+                userId,
+                fileName: file?.originalname || 'upload.xlsx',
+            });
+
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            return {
+                message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
+                isBackground: true,
+                totalRecords: null,
+            };
+        }
+
+        const { processedData, parseErrors, processingErrors } =
+            await this.parseAndProcessUpload(file);
 
         if (processedData.length === 0) {
             throw new BadRequestException(
@@ -822,34 +862,64 @@ export class GroupService {
         }
 
         const result = await this.bulkCreate({ groups: processedData }, userId);
-        result.errors = [...(result.errors || []), ...parseErrors];
+        result.errors = [
+            ...(result.errors || []),
+            ...parseErrors,
+            ...processingErrors,
+        ];
+        result.failed += parseErrors.length + processingErrors.length;
 
         return result;
     }
 
     @OnEvent('group.bulk-upload')
     async handleBackgroundUpload(payload: {
-        data: any[];
+        data?: any[];
+        file?: Express.Multer.File;
         userId: string;
         fileName: string;
     }) {
-        const { data, userId, fileName } = payload;
+        const { data: providedData, file, userId, fileName } = payload;
         this.logger.log(
-            `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+            `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
         );
 
         try {
-            const result = await this.bulkCreate({ groups: data }, userId);
+            let processedData = providedData;
+            let parseErrors: any[] = [];
+            let processingErrors: any[] = [];
+
+            if (!processedData && file) {
+                const parsed = await this.parseAndProcessUpload(file);
+                processedData = parsed.processedData;
+                parseErrors = parsed.parseErrors;
+                processingErrors = parsed.processingErrors;
+            }
+
+            if (!processedData || processedData.length === 0) {
+                throw new Error('No valid data found to import.');
+            }
+
+            const result = await this.bulkCreate({ groups: processedData }, userId);
+            const totalFailed =
+                result.failed + parseErrors.length + processingErrors.length;
+            const totalSuccess = result.success;
 
             await this.notificationService.createNotification(userId, {
                 title: 'Group Import Completed',
-                description: `Successfully imported ${result.success} groups from ${fileName}. Failed: ${result.failed}`,
+                description: `Successfully imported ${totalSuccess} groups from ${fileName}. Failed: ${totalFailed}`,
                 type: 'SYSTEM',
-                metadata: { fileName, success: result.success, failed: result.failed },
+                metadata: {
+                    fileName,
+                    success: totalSuccess,
+                    failed: totalFailed,
+                    parseErrors: parseErrors.length,
+                    processingErrors: processingErrors.length,
+                },
             });
 
             this.logger.log(
-                `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+                `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
             );
         } catch (error) {
             this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);

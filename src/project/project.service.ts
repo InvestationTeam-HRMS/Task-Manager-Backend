@@ -31,6 +31,8 @@ export class ProjectService {
   private readonly logger = new Logger(ProjectService.name);
   private readonly CACHE_TTL = 300;
   private readonly CACHE_KEY = 'projects';
+  private readonly BACKGROUND_UPLOAD_BYTES =
+    Number(process.env.EXCEL_BACKGROUND_THRESHOLD_BYTES) || 1 * 1024 * 1024;
 
   constructor(
     private prisma: PrismaService,
@@ -722,11 +724,11 @@ export class ProjectService {
     };
   }
 
-  async uploadExcel(file: Express.Multer.File, userId: string) {
-    this.logger.log(
-      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
-    );
+  private shouldProcessInBackground(file?: Express.Multer.File) {
+    return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
+  }
 
+  private async parseAndProcessUpload(file: Express.Multer.File) {
     const columnMapping = {
       projectNo: ['projectno', 'projectnumber'],
       projectName: ['projectname', 'name'],
@@ -813,13 +815,6 @@ export class ProjectService {
           throw new Error(`Sub Location not found: ${row.subLocationName}`);
         }
 
-        // We need to fetch the full hierarchy for the subLocation to populate other fields
-        // Since subLocationMap only has ID, we might need a better map or fetch here.
-        // Improving step 1 to fetch more details.
-        // HOWEVER, for optimization, finding from map is better.
-        // Let's refactor step 1 to include hierarchy.
-
-        // Ensure the client group hierarchy is correctly linked during creation
         const fullSubLocation = detailedSubLocations.find(
           (s) => s.id === subLocationId,
         );
@@ -853,6 +848,31 @@ export class ProjectService {
       );
     }
 
+    return { processedData, parseErrors, processingErrors };
+  }
+
+  async uploadExcel(file: Express.Multer.File, userId: string) {
+    this.logger.log(
+      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
+    );
+    if (this.shouldProcessInBackground(file)) {
+      this.eventEmitter.emit('project.bulk-upload', {
+        file,
+        userId,
+        fileName: file?.originalname || 'upload.xlsx',
+      });
+
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      return {
+        message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
+        isBackground: true,
+        totalRecords: null,
+      };
+    }
+
+    const { processedData, parseErrors, processingErrors } =
+      await this.parseAndProcessUpload(file);
+
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
       this.eventEmitter.emit('project.bulk-upload', {
@@ -882,27 +902,52 @@ export class ProjectService {
 
   @OnEvent('project.bulk-upload')
   async handleBackgroundUpload(payload: {
-    data: CreateProjectDto[];
+    data?: CreateProjectDto[];
+    file?: Express.Multer.File;
     userId: string;
     fileName: string;
   }) {
-    const { data, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName } = payload;
     this.logger.log(
-      `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+      `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      const result = await this.bulkCreate({ projects: data }, userId);
+      let processedData = providedData;
+      let parseErrors: any[] = [];
+      let processingErrors: any[] = [];
+
+      if (!processedData && file) {
+        const parsed = await this.parseAndProcessUpload(file);
+        processedData = parsed.processedData as CreateProjectDto[];
+        parseErrors = parsed.parseErrors;
+        processingErrors = parsed.processingErrors;
+      }
+
+      if (!processedData || processedData.length === 0) {
+        throw new Error('No valid data found to import.');
+      }
+
+      const result = await this.bulkCreate({ projects: processedData }, userId);
+      const totalFailed =
+        result.failed + parseErrors.length + processingErrors.length;
+      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Project Import Completed',
-        description: `Successfully imported ${result.success} projects from ${fileName}. Failed: ${result.failed}`,
+        description: `Successfully imported ${totalSuccess} projects from ${fileName}. Failed: ${totalFailed}`,
         type: 'SYSTEM',
-        metadata: { fileName, success: result.success, failed: result.failed },
+        metadata: {
+          fileName,
+          success: totalSuccess,
+          failed: totalFailed,
+          parseErrors: parseErrors.length,
+          processingErrors: processingErrors.length,
+        },
       });
 
       this.logger.log(
-        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
       );
     } catch (error) {
       this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);

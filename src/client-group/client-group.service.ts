@@ -34,6 +34,7 @@ export class ClientGroupService {
   private readonly logger = new Logger(ClientGroupService.name);
   private readonly CACHE_TTL = 300; // 5 minutes
   private readonly CACHE_KEY = 'client_groups';
+  private readonly BACKGROUND_UPLOAD_BYTES: number;
 
   constructor(
     private prisma: PrismaService,
@@ -44,7 +45,14 @@ export class ClientGroupService {
     private excelDownloadService: ExcelDownloadService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) {
+    const configuredBytes = Number(
+      this.configService.get('EXCEL_BACKGROUND_THRESHOLD_BYTES', 1 * 1024 * 1024),
+    );
+    this.BACKGROUND_UPLOAD_BYTES = Number.isFinite(configuredBytes)
+      ? configuredBytes
+      : 1 * 1024 * 1024;
+  }
 
   async create(dto: CreateClientGroupDto, userId: string) {
     // Transform groupCode to uppercase
@@ -639,22 +647,26 @@ export class ClientGroupService {
     };
   }
 
-  async uploadExcel(file: Express.Multer.File, userId: string) {
-    this.logger.log(
-      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
-    );
-
-    const columnMapping = {
-      groupNo: ['groupno', 'groupnumber', 'no', 'number'],
-      groupName: ['groupname', 'name', 'gname', 'group'],
-      groupCode: ['groupcode', 'code', 'gcode', 'groupcode'],
-      country: ['country', 'location'],
-      status: ['status'],
-      remark: ['remark', 'remarks', 'notes', 'description'],
+  private getUploadConfig() {
+    return {
+      columnMapping: {
+        groupNo: ['groupno', 'groupnumber', 'no', 'number'],
+        groupName: ['groupname', 'name', 'gname', 'group'],
+        groupCode: ['groupcode', 'code', 'gcode', 'groupcode'],
+        country: ['country', 'location'],
+        status: ['status'],
+        remark: ['remark', 'remarks', 'notes', 'description'],
+      },
+      requiredColumns: ['groupName', 'groupCode'],
     };
+  }
 
-    const requiredColumns = ['groupName', 'groupCode'];
+  private shouldProcessInBackground(file?: Express.Multer.File) {
+    return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
+  }
 
+  private async parseAndProcessUpload(file: Express.Multer.File) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
     const parseResult = await this.excelUploadService.parseFile(
       file,
       columnMapping,
@@ -698,6 +710,32 @@ export class ClientGroupService {
       );
     }
 
+    return { processedData, parseErrors, processingErrors };
+  }
+
+  async uploadExcel(file: Express.Multer.File, userId: string) {
+    this.logger.log(
+      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
+    );
+
+    if (this.shouldProcessInBackground(file)) {
+      this.eventEmitter.emit('client-group.bulk-upload', {
+        file,
+        userId,
+        fileName: file?.originalname || 'upload.xlsx',
+      });
+
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      return {
+        message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
+        isBackground: true,
+        totalRecords: null,
+      };
+    }
+
+    const { processedData, parseErrors, processingErrors } =
+      await this.parseAndProcessUpload(file);
+
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
       this.eventEmitter.emit('client-group.bulk-upload', {
@@ -731,27 +769,56 @@ export class ClientGroupService {
 
   @OnEvent('client-group.bulk-upload')
   async handleBackgroundUpload(payload: {
-    data: any[];
+    data?: any[];
+    file?: Express.Multer.File;
     userId: string;
     fileName: string;
   }) {
-    const { data, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName } = payload;
     this.logger.log(
-      `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+      `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      const result = await this.bulkCreate({ clientGroups: data }, userId);
+      let processedData = providedData;
+      let parseErrors: any[] = [];
+      let processingErrors: any[] = [];
+
+      if (!processedData && file) {
+        const parsed = await this.parseAndProcessUpload(file);
+        processedData = parsed.processedData;
+        parseErrors = parsed.parseErrors;
+        processingErrors = parsed.processingErrors;
+      }
+
+      if (!processedData || processedData.length === 0) {
+        throw new Error('No valid data found to import.');
+      }
+
+      const result = await this.bulkCreate(
+        { clientGroups: processedData },
+        userId,
+      );
+
+      const totalFailed =
+        result.failed + parseErrors.length + processingErrors.length;
+      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Client Group Import Completed',
-        description: `Successfully imported ${result.success} client groups from ${fileName}. Failed: ${result.failed}`,
+        description: `Successfully imported ${totalSuccess} client groups from ${fileName}. Failed: ${totalFailed}`,
         type: 'SYSTEM',
-        metadata: { fileName, success: result.success, failed: result.failed },
+        metadata: {
+          fileName,
+          success: totalSuccess,
+          failed: totalFailed,
+          parseErrors: parseErrors.length,
+          processingErrors: processingErrors.length,
+        },
       });
 
       this.logger.log(
-        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
       );
     } catch (error) {
       this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);

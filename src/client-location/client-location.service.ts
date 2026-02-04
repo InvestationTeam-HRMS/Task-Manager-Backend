@@ -31,6 +31,8 @@ export class ClientLocationService {
   private readonly logger = new Logger(ClientLocationService.name);
   private readonly CACHE_TTL = 300;
   private readonly CACHE_KEY = 'client_locations';
+  private readonly BACKGROUND_UPLOAD_BYTES =
+    Number(process.env.EXCEL_BACKGROUND_THRESHOLD_BYTES) || 1 * 1024 * 1024;
 
   constructor(
     private prisma: PrismaService,
@@ -767,11 +769,11 @@ export class ClientLocationService {
     };
   }
 
-  async uploadExcel(file: Express.Multer.File, userId: string) {
-    this.logger.log(
-      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
-    );
+  private shouldProcessInBackground(file?: Express.Multer.File) {
+    return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
+  }
 
+  private async parseAndProcessUpload(file: Express.Multer.File) {
     const columnMapping = {
       locationNo: ['locationno', 'locationnumber', 'no', 'number'],
       locationName: ['locationname', 'name', 'lname', 'location'],
@@ -907,6 +909,32 @@ export class ClientLocationService {
       );
     }
 
+    return { processedData, parseErrors, processingErrors };
+  }
+
+  async uploadExcel(file: Express.Multer.File, userId: string) {
+    this.logger.log(
+      `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
+    );
+
+    if (this.shouldProcessInBackground(file)) {
+      this.eventEmitter.emit('client-location.bulk-upload', {
+        file,
+        userId,
+        fileName: file?.originalname || 'upload.xlsx',
+      });
+
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      return {
+        message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
+        isBackground: true,
+        totalRecords: null,
+      };
+    }
+
+    const { processedData, parseErrors, processingErrors } =
+      await this.parseAndProcessUpload(file);
+
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
       this.eventEmitter.emit('client-location.bulk-upload', {
@@ -936,27 +964,52 @@ export class ClientLocationService {
 
   @OnEvent('client-location.bulk-upload')
   async handleBackgroundUpload(payload: {
-    data: any[];
+    data?: any[];
+    file?: Express.Multer.File;
     userId: string;
     fileName: string;
   }) {
-    const { data, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName } = payload;
     this.logger.log(
-      `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+      `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      const result = await this.bulkCreate({ locations: data }, userId);
+      let processedData = providedData;
+      let parseErrors: any[] = [];
+      let processingErrors: any[] = [];
+
+      if (!processedData && file) {
+        const parsed = await this.parseAndProcessUpload(file);
+        processedData = parsed.processedData;
+        parseErrors = parsed.parseErrors;
+        processingErrors = parsed.processingErrors;
+      }
+
+      if (!processedData || processedData.length === 0) {
+        throw new Error('No valid data found to import.');
+      }
+
+      const result = await this.bulkCreate({ locations: processedData }, userId);
+      const totalFailed =
+        result.failed + parseErrors.length + processingErrors.length;
+      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Client Location Import Completed',
-        description: `Successfully imported ${result.success} client locations from ${fileName}. Failed: ${result.failed}`,
+        description: `Successfully imported ${totalSuccess} client locations from ${fileName}. Failed: ${totalFailed}`,
         type: 'SYSTEM',
-        metadata: { fileName, success: result.success, failed: result.failed },
+        metadata: {
+          fileName,
+          success: totalSuccess,
+          failed: totalFailed,
+          parseErrors: parseErrors.length,
+          processingErrors: processingErrors.length,
+        },
       });
 
       this.logger.log(
-        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
       );
     } catch (error) {
       this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);
