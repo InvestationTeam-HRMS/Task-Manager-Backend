@@ -65,8 +65,7 @@ export class TaskService {
                 if (
                     !file.size ||
                     file.size === 0 ||
-                    !file.buffer ||
-                    file.buffer.length === 0
+                    (!file.buffer && !file.path)
                 )
                     continue;
 
@@ -757,7 +756,12 @@ export class TaskService {
             for (const file of files) {
                 const fileName = `${taskNo}_${Date.now()}_${file.originalname}`;
                 const uploadPath = path.join(uploadDir, fileName);
-                fs.writeFileSync(uploadPath, file.buffer);
+                if (file.buffer) {
+                    fs.writeFileSync(uploadPath, file.buffer);
+                } else if (file.path) {
+                    fs.copyFileSync(file.path, uploadPath);
+                    fs.unlinkSync(file.path);
+                }
                 savedPaths.push(`/uploads/${fileName}`);
             }
 
@@ -1347,20 +1351,24 @@ export class TaskService {
      * Bulk Upload Logic: Excel -> CSV -> Streaming Read -> Batch Insert
      */
     async bulkUpload(file: Express.Multer.File, userId: string) {
-        const tempExcelPath = path.join(
-            process.cwd(),
-            'uploads',
-            `bulk_${Date.now()}.xlsx`,
-        );
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        const tempExcelPath =
+            file.path ||
+            path.join(uploadDir, `bulk_${Date.now()}.xlsx`);
         const tempCsvPath = path.join(
-            process.cwd(),
-            'uploads',
+            uploadDir,
             `bulk_${Date.now()}.csv`,
         );
 
         try {
             // 1. Save Excel file temporarily
-            fs.writeFileSync(tempExcelPath, file.buffer);
+            if (!file.path) {
+                fs.writeFileSync(tempExcelPath, file.buffer);
+            }
 
             // 2. Convert Excel to CSV via Streaming
             await this.convertExcelToCsvStreaming(tempExcelPath, tempCsvPath);

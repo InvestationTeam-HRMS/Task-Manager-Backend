@@ -6,6 +6,7 @@ import {
   UploadApiErrorResponse,
 } from 'cloudinary';
 import * as streamifier from 'streamifier';
+import * as fs from 'fs';
 
 @Injectable()
 export class CloudinaryService {
@@ -32,6 +33,12 @@ export class CloudinaryService {
     uniqueFilename: boolean = true,
   ): Promise<UploadApiResponse | UploadApiErrorResponse> {
     return new Promise((resolve, reject) => {
+      const removeTempFile = () => {
+        if (typeof file !== 'string' && file?.path) {
+          fs.promises.unlink(file.path).catch(() => undefined);
+        }
+      };
+
       const uploadOptions: any = {
         folder,
         resource_type: 'auto',
@@ -49,6 +56,7 @@ export class CloudinaryService {
       }
 
       const callback = (error: any, result: any) => {
+        removeTempFile();
         if (error) return reject(error);
         if (!result)
           return reject(new Error('Cloudinary upload failed: Empty result'));
@@ -64,7 +72,14 @@ export class CloudinaryService {
           uploadOptions,
           callback,
         );
-        streamifier.createReadStream(file.buffer).pipe(uploadStream);
+        if (file.buffer) {
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
+        } else if (file.path) {
+          fs.createReadStream(file.path).pipe(uploadStream);
+        } else {
+          removeTempFile();
+          reject(new Error('No file data received.'));
+        }
       }
     });
   }

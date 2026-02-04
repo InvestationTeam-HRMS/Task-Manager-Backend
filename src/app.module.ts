@@ -4,6 +4,8 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { MulterModule } from '@nestjs/platform-express';
 import * as multer from 'multer';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { CommonModule } from './common/common.module';
@@ -38,9 +40,24 @@ import { AppService } from './app.service';
 
     // Multer for file uploads
     MulterModule.register({
-      storage: multer.memoryStorage(),
+      storage: (() => {
+        const uploadTmpDir =
+          process.env.UPLOAD_TMP_DIR ||
+          path.join(process.cwd(), 'uploads', 'tmp');
+        if (!fs.existsSync(uploadTmpDir)) {
+          fs.mkdirSync(uploadTmpDir, { recursive: true });
+        }
+        return multer.diskStorage({
+          destination: uploadTmpDir,
+          filename: (_req, file, cb) => {
+            const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+            const ext = path.extname(file.originalname);
+            cb(null, `${unique}${ext}`);
+          },
+        });
+      })(),
       limits: {
-        fileSize: 1024 * 1024 * 1024, // 1GB max
+        fileSize: Number(process.env.MAX_FILE_SIZE) || 1024 * 1024 * 1024, // 1GB max
       },
     }),
 
