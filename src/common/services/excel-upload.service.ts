@@ -209,12 +209,12 @@ export class ExcelUploadService {
   }
 
   validateEnum(value: string, enumObj: any, fieldName: string): string {
-    const validValues = Object.values(enumObj);
+    const validValues = Object.values(enumObj) as string[];
     const trimmedVal = value.trim();
 
     // Case-insensitive find
     const match = validValues.find(
-      (v) => v.toLowerCase() === trimmedVal.toLowerCase(),
+      (v) => String(v).toLowerCase() === trimmedVal.toLowerCase(),
     );
 
     if (trimmedVal && !match) {
@@ -222,6 +222,6 @@ export class ExcelUploadService {
         `Invalid ${fieldName}: "${value}". Allowed: ${validValues.join(', ')}`,
       );
     }
-    return match || trimmedVal; // Return the actual enum value (with correct casing) if found
+    return (match as string) || trimmedVal; // Return the actual enum value (with correct casing) if found
   }
 }
