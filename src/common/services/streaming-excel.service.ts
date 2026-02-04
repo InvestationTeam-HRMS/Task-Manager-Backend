@@ -18,7 +18,7 @@ export class StreamingExcelService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * Stream-based Excel processing for large files
@@ -95,9 +95,9 @@ export class StreamingExcelService {
         });
 
         // Stop if too many errors (safety mechanism)
-        if (errors.length > 1000) {
+        if (errors.length > 5000) {
           this.logger.error(
-            `[STREAMING_UPLOAD] Too many errors, stopping at row ${rowNumber}`,
+            `[STREAMING_UPLOAD] Too many errors (>5000), stopping at row ${rowNumber}`,
           );
           break;
         }
@@ -114,7 +114,7 @@ export class StreamingExcelService {
 
     this.logger.log(
       `[STREAMING_UPLOAD] Completed ${entityType} upload: ` +
-        `Processed: ${totalProcessed}, Inserted: ${totalInserted}, Failed: ${totalFailed}, Duration: ${duration}ms`,
+      `Processed: ${totalProcessed}, Inserted: ${totalInserted}, Failed: ${totalFailed}, Duration: ${duration}ms`,
     );
 
     return {
@@ -140,9 +140,10 @@ export class StreamingExcelService {
         batches.push(chunk.slice(i, i + this.BATCH_SIZE));
       }
 
-      // Process batches in parallel (max 3 concurrent)
-      const batchPromises = batches.map((batch) => insertBatch(batch));
-      await Promise.all(batchPromises);
+      // Process batches SEQUENTIALLY to prevent DB connection pool exhaustion
+      for (const batch of batches) {
+        await insertBatch(batch);
+      }
 
       return chunk.length;
     } catch (error) {
