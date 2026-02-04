@@ -10,7 +10,7 @@ import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private reflector: Reflector) { }
 
   canActivate(context: ExecutionContext): boolean {
     const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
@@ -43,14 +43,31 @@ export class PermissionsGuard implements CanActivate {
         return true;
       }
 
-      // Check module specific permission
-      const modulePermissions = userPermissions[module];
+      // Check module specific permission with case-insensitive fallback
+      let modulePermissions = userPermissions[module];
+      if (!modulePermissions) {
+        const key = Object.keys(userPermissions).find(
+          (k) => k.toLowerCase() === module.toLowerCase(),
+        );
+        if (key) {
+          modulePermissions = userPermissions[key];
+        }
+      }
+
       if (!Array.isArray(modulePermissions)) {
         return false;
       }
 
       // Direct match
       if (modulePermissions.includes(action)) {
+        return true;
+      }
+
+      // Synonym check: 'add' <-> 'create'
+      if (
+        (action === 'create' && modulePermissions.includes('add')) ||
+        (action === 'add' && modulePermissions.includes('create'))
+      ) {
         return true;
       }
 
