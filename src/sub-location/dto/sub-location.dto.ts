@@ -31,12 +31,12 @@ export class CreateSubLocationDto {
   clientGroupId: string;
 
   @IsUUID()
-  @IsOptional()
-  companyId?: string;
+  @IsNotEmpty()
+  companyId: string;
 
   @IsUUID()
-  @IsOptional()
-  locationId?: string;
+  @IsNotEmpty()
+  locationId: string;
 
   @IsString()
   @IsOptional()

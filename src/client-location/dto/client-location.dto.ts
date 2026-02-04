@@ -31,8 +31,8 @@ export class CreateClientLocationDto {
   clientGroupId: string;
 
   @IsUUID()
-  @IsOptional()
-  companyId?: string;
+  @IsNotEmpty()
+  companyId: string;
 
   @IsString()
   @IsOptional()
