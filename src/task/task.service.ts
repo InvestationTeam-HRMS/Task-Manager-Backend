@@ -1434,8 +1434,8 @@ export class TaskService {
 
             if (jobId) {
                 await this.uploadJobService.markCompleted(jobId, {
-                    success: result.successCount,
-                    failed: result.failCount,
+                    success: result.successCount || 0,
+                    failed: result.failCount || 0,
                     message: `Successfully imported ${result.successCount} tasks.`,
                 });
             }

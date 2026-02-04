@@ -706,17 +706,17 @@ export class IpAddressService {
                 }),
             ]);
 
-        const clientGroupMap = new Map(
-            dbClientGroups.map((g) => [g.groupName.toLowerCase(), g.id]),
+        const clientGroupMap = new Map<string, string>(
+            dbClientGroups.map((g) => [g.groupName.toLowerCase(), g.id] as [string, string]),
         );
-        const companyMap = new Map(
-            dbCompanies.map((c) => [c.companyName.toLowerCase(), c.id]),
+        const companyMap = new Map<string, string>(
+            dbCompanies.map((c) => [c.companyName.toLowerCase(), c.id] as [string, string]),
         );
-        const locationMap = new Map(
-            dbLocations.map((l) => [l.locationName.toLowerCase(), l.id]),
+        const locationMap = new Map<string, string>(
+            dbLocations.map((l) => [l.locationName.toLowerCase(), l.id] as [string, string]),
         );
-        const subLocationMap = new Map(
-            dbSubLocations.map((s) => [s.subLocationName.toLowerCase(), s.id]),
+        const subLocationMap = new Map<string, string>(
+            dbSubLocations.map((s) => [s.subLocationName.toLowerCase(), s.id] as [string, string]),
         );
 
         const processedData: CreateIpAddressDto[] = [];
@@ -847,17 +847,17 @@ export class IpAddressService {
                     : [],
             ]);
 
-        const clientGroupMap = new Map(
-            dbClientGroups.map((g) => [g.groupName.toLowerCase(), g.id]),
+        const clientGroupMap = new Map<string, string>(
+            dbClientGroups.map((g) => [g.groupName.toLowerCase(), g.id] as [string, string]),
         );
-        const companyMap = new Map(
-            dbCompanies.map((c) => [c.companyName.toLowerCase(), c.id]),
+        const companyMap = new Map<string, string>(
+            dbCompanies.map((c) => [c.companyName.toLowerCase(), c.id] as [string, string]),
         );
-        const locationMap = new Map(
-            dbLocations.map((l) => [l.locationName.toLowerCase(), l.id]),
+        const locationMap = new Map<string, string>(
+            dbLocations.map((l) => [l.locationName.toLowerCase(), l.id] as [string, string]),
         );
-        const subLocationMap = new Map(
-            dbSubLocations.map((s) => [s.subLocationName.toLowerCase(), s.id]),
+        const subLocationMap = new Map<string, string>(
+            dbSubLocations.map((s) => [s.subLocationName.toLowerCase(), s.id] as [string, string]),
         );
 
         let totalInserted = 0;
