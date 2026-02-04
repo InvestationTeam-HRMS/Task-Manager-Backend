@@ -252,7 +252,12 @@ export class TaskService {
     }
 
     async findAll(pagination: PaginationDto, filter: FilterTaskDto, userId?: string, role?: string) {
-        const { page = 1, limit = 25 } = pagination;
+        const {
+            page = 1,
+            limit = 25,
+            sortBy = 'createdTime',
+            sortOrder = 'desc'
+        } = pagination;
         const skip = (page - 1) * limit;
         const { toTitleCase } = await import('../common/utils/string-helper');
 
@@ -439,23 +444,28 @@ export class TaskService {
         let data: any[] = [];
         let total = 0;
 
+        // Determine effective sortBy field (handle simple mappings if needed)
+        let effectiveSortBy = sortBy;
+        if (sortBy === 'completeTime' && isStrictlyCompleted) effectiveSortBy = 'completedAt';
+
+        const order = { [effectiveSortBy]: sortOrder };
+
         if (isMixedView) {
             // MERGE STRATEGY: Fetch from both
-            // We fetch (skip + limit) from both to ensure we have enough candidates for globally sorted page
             const fetchTake = skip + limit;
 
             const [pendingData, pendingCount, completedData, completedCount] = await Promise.all([
                 this.prisma.pendingTask.findMany({
                     where: where as any,
                     take: fetchTake,
-                    orderBy: { createdTime: 'desc' },
+                    orderBy: order,
                     include
                 }),
                 this.prisma.pendingTask.count({ where: where as any }),
                 this.prisma.completedTask.findMany({
                     where: where as any,
                     take: fetchTake,
-                    orderBy: { createdTime: 'desc' }, // Use createdTime for consistent merging
+                    orderBy: order,
                     include
                 }),
                 this.prisma.completedTask.count({ where: where as any })
@@ -464,11 +474,25 @@ export class TaskService {
             total = pendingCount + completedCount;
             const combined = [...pendingData, ...completedData];
 
-            // Sort combined in memory
+            // Sort combined in memory using the same criteria
             combined.sort((a, b) => {
-                const da = new Date(a.createdTime).getTime();
-                const db = new Date(b.createdTime).getTime();
-                return db - da; // Descending
+                const valA = a[effectiveSortBy];
+                const valB = b[effectiveSortBy];
+
+                if (valA === valB) return 0;
+                if (valA == null) return 1;
+                if (valB == null) return -1;
+
+                let comparison = 0;
+                if (valA instanceof Date && valB instanceof Date) {
+                    comparison = valA.getTime() - valB.getTime();
+                } else if (typeof valA === 'string' && typeof valB === 'string') {
+                    comparison = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                } else {
+                    comparison = valA < valB ? -1 : 1;
+                }
+
+                return sortOrder === 'asc' ? comparison : -comparison;
             });
 
             // Slice the requested page
@@ -480,7 +504,7 @@ export class TaskService {
                     where: where as any,
                     skip,
                     take: limit,
-                    orderBy: { completedAt: 'desc' },
+                    orderBy: order,
                     include
                 }),
                 this.prisma.completedTask.count({ where: where as any })
@@ -494,7 +518,7 @@ export class TaskService {
                     where: where as any,
                     skip,
                     take: limit,
-                    orderBy: { createdTime: 'desc' },
+                    orderBy: order,
                     include
                 }),
                 this.prisma.pendingTask.count({ where: where as any })
@@ -508,6 +532,7 @@ export class TaskService {
             meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
         };
     }
+
 
     async findById(id: string) {
         // Try Pending first, then Completed
