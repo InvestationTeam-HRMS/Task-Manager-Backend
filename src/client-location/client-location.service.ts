@@ -10,8 +10,10 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { UploadJobService } from '../common/services/upload-job.service';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { NotificationService } from '../notification/notification.service';
+import * as fs from 'fs';
 import {
   CreateClientLocationDto,
   UpdateClientLocationDto,
@@ -40,6 +42,7 @@ export class ClientLocationService {
     private autoNumberService: AutoNumberService,
     private excelUploadService: ExcelUploadService,
     private excelDownloadService: ExcelDownloadService,
+    private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
   ) {}
@@ -773,30 +776,35 @@ export class ClientLocationService {
     return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
   }
 
-  private async parseAndProcessUpload(file: Express.Multer.File) {
-    const columnMapping = {
-      locationNo: ['locationno', 'locationnumber', 'no', 'number'],
-      locationName: ['locationname', 'name', 'lname', 'location'],
-      locationCode: ['locationcode', 'code', 'lcode'],
-      clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
-      companyName: [
-        'companyname',
-        'clientcompanyname',
-        'company',
-        'clientcompany',
-      ],
-      address: [
-        'address',
-        'physicaladdress',
-        'street',
-        'locationaddress',
-        'addr',
-      ],
-      status: ['status', 'state', 'active'],
-      remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
+  private getUploadConfig() {
+    return {
+      columnMapping: {
+        locationNo: ['locationno', 'locationnumber', 'no', 'number'],
+        locationName: ['locationname', 'name', 'lname', 'location'],
+        locationCode: ['locationcode', 'code', 'lcode'],
+        clientGroupName: ['clientgroupname', 'clientgroup', 'groupname'],
+        companyName: [
+          'companyname',
+          'clientcompanyname',
+          'company',
+          'clientcompany',
+        ],
+        address: [
+          'address',
+          'physicaladdress',
+          'street',
+          'locationaddress',
+          'addr',
+        ],
+        status: ['status', 'state', 'active'],
+        remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
+      },
+      requiredColumns: ['locationName', 'locationCode'],
     };
+  }
 
-    const requiredColumns = ['locationName', 'locationCode'];
+  private async parseAndProcessUpload(file: Express.Multer.File) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
 
     const { data, errors: parseErrors } =
       await this.excelUploadService.parseFile<any>(
@@ -912,16 +920,184 @@ export class ClientLocationService {
     return { processedData, parseErrors, processingErrors };
   }
 
+  private async processUploadStreaming(
+    file: Express.Multer.File,
+    userId: string,
+  ) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
+
+    const companyNames = new Set<string>();
+    const clientGroupNames = new Set<string>();
+
+    try {
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        2000,
+        async (batch) => {
+          for (const item of batch) {
+            const row = item.data as any;
+            if (row.companyName) {
+              companyNames.add(String(row.companyName).trim());
+            }
+            if (row.clientGroupName) {
+              clientGroupNames.add(String(row.clientGroupName).trim());
+            }
+          }
+        },
+        { cleanup: false },
+      );
+    } catch (error) {
+      if (file?.path) {
+        await fs.promises.unlink(file.path).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    const [companies, clientGroups] = await Promise.all([
+      companyNames.size > 0
+        ? this.prisma.clientCompany.findMany({
+            where: { companyName: { in: Array.from(companyNames) } },
+            select: { id: true, companyName: true, groupId: true },
+          })
+        : [],
+      clientGroupNames.size > 0
+        ? this.prisma.clientGroup.findMany({
+            where: { groupName: { in: Array.from(clientGroupNames) } },
+            select: { id: true, groupName: true },
+          })
+        : [],
+    ]);
+
+    const companyMap = new Map(
+      companies.map((c) => [c.companyName.toLowerCase(), c]),
+    );
+    const groupMap = new Map(
+      clientGroups.map((g) => [g.groupName.toLowerCase(), g.id]),
+    );
+
+    let totalInserted = 0;
+    let totalFailed = 0;
+    const errors: any[] = [];
+
+    const { errors: parseErrors, processed } =
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        1000,
+        async (batch) => {
+          const toInsert: CreateClientLocationDto[] = [];
+
+          for (const item of batch) {
+            const row = item.data as any;
+            try {
+              const status = row.status
+                ? this.excelUploadService.validateEnum(
+                    String(row.status),
+                    LocationStatus,
+                    'Status',
+                  )
+                : LocationStatus.Active;
+
+              let companyId: string | undefined;
+              let clientGroupId: string | undefined;
+
+              if (row.companyName) {
+                const company = companyMap.get(
+                  String(row.companyName).toLowerCase(),
+                );
+                if (!company)
+                  throw new Error(
+                    `Client Company not found: ${row.companyName}`,
+                  );
+                companyId = company.id;
+                clientGroupId = company.groupId;
+              }
+
+              if (row.clientGroupName) {
+                const gid = groupMap.get(
+                  String(row.clientGroupName).toLowerCase(),
+                );
+                if (!gid)
+                  throw new Error(
+                    `Client Group not found: ${row.clientGroupName}`,
+                  );
+
+                if (clientGroupId && clientGroupId !== gid) {
+                  throw new Error(
+                    `Company "${row.companyName}" does not belong to Group "${row.clientGroupName}"`,
+                  );
+                }
+                clientGroupId = gid;
+              }
+
+              if (!clientGroupId) {
+                throw new Error(
+                  `Either "Company Name" or "Client Group Name" is required to resolve Client Group`,
+                );
+              }
+
+              toInsert.push({
+                locationNo: row.locationNo,
+                locationName: row.locationName,
+                locationCode: row.locationCode,
+                clientGroupId: clientGroupId,
+                companyId: companyId,
+                address: row.address,
+                status: status as LocationStatus,
+                remark: row.remark,
+              });
+            } catch (err) {
+              totalFailed += 1;
+              errors.push({ row: item.rowNumber, error: err.message });
+            }
+          }
+
+          if (toInsert.length > 0) {
+            const result = await this.bulkCreate(
+              { locations: toInsert },
+              userId,
+            );
+            totalInserted += result.success || 0;
+            totalFailed += result.failed || 0;
+            if (result.errors?.length) {
+              errors.push(...result.errors);
+            }
+          }
+        },
+      );
+
+    totalFailed += parseErrors.length;
+    if (parseErrors.length > 0) {
+      errors.push(...parseErrors);
+    }
+
+    return {
+      success: totalInserted,
+      failed: totalFailed || Math.max(0, processed - totalInserted),
+      errors,
+    };
+  }
+
   async uploadExcel(file: Express.Multer.File, userId: string) {
     this.logger.log(
       `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
     );
 
     if (this.shouldProcessInBackground(file)) {
+      const fileName = file?.originalname || 'upload.xlsx';
+      const job = await this.uploadJobService.createJob({
+        module: 'client-location',
+        fileName,
+        userId,
+      });
       this.eventEmitter.emit('client-location.bulk-upload', {
         file,
         userId,
-        fileName: file?.originalname || 'upload.xlsx',
+        fileName,
+        jobId: job.jobId,
       });
 
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
@@ -929,6 +1105,7 @@ export class ClientLocationService {
         message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: null,
+        jobId: job.jobId,
       };
     }
 
@@ -937,16 +1114,23 @@ export class ClientLocationService {
 
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
+      const job = await this.uploadJobService.createJob({
+        module: 'client-location',
+        fileName: file.originalname,
+        userId,
+      });
       this.eventEmitter.emit('client-location.bulk-upload', {
         data: processedData,
         userId,
         fileName: file.originalname,
+        jobId: job.jobId,
       });
 
       return {
         message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: processedData.length,
+        jobId: job.jobId,
       };
     }
 
@@ -968,32 +1152,35 @@ export class ClientLocationService {
     file?: Express.Multer.File;
     userId: string;
     fileName: string;
+    jobId?: string;
   }) {
-    const { data: providedData, file, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName, jobId } = payload;
     this.logger.log(
       `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      let processedData = providedData;
-      let parseErrors: any[] = [];
-      let processingErrors: any[] = [];
-
-      if (!processedData && file) {
-        const parsed = await this.parseAndProcessUpload(file);
-        processedData = parsed.processedData;
-        parseErrors = parsed.parseErrors;
-        processingErrors = parsed.processingErrors;
+      if (jobId) {
+        await this.uploadJobService.markProcessing(jobId);
       }
 
-      if (!processedData || processedData.length === 0) {
+      let totalSuccess = 0;
+      let totalFailed = 0;
+
+      if (file) {
+        const result = await this.processUploadStreaming(file, userId);
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else if (providedData && providedData.length > 0) {
+        const result = await this.bulkCreate(
+          { locations: providedData },
+          userId,
+        );
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else {
         throw new Error('No valid data found to import.');
       }
-
-      const result = await this.bulkCreate({ locations: processedData }, userId);
-      const totalFailed =
-        result.failed + parseErrors.length + processingErrors.length;
-      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Client Location Import Completed',
@@ -1003,10 +1190,16 @@ export class ClientLocationService {
           fileName,
           success: totalSuccess,
           failed: totalFailed,
-          parseErrors: parseErrors.length,
-          processingErrors: processingErrors.length,
         },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markCompleted(jobId, {
+          success: totalSuccess,
+          failed: totalFailed,
+          message: `Successfully imported ${totalSuccess} client locations.`,
+        });
+      }
 
       this.logger.log(
         `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
@@ -1019,6 +1212,10 @@ export class ClientLocationService {
         type: 'SYSTEM',
         metadata: { fileName, error: error.message },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markFailed(jobId, error.message);
+      }
     }
   }
 

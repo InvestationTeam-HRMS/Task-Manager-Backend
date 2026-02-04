@@ -10,8 +10,10 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { UploadJobService } from '../common/services/upload-job.service';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { NotificationService } from '../notification/notification.service';
+import * as fs from 'fs';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -40,6 +42,7 @@ export class ProjectService {
     private autoNumberService: AutoNumberService,
     private excelUploadService: ExcelUploadService,
     private excelDownloadService: ExcelDownloadService,
+    private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
   ) {}
@@ -728,18 +731,23 @@ export class ProjectService {
     return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
   }
 
-  private async parseAndProcessUpload(file: Express.Multer.File) {
-    const columnMapping = {
-      projectNo: ['projectno', 'projectnumber'],
-      projectName: ['projectname', 'name'],
-      subLocationName: ['sublocationname', 'clientsublocationname'],
-      deadline: ['deadline', 'duedate', 'enddate'],
-      priority: ['priority'],
-      status: ['status'],
-      remark: ['remark', 'remarks', 'notes', 'description'],
+  private getUploadConfig() {
+    return {
+      columnMapping: {
+        projectNo: ['projectno', 'projectnumber'],
+        projectName: ['projectname', 'name'],
+        subLocationName: ['sublocationname', 'clientsublocationname'],
+        deadline: ['deadline', 'duedate', 'enddate'],
+        priority: ['priority'],
+        status: ['status'],
+        remark: ['remark', 'remarks', 'notes', 'description'],
+      },
+      requiredColumns: ['projectName', 'subLocationName'],
     };
+  }
 
-    const requiredColumns = ['projectName', 'subLocationName'];
+  private async parseAndProcessUpload(file: Express.Multer.File) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
 
     const { data, errors: parseErrors } =
       await this.excelUploadService.parseFile<any>(
@@ -851,15 +859,172 @@ export class ProjectService {
     return { processedData, parseErrors, processingErrors };
   }
 
+  private async processUploadStreaming(
+    file: Express.Multer.File,
+    userId: string,
+  ) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
+
+    const subLocationNames = new Set<string>();
+
+    try {
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        2000,
+        async (batch) => {
+          for (const item of batch) {
+            const row = item.data as any;
+            if (row.subLocationName) {
+              subLocationNames.add(String(row.subLocationName).trim());
+            }
+          }
+        },
+        { cleanup: false },
+      );
+    } catch (error) {
+      if (file?.path) {
+        await fs.promises.unlink(file.path).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    const subLocations =
+      subLocationNames.size > 0
+        ? await this.prisma.subLocation.findMany({
+            where: { subLocationName: { in: Array.from(subLocationNames) } },
+            select: {
+              id: true,
+              subLocationName: true,
+              location: {
+                select: {
+                  id: true,
+                  company: {
+                    select: {
+                      id: true,
+                      group: {
+                        select: { id: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : [];
+
+    const subLocationMap = new Map(
+      subLocations.map((s) => [s.subLocationName.toLowerCase(), s]),
+    );
+
+    let totalInserted = 0;
+    let totalFailed = 0;
+    const errors: any[] = [];
+
+    const { errors: parseErrors, processed } =
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        1000,
+        async (batch) => {
+          const toInsert: CreateProjectDto[] = [];
+
+          for (const item of batch) {
+            const row = item.data as any;
+            try {
+              const status = row.status
+                ? this.excelUploadService.validateEnum(
+                    String(row.status),
+                    ProjectStatus,
+                    'Status',
+                  )
+                : ProjectStatus.Active;
+              const priority = row.priority
+                ? this.excelUploadService.validateEnum(
+                    String(row.priority),
+                    ProjectPriority,
+                    'Priority',
+                  )
+                : ProjectPriority.Medium;
+
+              const subLocation = subLocationMap.get(
+                String(row.subLocationName).toLowerCase(),
+              );
+              if (!subLocation) {
+                throw new Error(
+                  `Sub Location not found: ${row.subLocationName}`,
+                );
+              }
+
+              const groupId = subLocation.location?.company?.group?.id;
+              if (!groupId) {
+                throw new Error(
+                  `Client Group not found for Sub Location: ${row.subLocationName}`,
+                );
+              }
+
+              toInsert.push({
+                projectNo: row.projectNo,
+                projectName: row.projectName,
+                clientGroupId: groupId,
+                companyId: subLocation.location.company?.id,
+                locationId: subLocation.location?.id,
+                subLocationId: subLocation.id,
+                deadline: row.deadline,
+                priority: priority as ProjectPriority,
+                status: status as ProjectStatus,
+                remark: row.remark,
+              });
+            } catch (err) {
+              totalFailed += 1;
+              errors.push({ row: item.rowNumber, error: err.message });
+            }
+          }
+
+          if (toInsert.length > 0) {
+            const result = await this.bulkCreate(
+              { projects: toInsert },
+              userId,
+            );
+            totalInserted += result.success || 0;
+            totalFailed += result.failed || 0;
+            if (result.errors?.length) {
+              errors.push(...result.errors);
+            }
+          }
+        },
+      );
+
+    totalFailed += parseErrors.length;
+    if (parseErrors.length > 0) {
+      errors.push(...parseErrors);
+    }
+
+    return {
+      success: totalInserted,
+      failed: totalFailed || Math.max(0, processed - totalInserted),
+      errors,
+    };
+  }
+
   async uploadExcel(file: Express.Multer.File, userId: string) {
     this.logger.log(
       `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
     );
     if (this.shouldProcessInBackground(file)) {
+      const fileName = file?.originalname || 'upload.xlsx';
+      const job = await this.uploadJobService.createJob({
+        module: 'project',
+        fileName,
+        userId,
+      });
       this.eventEmitter.emit('project.bulk-upload', {
         file,
         userId,
-        fileName: file?.originalname || 'upload.xlsx',
+        fileName,
+        jobId: job.jobId,
       });
 
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
@@ -867,6 +1032,7 @@ export class ProjectService {
         message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: null,
+        jobId: job.jobId,
       };
     }
 
@@ -875,16 +1041,23 @@ export class ProjectService {
 
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
+      const job = await this.uploadJobService.createJob({
+        module: 'project',
+        fileName: file.originalname,
+        userId,
+      });
       this.eventEmitter.emit('project.bulk-upload', {
         data: processedData,
         userId,
         fileName: file.originalname,
+        jobId: job.jobId,
       });
 
       return {
         message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: processedData.length,
+        jobId: job.jobId,
       };
     }
 
@@ -906,32 +1079,35 @@ export class ProjectService {
     file?: Express.Multer.File;
     userId: string;
     fileName: string;
+    jobId?: string;
   }) {
-    const { data: providedData, file, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName, jobId } = payload;
     this.logger.log(
       `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      let processedData = providedData;
-      let parseErrors: any[] = [];
-      let processingErrors: any[] = [];
-
-      if (!processedData && file) {
-        const parsed = await this.parseAndProcessUpload(file);
-        processedData = parsed.processedData as CreateProjectDto[];
-        parseErrors = parsed.parseErrors;
-        processingErrors = parsed.processingErrors;
+      if (jobId) {
+        await this.uploadJobService.markProcessing(jobId);
       }
 
-      if (!processedData || processedData.length === 0) {
+      let totalSuccess = 0;
+      let totalFailed = 0;
+
+      if (file) {
+        const result = await this.processUploadStreaming(file, userId);
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else if (providedData && providedData.length > 0) {
+        const result = await this.bulkCreate(
+          { projects: providedData },
+          userId,
+        );
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else {
         throw new Error('No valid data found to import.');
       }
-
-      const result = await this.bulkCreate({ projects: processedData }, userId);
-      const totalFailed =
-        result.failed + parseErrors.length + processingErrors.length;
-      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Project Import Completed',
@@ -941,10 +1117,16 @@ export class ProjectService {
           fileName,
           success: totalSuccess,
           failed: totalFailed,
-          parseErrors: parseErrors.length,
-          processingErrors: processingErrors.length,
         },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markCompleted(jobId, {
+          success: totalSuccess,
+          failed: totalFailed,
+          message: `Successfully imported ${totalSuccess} projects.`,
+        });
+      }
 
       this.logger.log(
         `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
@@ -957,6 +1139,10 @@ export class ProjectService {
         type: 'SYSTEM',
         metadata: { fileName, error: error.message },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markFailed(jobId, error.message);
+      }
     }
   }
 

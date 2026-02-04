@@ -10,6 +10,7 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { UploadJobService } from '../common/services/upload-job.service';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { NotificationService } from '../notification/notification.service';
 import {
@@ -40,6 +41,7 @@ export class ClientCompanyService {
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
         private excelDownloadService: ExcelDownloadService,
+        private uploadJobService: UploadJobService,
         private eventEmitter: EventEmitter2,
         private notificationService: NotificationService,
     ) { }
@@ -788,16 +790,144 @@ export class ClientCompanyService {
         return { processedData, parseErrors, processingErrors };
     }
 
+    private async processUploadStreaming(
+        file: Express.Multer.File,
+        userId: string,
+    ) {
+        const columnMapping = {
+            companyNo: ['companyno', 'companynumber', 'no', 'number'],
+            companyName: ['companyname', 'name', 'cname', 'company'],
+            companyCode: ['companycode', 'code', 'ccode'],
+            clientGroupName: ['clientgroupname', 'clientgroup', 'groupname', 'group'],
+            address: [
+                'address',
+                'physicaladdress',
+                'street',
+                'companyaddress',
+                'addr',
+            ],
+            status: ['status', 'state', 'active'],
+            remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
+        };
+
+        const requiredColumns = ['companyName', 'companyCode', 'clientGroupName'];
+
+        // Pass 1: collect group names to resolve IDs
+        const groupNames = new Set<string>();
+        await this.excelUploadService.streamFileInBatches<any>(
+            file,
+            columnMapping,
+            requiredColumns,
+            2000,
+            async (batch) => {
+                batch.forEach((item) => {
+                    if (item.data?.clientGroupName) {
+                        groupNames.add(item.data.clientGroupName);
+                    }
+                });
+            },
+            { cleanup: false },
+        );
+
+        const groups = await this.prisma.clientGroup.findMany({
+            where: { groupName: { in: Array.from(groupNames) } },
+            select: { id: true, groupName: true },
+        });
+        const groupMap = new Map(
+            groups.map((g) => [g.groupName.toLowerCase(), g.id]),
+        );
+
+        let totalInserted = 0;
+        let totalFailed = 0;
+        const errors: any[] = [];
+
+        const { errors: parseErrors, processed } =
+            await this.excelUploadService.streamFileInBatches<any>(
+                file,
+                columnMapping,
+                requiredColumns,
+                1000,
+                async (batch) => {
+                    const toInsert: CreateClientCompanyDto[] = [];
+
+                    for (const item of batch) {
+                        const row = item.data;
+                        try {
+                            const status = row.status
+                                ? this.excelUploadService.validateEnum(
+                                    row.status as string,
+                                    CompanyStatus,
+                                    'Status',
+                                )
+                                : CompanyStatus.Active;
+
+                            const groupId = groupMap.get(
+                                row.clientGroupName?.toLowerCase(),
+                            );
+                            if (!groupId) {
+                                throw new Error(
+                                    `Client Group not found: ${row.clientGroupName}`,
+                                );
+                            }
+
+                            toInsert.push({
+                                companyNo: row.companyNo,
+                                companyName: row.companyName,
+                                companyCode: row.companyCode,
+                                groupId: groupId,
+                                address: row.address,
+                                status: status as CompanyStatus,
+                                remark: row.remark,
+                            });
+                        } catch (err) {
+                            totalFailed += 1;
+                            errors.push({ row: item.rowNumber, error: err.message });
+                        }
+                    }
+
+                    if (toInsert.length > 0) {
+                        const result = await this.bulkCreate(
+                            { companies: toInsert },
+                            userId,
+                        );
+                        totalInserted += result.success || 0;
+                        totalFailed += result.failed || 0;
+                        if (result.errors?.length) {
+                            errors.push(...result.errors);
+                        }
+                    }
+                },
+            );
+
+        totalFailed += parseErrors.length;
+        if (parseErrors.length > 0) {
+            errors.push(...parseErrors);
+        }
+
+        return {
+            success: totalInserted,
+            failed: totalFailed || Math.max(0, processed - totalInserted),
+            errors,
+        };
+    }
+
     async uploadExcel(file: Express.Multer.File, userId: string) {
         this.logger.log(
             `[UPLOAD] File: ${file?.originalname} | Size: ${file?.size}`,
         );
 
         if (this.shouldProcessInBackground(file)) {
+            const fileName = file?.originalname || 'upload.xlsx';
+            const job = await this.uploadJobService.createJob({
+                module: 'client-company',
+                fileName,
+                userId,
+            });
             this.eventEmitter.emit('client-company.bulk-upload', {
                 file,
                 userId,
-                fileName: file?.originalname || 'upload.xlsx',
+                fileName,
+                jobId: job.jobId,
             });
 
             const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
@@ -805,6 +935,7 @@ export class ClientCompanyService {
                 message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
                 isBackground: true,
                 totalRecords: null,
+                jobId: job.jobId,
             };
         }
 
@@ -813,16 +944,23 @@ export class ClientCompanyService {
 
         // --- BACKGROUND PROCESSING TRIGGER ---
         if (processedData.length > 500) {
+            const job = await this.uploadJobService.createJob({
+                module: 'client-company',
+                fileName: file.originalname,
+                userId,
+            });
             this.eventEmitter.emit('client-company.bulk-upload', {
                 data: processedData,
                 userId,
                 fileName: file.originalname,
+                jobId: job.jobId,
             });
 
             return {
                 message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
                 isBackground: true,
                 totalRecords: processedData.length,
+                jobId: job.jobId,
             };
         }
 
@@ -844,32 +982,32 @@ export class ClientCompanyService {
         file?: Express.Multer.File;
         userId: string;
         fileName: string;
+        jobId?: string;
     }) {
-        const { data: providedData, file, userId, fileName } = payload;
+        const { data: providedData, file, userId, fileName, jobId } = payload;
         this.logger.log(
             `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
         );
 
         try {
-            let processedData = providedData;
-            let parseErrors: any[] = [];
-            let processingErrors: any[] = [];
-
-            if (!processedData && file) {
-                const parsed = await this.parseAndProcessUpload(file);
-                processedData = parsed.processedData;
-                parseErrors = parsed.parseErrors;
-                processingErrors = parsed.processingErrors;
+            if (jobId) {
+                await this.uploadJobService.markProcessing(jobId);
             }
 
-            if (!processedData || processedData.length === 0) {
+            let totalSuccess = 0;
+            let totalFailed = 0;
+
+            if (file) {
+                const result = await this.processUploadStreaming(file, userId);
+                totalSuccess = result.success;
+                totalFailed = result.failed;
+            } else if (providedData && providedData.length > 0) {
+                const result = await this.bulkCreate({ companies: providedData }, userId);
+                totalSuccess = result.success;
+                totalFailed = result.failed;
+            } else {
                 throw new Error('No valid data found to import.');
             }
-
-            const result = await this.bulkCreate({ companies: processedData }, userId);
-            const totalFailed =
-                result.failed + parseErrors.length + processingErrors.length;
-            const totalSuccess = result.success;
 
             await this.notificationService.createNotification(userId, {
                 title: 'Client Company Import Completed',
@@ -879,10 +1017,16 @@ export class ClientCompanyService {
                     fileName,
                     success: totalSuccess,
                     failed: totalFailed,
-                    parseErrors: parseErrors.length,
-                    processingErrors: processingErrors.length,
                 },
             });
+
+            if (jobId) {
+                await this.uploadJobService.markCompleted(jobId, {
+                    success: totalSuccess,
+                    failed: totalFailed,
+                    message: `Successfully imported ${totalSuccess} client companies.`,
+                });
+            }
 
             this.logger.log(
                 `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
@@ -895,6 +1039,10 @@ export class ClientCompanyService {
                 type: 'SYSTEM',
                 metadata: { fileName, error: error.message },
             });
+
+            if (jobId) {
+                await this.uploadJobService.markFailed(jobId, error.message);
+            }
         }
     }
 

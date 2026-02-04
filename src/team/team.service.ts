@@ -11,6 +11,7 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { UploadJobService } from '../common/services/upload-job.service';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   CreateTeamDto,
@@ -44,6 +45,7 @@ export class TeamService {
     private configService: ConfigService,
     private notificationService: NotificationService,
     private excelDownloadService: ExcelDownloadService,
+    private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
   ) { }
 
@@ -693,16 +695,21 @@ export class TeamService {
     return !!file?.size && file.size >= this.BACKGROUND_UPLOAD_BYTES;
   }
 
-  private async parseAndProcessUpload(file: Express.Multer.File) {
-    const columnMapping = {
-      teamNo: ['teamno', 'no', 'code', 'id'],
-      teamName: ['teamname', 'name'],
-      email: ['email', 'mail', 'e-mail'],
-      role: ['role', 'designation', 'position'],
-      status: ['status', 'state', 'active'],
+  private getUploadConfig() {
+    return {
+      columnMapping: {
+        teamNo: ['teamno', 'no', 'code', 'id'],
+        teamName: ['teamname', 'name'],
+        email: ['email', 'mail', 'e-mail'],
+        role: ['role', 'designation', 'position'],
+        status: ['status', 'state', 'active'],
+      },
+      requiredColumns: ['teamName', 'email'],
     };
+  }
 
-    const requiredColumns = ['teamName', 'email'];
+  private async parseAndProcessUpload(file: Express.Multer.File) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
 
     const { data, errors: parseErrors } =
       await this.excelUploadService.parseFile<any>(
@@ -742,12 +749,84 @@ export class TeamService {
     return { processedData, parseErrors, processingErrors };
   }
 
+  private async processUploadStreaming(
+    file: Express.Multer.File,
+    userId: string,
+  ) {
+    const { columnMapping, requiredColumns } = this.getUploadConfig();
+
+    let totalInserted = 0;
+    let totalFailed = 0;
+    const errors: any[] = [];
+
+    const { errors: parseErrors, processed } =
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        1000,
+        async (batch) => {
+          const toInsert: CreateTeamDto[] = [];
+
+          for (const item of batch) {
+            const row = item.data as any;
+            try {
+              const status = row.status
+                ? this.excelUploadService.validateEnum(
+                    row.status,
+                    TeamStatus,
+                    'Status',
+                  )
+                : TeamStatus.Active;
+
+              toInsert.push({
+                ...row,
+                status: status as TeamStatus,
+                role: row.role ? toTitleCase(row.role) : 'Employee',
+                loginMethod: LoginMethod.General,
+              });
+            } catch (err) {
+              totalFailed += 1;
+              errors.push({ row: item.rowNumber, error: err.message });
+            }
+          }
+
+          if (toInsert.length > 0) {
+            const result = await this.bulkCreate({ teams: toInsert }, userId);
+            totalInserted += result.success || 0;
+            totalFailed += result.failed || 0;
+            if (result.errors?.length) {
+              errors.push(...result.errors);
+            }
+          }
+        },
+      );
+
+    totalFailed += parseErrors.length;
+    if (parseErrors.length > 0) {
+      errors.push(...parseErrors);
+    }
+
+    return {
+      success: totalInserted,
+      failed: totalFailed || Math.max(0, processed - totalInserted),
+      errors,
+    };
+  }
+
   async uploadExcel(file: Express.Multer.File, userId: string) {
     if (this.shouldProcessInBackground(file)) {
+      const fileName = file?.originalname || 'upload.xlsx';
+      const job = await this.uploadJobService.createJob({
+        module: 'team',
+        fileName,
+        userId,
+      });
       this.eventEmitter.emit('team.bulk-upload', {
         file,
         userId,
-        fileName: file?.originalname || 'upload.xlsx',
+        fileName,
+        jobId: job.jobId,
       });
 
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
@@ -755,6 +834,7 @@ export class TeamService {
         message: `Large file (${sizeMb} MB) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: null,
+        jobId: job.jobId,
       };
     }
 
@@ -769,16 +849,23 @@ export class TeamService {
 
     // --- BACKGROUND PROCESSING TRIGGER ---
     if (processedData.length > 500) {
+      const job = await this.uploadJobService.createJob({
+        module: 'team',
+        fileName: file.originalname,
+        userId,
+      });
       this.eventEmitter.emit('team.bulk-upload', {
         data: processedData,
         userId,
         fileName: file.originalname,
+        jobId: job.jobId,
       });
 
       return {
         message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
         isBackground: true,
         totalRecords: processedData.length,
+        jobId: job.jobId,
       };
     }
 
@@ -799,32 +886,32 @@ export class TeamService {
     file?: Express.Multer.File;
     userId: string;
     fileName: string;
+    jobId?: string;
   }) {
-    const { data: providedData, file, userId, fileName } = payload;
+    const { data: providedData, file, userId, fileName, jobId } = payload;
     this.logger.log(
       `[BACKGROUND_UPLOAD] Starting background upload for ${providedData?.length || 'file'} from ${fileName}`,
     );
 
     try {
-      let processedData = providedData;
-      let parseErrors: any[] = [];
-      let processingErrors: any[] = [];
-
-      if (!processedData && file) {
-        const parsed = await this.parseAndProcessUpload(file);
-        processedData = parsed.processedData;
-        parseErrors = parsed.parseErrors;
-        processingErrors = parsed.processingErrors;
+      if (jobId) {
+        await this.uploadJobService.markProcessing(jobId);
       }
 
-      if (!processedData || processedData.length === 0) {
+      let totalSuccess = 0;
+      let totalFailed = 0;
+
+      if (file) {
+        const result = await this.processUploadStreaming(file, userId);
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else if (providedData && providedData.length > 0) {
+        const result = await this.bulkCreate({ teams: providedData }, userId);
+        totalSuccess = result.success;
+        totalFailed = result.failed;
+      } else {
         throw new Error('No valid data found to import.');
       }
-
-      const result = await this.bulkCreate({ teams: processedData }, userId);
-      const totalFailed =
-        result.failed + parseErrors.length + processingErrors.length;
-      const totalSuccess = result.success;
 
       await this.notificationService.createNotification(userId, {
         title: 'Team Import Completed',
@@ -834,10 +921,16 @@ export class TeamService {
           fileName,
           success: totalSuccess,
           failed: totalFailed,
-          parseErrors: parseErrors.length,
-          processingErrors: processingErrors.length,
         },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markCompleted(jobId, {
+          success: totalSuccess,
+          failed: totalFailed,
+          message: `Successfully imported ${totalSuccess} team members.`,
+        });
+      }
 
       this.logger.log(
         `[BACKGROUND_UPLOAD_COMPLETED] Success: ${totalSuccess}, Failed: ${totalFailed}`,
@@ -850,6 +943,10 @@ export class TeamService {
         type: 'SYSTEM',
         metadata: { fileName, error: error.message },
       });
+
+      if (jobId) {
+        await this.uploadJobService.markFailed(jobId, error.message);
+      }
     }
   }
 

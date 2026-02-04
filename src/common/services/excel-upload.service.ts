@@ -252,6 +252,295 @@ export class ExcelUploadService {
     return { data: parsedData, errors: parseErrors };
   }
 
+  async streamFileInBatches<T>(
+    file: Express.Multer.File,
+    columnMapping: Record<string, string[]>,
+    requiredColumns: string[],
+    batchSize: number,
+    onBatch: (batch: Array<{ rowNumber: number; data: T }>) => Promise<void>,
+    options?: { cleanup?: boolean },
+  ): Promise<{ processed: number; errors: any[] }> {
+    if (!file || (!file.buffer && !file.path)) {
+      throw new BadRequestException('No file data received.');
+    }
+
+    const fileName = (file.originalname || file.path || '').toLowerCase();
+    const normalizedMapping = this.normalizeMapping(columnMapping);
+    const filePath = file.path;
+    const cleanup = options?.cleanup !== undefined ? options.cleanup : true;
+
+    if (!filePath) {
+      const { data, errors } = await this.parseFromBuffer<T>(
+        file.buffer,
+        fileName,
+        normalizedMapping,
+        requiredColumns,
+      );
+
+      let processed = 0;
+      const batch: Array<{ rowNumber: number; data: T }> = [];
+      for (let index = 0; index < data.length; index++) {
+        const row = data[index];
+        processed += 1;
+        batch.push({ rowNumber: index + 2, data: row });
+        if (batch.length >= batchSize) {
+          const toFlush = batch.splice(0, batch.length);
+          await onBatch(toFlush);
+        }
+      }
+
+      if (batch.length > 0) {
+        await onBatch(batch.splice(0, batch.length));
+      }
+
+      return { processed, errors };
+    }
+
+    try {
+      if (fileName.endsWith('.xlsx')) {
+        return await this.streamXlsxBatches(
+          filePath,
+          fileName,
+          normalizedMapping,
+          requiredColumns,
+          batchSize,
+          onBatch,
+        );
+      }
+
+      if (fileName.endsWith('.csv') || fileName.endsWith('.txt')) {
+        return await this.streamCsvBatches(
+          filePath,
+          fileName,
+          normalizedMapping,
+          requiredColumns,
+          batchSize,
+          onBatch,
+        );
+      }
+
+      throw new BadRequestException(
+        'Unsupported file format. Please upload a valid .xlsx or .csv file.',
+      );
+    } finally {
+      if (cleanup && filePath) {
+        await fs.promises.unlink(filePath).catch(() => undefined);
+      }
+    }
+  }
+
+  private async streamXlsxBatches<T>(
+    filePath: string,
+    fileName: string,
+    columnMapping: Record<string, string[]>,
+    requiredColumns: string[],
+    batchSize: number,
+    onBatch: (batch: Array<{ rowNumber: number; data: T }>) => Promise<void>,
+  ): Promise<{ processed: number; errors: any[] }> {
+    this.logger.log(
+      `[PARSE_FILE] Using XLSX streaming parser for ${fileName}`,
+    );
+
+    const errors: any[] = [];
+    let processed = 0;
+    const headers: Record<string, number> = {};
+    let columnKeys: Record<string, string | undefined> = {};
+    let headerParsed = false;
+    const batch: Array<{ rowNumber: number; data: T }> = [];
+
+    const workbookReader = new (ExcelJS as any).stream.xlsx.WorkbookReader(
+      filePath,
+      {
+        entries: 'emit',
+        sharedStrings: 'cache',
+        worksheets: 'emit',
+      },
+    );
+
+    for await (const worksheetReader of workbookReader) {
+      if (worksheetReader.id && worksheetReader.id !== 1) continue;
+      for await (const row of worksheetReader) {
+        if (!row || !row.hasValues) continue;
+
+        if (!headerParsed) {
+          const values: any[] = row.values || [];
+          values.forEach((val, idx) => {
+            if (idx === 0) return;
+            const headerVal = this.extractCellValue(val);
+            const normalized = this.normalizeHeader(headerVal);
+            if (normalized) headers[normalized] = idx;
+          });
+
+          const built = this.buildColumnKeys(
+            headers,
+            columnMapping,
+            requiredColumns,
+          );
+          columnKeys = built.columnKeys;
+          if (built.missingColumns.length > 0) {
+            throw new BadRequestException(
+              `Invalid format. Missing required columns: ${built.missingColumns.join(', ')}`,
+            );
+          }
+
+          headerParsed = true;
+          continue;
+        }
+
+        processed += 1;
+
+        try {
+          const rowData: any = {};
+          for (const [key, colKey] of Object.entries(columnKeys)) {
+            if (!colKey || headers[colKey] === undefined) {
+              rowData[key] = '';
+              continue;
+            }
+
+            const colIdx = headers[colKey];
+            const cellValue =
+              typeof row.getCell === 'function'
+                ? row.getCell(colIdx)?.value
+                : (row.values || [])[colIdx];
+
+            if (cellValue === null || cellValue === undefined) {
+              rowData[key] = '';
+              continue;
+            }
+
+            const rawValue = this.extractCellValue(cellValue);
+            rowData[key] = this.transformValue(key, rawValue);
+          }
+
+          batch.push({ rowNumber: row.number, data: rowData as T });
+          if (batch.length >= batchSize) {
+            await onBatch(batch.splice(0, batch.length));
+          }
+        } catch (e) {
+          errors.push({ row: row.number, error: e.message });
+        }
+      }
+      break;
+    }
+
+    if (!headerParsed) {
+      throw new BadRequestException('The file is empty or missing data rows.');
+    }
+
+    if (batch.length > 0) {
+      await onBatch(batch.splice(0, batch.length));
+    }
+
+    return { processed, errors };
+  }
+
+  private async streamCsvBatches<T>(
+    filePath: string,
+    fileName: string,
+    columnMapping: Record<string, string[]>,
+    requiredColumns: string[],
+    batchSize: number,
+    onBatch: (batch: Array<{ rowNumber: number; data: T }>) => Promise<void>,
+  ): Promise<{ processed: number; errors: any[] }> {
+    this.logger.log(`[PARSE_FILE] Using CSV streaming parser for ${fileName}`);
+
+    const errors: any[] = [];
+    let processed = 0;
+    let headers: Record<string, string> = {};
+    let columnKeys: Record<string, string | undefined> = {};
+    let headerReady = false;
+    let rowNumber = 1;
+    const batch: Array<{ rowNumber: number; data: T }> = [];
+
+    return await new Promise((resolve, reject) => {
+      const stream = fs.createReadStream(filePath).pipe(csvParser());
+
+      stream.on('headers', (rawHeaders: string[]) => {
+        headers = {};
+        rawHeaders.forEach((h) => {
+          const normalized = this.normalizeHeader(h);
+          if (normalized) headers[normalized] = h;
+        });
+
+        const built = this.buildColumnKeys(
+          headers,
+          columnMapping,
+          requiredColumns,
+        );
+        columnKeys = built.columnKeys;
+        if (built.missingColumns.length > 0) {
+          reject(
+            new BadRequestException(
+              `Invalid format. Missing required columns: ${built.missingColumns.join(', ')}`,
+            ),
+          );
+          return;
+        }
+        headerReady = true;
+      });
+
+      stream.on('data', (row: any) => {
+        rowNumber += 1;
+        processed += 1;
+
+        if (!headerReady) return;
+
+        stream.pause();
+        (async () => {
+          try {
+            const rowData: any = {};
+            for (const [key, colKey] of Object.entries(columnKeys)) {
+              if (!colKey || !headers[colKey]) {
+                rowData[key] = '';
+                continue;
+              }
+
+              const headerName = headers[colKey];
+              const rawValue =
+                row[headerName] !== undefined && row[headerName] !== null
+                  ? String(row[headerName]).trim()
+                  : '';
+
+              rowData[key] = this.transformValue(key, rawValue);
+            }
+
+            batch.push({ rowNumber, data: rowData as T });
+            if (batch.length >= batchSize) {
+              await onBatch(batch.splice(0, batch.length));
+            }
+          } catch (e) {
+            errors.push({ row: rowNumber, error: e.message });
+          } finally {
+            stream.resume();
+          }
+        })();
+      });
+
+      stream.on('end', async () => {
+        if (!headerReady) {
+          reject(
+            new BadRequestException(
+              'The file is empty or missing data rows.',
+            ),
+          );
+          return;
+        }
+
+        if (batch.length > 0) {
+          await onBatch(batch.splice(0, batch.length));
+        }
+
+        resolve({ processed, errors });
+      });
+
+      stream.on('error', (error) => {
+        reject(
+          new BadRequestException(`Failed to parse CSV file. ${error.message}`),
+        );
+      });
+    });
+  }
+
   private async parseCsvFromFile<T>(
     filePath: string,
     fileName: string,

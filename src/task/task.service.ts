@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { CloudinaryService } from '../common/services/cloudinary.service';
 import { RedisService } from '../redis/redis.service';
+import { UploadJobService } from '../common/services/upload-job.service';
 import {
     CreateTaskDto,
     UpdateTaskDto,
@@ -45,6 +46,7 @@ export class TaskService {
         private notificationService: NotificationService,
         private cloudinaryService: CloudinaryService,
         private excelDownloadService: ExcelDownloadService,
+        private uploadJobService: UploadJobService,
         private eventEmitter: EventEmitter2,
     ) { }
 
@@ -1400,13 +1402,18 @@ export class TaskService {
         userId: string;
         fileName: string;
         excelPath: string;
+        jobId?: string;
     }) {
-        const { csvPath, userId, fileName, excelPath } = payload;
+        const { csvPath, userId, fileName, excelPath, jobId } = payload;
         this.logger.log(
             `[BACKGROUND_UPLOAD] Starting background task upload for ${fileName}`,
         );
 
         try {
+            if (jobId) {
+                await this.uploadJobService.markProcessing(jobId);
+            }
+
             const result = await this.processCsvAndInsert(
                 csvPath,
                 userId,
@@ -1425,6 +1432,14 @@ export class TaskService {
                 },
             });
 
+            if (jobId) {
+                await this.uploadJobService.markCompleted(jobId, {
+                    success: result.successCount,
+                    failed: result.failCount,
+                    message: `Successfully imported ${result.successCount} tasks.`,
+                });
+            }
+
             this.logger.log(
                 `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.successCount}, Failed: ${result.failCount}`,
             );
@@ -1436,6 +1451,10 @@ export class TaskService {
                 type: 'SYSTEM',
                 metadata: { fileName, error: error.message },
             });
+
+            if (jobId) {
+                await this.uploadJobService.markFailed(jobId, error.message);
+            }
         } finally {
             if (fs.existsSync(excelPath)) fs.unlinkSync(excelPath);
             if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
@@ -1468,6 +1487,7 @@ export class TaskService {
         userId: string,
         fileName: string,
         isFromBackground = false,
+        jobId?: string,
     ) {
         // First pass: Count records to decide on background processing
         if (!isFromBackground) {
@@ -1481,18 +1501,29 @@ export class TaskService {
                 // Determine paths to keep
                 const excelPath = csvPath.replace('.csv', '.xlsx');
                 // We don't cleanup here, handleBackgroundUpload will do it.
+                let job = jobId;
+                if (!job) {
+                    const created = await this.uploadJobService.createJob({
+                        module: 'task',
+                        fileName,
+                        userId,
+                    });
+                    job = created.jobId;
+                }
 
                 this.eventEmitter.emit('task.bulk-upload', {
                     csvPath,
                     userId,
                     fileName,
                     excelPath,
+                    jobId: job,
                 });
 
                 return {
                     message: `Large file (${recordCount} records) is being processed in the background. You will be notified once completed.`,
                     isBackground: true,
                     totalRecords: recordCount,
+                    jobId: job,
                 };
             }
         }
