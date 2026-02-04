@@ -5,9 +5,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule],
-    controllers: [ProjectController],
-    providers: [ProjectService],
-    exports: [ProjectService],
+  imports: [PrismaModule, RedisModule],
+  controllers: [ProjectController],
+  providers: [ProjectService],
+  exports: [ProjectService],
 })
-export class ProjectModule { }
+export class ProjectModule {}

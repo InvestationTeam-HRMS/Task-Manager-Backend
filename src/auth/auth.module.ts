@@ -13,24 +13,37 @@ import { RedisModule } from '../redis/redis.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-    imports: [
-        NotificationModule,
-        forwardRef(() => RedisModule),
-        PrismaModule,
-        PassportModule.register({ defaultStrategy: 'jwt' }),
-        JwtModule.registerAsync({
-            imports: [ConfigModule],
-            useFactory: async (configService: ConfigService) => ({
-                secret: configService.get('JWT_ACCESS_SECRET'),
-                signOptions: {
-                    expiresIn: configService.get('JWT_ACCESS_EXPIRATION', '15m'),
-                },
-            }),
-            inject: [ConfigService],
-        }),
-    ],
-    controllers: [AuthController],
-    providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, SessionAuthGuard],
-    exports: [AuthService, JwtStrategy, JwtAuthGuard, PassportModule, RolesGuard, SessionAuthGuard],
+  imports: [
+    NotificationModule,
+    forwardRef(() => RedisModule),
+    PrismaModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_ACCESS_SECRET'),
+        signOptions: {
+          expiresIn: configService.get('JWT_ACCESS_EXPIRATION', '15m'),
+        },
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+    SessionAuthGuard,
+  ],
+  exports: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    PassportModule,
+    RolesGuard,
+    SessionAuthGuard,
+  ],
 })
-export class AuthModule { }
+export class AuthModule {}

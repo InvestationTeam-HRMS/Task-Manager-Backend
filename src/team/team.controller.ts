@@ -32,7 +32,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 
 @Controller('teams')
 export class TeamController {
-  constructor(private teamService: TeamService) { }
+  constructor(private teamService: TeamService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)

@@ -10,16 +10,16 @@
  * - "UNITED STATES" -> "United States"
  */
 export function toTitleCase(str: string | null | undefined): string {
-    if (!str) return '';
+  if (!str) return '';
 
-    return str
-        .toLowerCase()
-        .split(' ')
-        .map(word => {
-            if (word.length === 0) return word;
-            return word.charAt(0).toUpperCase() + word.slice(1);
-        })
-        .join(' ');
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => {
+      if (word.length === 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
 }
 
 /**
@@ -28,17 +28,17 @@ export function toTitleCase(str: string | null | undefined): string {
  * @param fieldsToNormalize - Array of field names to apply Title Case
  */
 export function normalizeTitleCase<T extends Record<string, any>>(
-    obj: T,
-    fieldsToNormalize: (keyof T)[]
+  obj: T,
+  fieldsToNormalize: (keyof T)[],
 ): T {
-    const normalized = { ...obj };
+  const normalized = { ...obj };
 
-    for (const field of fieldsToNormalize) {
-        const value = normalized[field];
-        if (typeof value === 'string') {
-            normalized[field] = toTitleCase(value) as any;
-        }
+  for (const field of fieldsToNormalize) {
+    const value = normalized[field];
+    if (typeof value === 'string') {
+      normalized[field] = toTitleCase(value) as any;
     }
+  }
 
-    return normalized;
+  return normalized;
 }

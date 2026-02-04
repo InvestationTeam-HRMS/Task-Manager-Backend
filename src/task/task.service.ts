@@ -1,9 +1,21 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger, BadRequestException } from '@nestjs/common';
+import {
+    Injectable,
+    NotFoundException,
+    ForbiddenException,
+    Logger,
+    BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { CloudinaryService } from '../common/services/cloudinary.service';
 import { RedisService } from '../redis/redis.service';
-import { CreateTaskDto, UpdateTaskDto, FilterTaskDto, TaskViewMode, UpdateTaskAcceptanceDto } from './dto/task.dto';
+import {
+    CreateTaskDto,
+    UpdateTaskDto,
+    FilterTaskDto,
+    TaskViewMode,
+    UpdateTaskAcceptanceDto,
+} from './dto/task.dto';
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { Prisma, TaskStatus, AcceptanceStatus } from '@prisma/client';
@@ -14,6 +26,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { pipeline, Readable } from 'stream';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
 const csvParser = require('csv-parser');
 
@@ -32,9 +45,14 @@ export class TaskService {
         private notificationService: NotificationService,
         private cloudinaryService: CloudinaryService,
         private excelDownloadService: ExcelDownloadService,
+        private eventEmitter: EventEmitter2,
     ) { }
 
-    async create(dto: CreateTaskDto, userId: string, files?: Express.Multer.File[]) {
+    async create(
+        dto: CreateTaskDto,
+        userId: string,
+        files?: Express.Multer.File[],
+    ) {
         const taskNo = await this.autoNumberService.generateTaskNo();
 
         let document = dto.document;
@@ -44,18 +62,30 @@ export class TaskService {
             const sanitizedTaskNo = taskNo.replace(/[^a-zA-Z0-9_-]/g, '');
 
             for (const file of files) {
-                if (!file.size || file.size === 0 || !file.buffer || file.buffer.length === 0) continue;
+                if (
+                    !file.size ||
+                    file.size === 0 ||
+                    !file.buffer ||
+                    file.buffer.length === 0
+                )
+                    continue;
 
                 try {
                     const timestamp = Date.now();
                     const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
                     const folder = `hrms/tasks/${sanitizedTaskNo}`;
-                    const result = await this.cloudinaryService.uploadFile(file, folder, customName);
+                    const result = await this.cloudinaryService.uploadFile(
+                        file,
+                        folder,
+                        customName,
+                    );
                     if (result.secure_url) {
                         savedUrls.push(result.secure_url);
                     }
                 } catch (uploadError) {
-                    this.logger.error(`[TaskService] File upload error: ${uploadError.message}`);
+                    this.logger.error(
+                        `[TaskService] File upload error: ${uploadError.message}`,
+                    );
                 }
             }
             if (savedUrls.length > 0) {
@@ -68,16 +98,31 @@ export class TaskService {
                 ...dto,
                 taskStatus: TaskStatus.Pending,
                 taskTitle: toTitleCase(dto.taskTitle),
-                additionalNote: dto.additionalNote ? toTitleCase(dto.additionalNote) : undefined,
+                additionalNote: dto.additionalNote
+                    ? toTitleCase(dto.additionalNote)
+                    : undefined,
                 taskNo,
                 createdBy: userId,
                 document,
-                reminderTime: dto.reminderTime ? [...new Set(dto.reminderTime)].sort().map(d => new Date(d)) : [],
+                reminderTime: dto.reminderTime
+                    ? [...new Set(dto.reminderTime)].sort().map((d) => new Date(d))
+                    : [],
                 editTime: [],
-                isSelfTask: (dto.assignedTo === userId && !dto.targetGroupId && !dto.targetTeamId) || false,
-                assignedTo: dto.assignedTo && dto.assignedTo !== 'null' ? dto.assignedTo : null,
-                targetGroupId: dto.targetGroupId && dto.targetGroupId !== 'null' ? dto.targetGroupId : null,
-                targetTeamId: dto.targetTeamId && dto.targetTeamId !== 'null' ? dto.targetTeamId : null,
+                isSelfTask:
+                    (dto.assignedTo === userId &&
+                        !dto.targetGroupId &&
+                        !dto.targetTeamId) ||
+                    false,
+                assignedTo:
+                    dto.assignedTo && dto.assignedTo !== 'null' ? dto.assignedTo : null,
+                targetGroupId:
+                    dto.targetGroupId && dto.targetGroupId !== 'null'
+                        ? dto.targetGroupId
+                        : null,
+                targetTeamId:
+                    dto.targetTeamId && dto.targetTeamId !== 'null'
+                        ? dto.targetTeamId
+                        : null,
             } as any,
             include: {
                 project: true,
@@ -85,8 +130,8 @@ export class TaskService {
                 creator: true,
                 targetGroup: {
                     include: {
-                        members: true
-                    }
+                        members: true,
+                    },
                 },
                 targetTeam: true,
             },
@@ -105,26 +150,26 @@ export class TaskService {
         // Handle Group Assignment and Task Acceptance
         if (task.targetGroupId) {
             const members = await this.prisma.groupMember.findMany({
-                where: { groupId: task.targetGroupId }
+                where: { groupId: task.targetGroupId },
             });
 
             if (members.length > 0) {
-                const membersToNotify = members.filter(m => m.userId !== userId);
+                const membersToNotify = members.filter((m) => m.userId !== userId);
 
                 if (membersToNotify.length > 0) {
-                    const acceptanceData = membersToNotify.map(m => ({
+                    const acceptanceData = membersToNotify.map((m) => ({
                         taskId: task.id,
                         userId: m.userId,
                         groupId: task.targetGroupId,
-                        status: 'PENDING'
+                        status: 'PENDING',
                     }));
 
                     await (this.prisma as any).taskAcceptance.createMany({
                         data: acceptanceData,
-                        skipDuplicates: true
+                        skipDuplicates: true,
                     });
 
-                    membersToNotify.forEach(m => recipients.add(m.userId));
+                    membersToNotify.forEach((m) => recipients.add(m.userId));
                 }
             }
         }
@@ -132,13 +177,15 @@ export class TaskService {
         recipients.delete(userId);
 
         for (const recipientId of recipients) {
-            let description = `A new task "${task.taskTitle}" has been assigned to you.`
+            let description = `A new task "${task.taskTitle}" has been assigned to you.`;
 
             // If it's a group assignment and the user is NOT the primary individual assignee
-            if (task.targetGroupId &&
+            if (
+                task.targetGroupId &&
                 recipientId !== task.assignedTo &&
-                recipientId !== task.targetTeamId) {
-                description = `A new task "${task.taskTitle}" has been assigned to your group.`
+                recipientId !== task.targetTeamId
+            ) {
+                description = `A new task "${task.taskTitle}" has been assigned to your group.`;
             }
 
             await this.notificationService.createNotification(recipientId, {
@@ -157,25 +204,29 @@ export class TaskService {
         return await (this.prisma as any).taskAcceptance.findMany({
             where: {
                 userId,
-                status: 'PENDING'
+                status: 'PENDING',
             },
             include: {
                 pendingTask: {
                     include: {
                         project: { select: { projectName: true } },
-                        creator: { select: { teamName: true, email: true } }
-                    }
+                        creator: { select: { teamName: true, email: true } },
+                    },
                 },
-                group: { select: { groupName: true } }
-            }
+                group: { select: { groupName: true } },
+            },
         });
     }
 
-    async updateAcceptanceStatus(id: string, dto: UpdateTaskAcceptanceDto, userId: string) {
+    async updateAcceptanceStatus(
+        id: string,
+        dto: UpdateTaskAcceptanceDto,
+        userId: string,
+    ) {
         const { status } = dto;
         const acceptance = await (this.prisma as any).taskAcceptance.findUnique({
             where: { id },
-            include: { pendingTask: true }
+            include: { pendingTask: true },
         });
 
         if (!acceptance || acceptance.userId !== userId) {
@@ -186,11 +237,11 @@ export class TaskService {
             where: { id },
             data: {
                 status,
-                actionAt: new Date()
+                actionAt: new Date(),
             },
             include: {
-                pendingTask: true
-            }
+                pendingTask: true,
+            },
         });
 
         if (status === 'ACCEPTED') {
@@ -198,7 +249,9 @@ export class TaskService {
             if (acceptance.pendingTask.assignedTo) {
                 // If assigned to someone else, throw error
                 if (acceptance.pendingTask.assignedTo !== userId) {
-                    throw new BadRequestException('This task has already been accepted by another group member.');
+                    throw new BadRequestException(
+                        'This task has already been accepted by another group member.',
+                    );
                 }
             } else {
                 // Assign the task to the user
@@ -206,41 +259,51 @@ export class TaskService {
                     where: { id: acceptance.taskId },
                     data: {
                         assignedTo: userId,
-                        taskStatus: TaskStatus.Pending // Ensure it stays pending but assigned
-                    }
+                        taskStatus: TaskStatus.Pending, // Ensure it stays pending but assigned
+                    },
                 });
 
                 // Optional: Auto-reject other pending acceptances for this task to clean up views
                 await (this.prisma as any).taskAcceptance.updateMany({
                     where: {
                         taskId: acceptance.taskId,
-                        id: { not: id }
+                        id: { not: id },
                     },
-                    data: { status: 'REJECTED' }
+                    data: { status: 'REJECTED' },
                 });
             }
 
-            await this.notificationService.createNotification(updated.pendingTask.createdBy, {
-                title: 'Task Accepted',
-                description: `A member has accepted the task "${updated.pendingTask.taskTitle}".`,
-                type: 'TASK',
-                metadata: { taskId: updated.pendingTask.id, taskNo: updated.pendingTask.taskNo },
-            });
+            await this.notificationService.createNotification(
+                updated.pendingTask.createdBy,
+                {
+                    title: 'Task Accepted',
+                    description: `A member has accepted the task "${updated.pendingTask.taskTitle}".`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.pendingTask.id,
+                        taskNo: updated.pendingTask.taskNo,
+                    },
+                },
+            );
 
             // ALSO NOTIFY Group Members if it's a group task, so their lists refresh and remove the task
             if (updated.pendingTask.targetGroupId) {
                 const members = await this.prisma.groupMember.findMany({
                     where: { groupId: updated.pendingTask.targetGroupId },
-                    select: { userId: true }
+                    select: { userId: true },
                 });
 
                 for (const member of members) {
-                    if (member.userId !== userId) { // Don't notify the one who just accepted
+                    if (member.userId !== userId) {
+                        // Don't notify the one who just accepted
                         await this.notificationService.createNotification(member.userId, {
                             title: 'Task Accepted by Peer',
                             description: `The task "${updated.pendingTask.taskTitle}" has been accepted by someone else in your group.`,
                             type: 'TASK',
-                            metadata: { taskId: updated.pendingTask.id, taskNo: updated.pendingTask.taskNo },
+                            metadata: {
+                                taskId: updated.pendingTask.id,
+                                taskNo: updated.pendingTask.taskNo,
+                            },
                         });
                     }
                 }
@@ -251,12 +314,17 @@ export class TaskService {
         return updated;
     }
 
-    async findAll(pagination: PaginationDto, filter: FilterTaskDto, userId?: string, role?: string) {
+    async findAll(
+        pagination: PaginationDto,
+        filter: FilterTaskDto,
+        userId?: string,
+        role?: string,
+    ) {
         const {
             page = 1,
             limit = 25,
             sortBy = 'createdTime',
-            sortOrder = 'desc'
+            sortOrder = 'desc',
         } = pagination;
         const skip = (page - 1) * limit;
         const { toTitleCase } = await import('../common/utils/string-helper');
@@ -264,73 +332,146 @@ export class TaskService {
         const isStrictlyCompleted =
             filter.viewMode === TaskViewMode.MY_COMPLETED ||
             filter.viewMode === TaskViewMode.TEAM_COMPLETED ||
-            (Array.isArray(filter.taskStatus) && filter.taskStatus.every(s => s === TaskStatus.Completed)) ||
-            (filter.taskStatus === TaskStatus.Completed);
+            (Array.isArray(filter.taskStatus) &&
+                filter.taskStatus.every((s) => s === TaskStatus.Completed)) ||
+            filter.taskStatus === TaskStatus.Completed;
 
         const isStrictlyPending =
             filter.viewMode === TaskViewMode.MY_PENDING ||
             filter.viewMode === TaskViewMode.TEAM_PENDING ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_ME ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_TEAM ||
-            (Array.isArray(filter.taskStatus) && filter.taskStatus.every(s => s !== TaskStatus.Completed)) ||
-            (filter.taskStatus && filter.taskStatus !== TaskStatus.Completed && typeof filter.taskStatus === 'string');
+            (Array.isArray(filter.taskStatus) &&
+                filter.taskStatus.every((s) => s !== TaskStatus.Completed)) ||
+            (filter.taskStatus &&
+                filter.taskStatus !== TaskStatus.Completed &&
+                typeof filter.taskStatus === 'string');
 
         // Mixed view if neither strictly pending nor strictly completed
         const isMixedView = !isStrictlyCompleted && !isStrictlyPending;
 
         const andArray: any[] = [];
-        const isAdmin = role?.toUpperCase() === 'ADMIN' || role?.toUpperCase() === 'HR' || role?.toUpperCase() === 'MANAGER';
-        const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+        const isAdmin =
+            role?.toUpperCase() === 'ADMIN' ||
+            role?.toUpperCase() === 'HR' ||
+            role?.toUpperCase() === 'MANAGER';
+        const isUuid = (v: string) =>
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
         // 1. Priority Filters (Project, Priority, Search)
         if (filter.projectId) {
-            if (isUuid(filter.projectId)) andArray.push({ projectId: filter.projectId });
-            else andArray.push({ project: { OR: [{ projectName: { contains: filter.projectId, mode: 'insensitive' } }, { projectNo: { contains: filter.projectId, mode: 'insensitive' } }] } });
+            if (isUuid(filter.projectId))
+                andArray.push({ projectId: filter.projectId });
+            else
+                andArray.push({
+                    project: {
+                        OR: [
+                            {
+                                projectName: {
+                                    contains: filter.projectId,
+                                    mode: 'insensitive',
+                                },
+                            },
+                            {
+                                projectNo: { contains: filter.projectId, mode: 'insensitive' },
+                            },
+                        ],
+                    },
+                });
         }
 
         if (filter.priority) {
-            const priorityValues = typeof filter.priority === 'string'
-                ? filter.priority.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.priority) ? filter.priority : [filter.priority];
-            if (priorityValues.length > 0) andArray.push({ priority: { in: priorityValues as any } });
+            const priorityValues =
+                typeof filter.priority === 'string'
+                    ? filter.priority
+                        .split(/[,\:;|]/)
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                    : Array.isArray(filter.priority)
+                        ? filter.priority
+                        : [filter.priority];
+            if (priorityValues.length > 0)
+                andArray.push({ priority: { in: priorityValues as any } });
         }
 
         if (filter.assignedTo) {
-            if (isUuid(filter.assignedTo)) andArray.push({ assignedTo: filter.assignedTo });
-            else andArray.push({
-                OR: [
-                    { assignee: { teamName: { contains: filter.assignedTo, mode: 'insensitive' } } },
-                    { assignee: { email: { contains: filter.assignedTo, mode: 'insensitive' } } },
-                    { targetTeam: { teamName: { contains: filter.assignedTo, mode: 'insensitive' } } },
-                    { targetGroup: { groupName: { contains: filter.assignedTo, mode: 'insensitive' } } }
-                ]
-            });
+            if (isUuid(filter.assignedTo))
+                andArray.push({ assignedTo: filter.assignedTo });
+            else
+                andArray.push({
+                    OR: [
+                        {
+                            assignee: {
+                                teamName: { contains: filter.assignedTo, mode: 'insensitive' },
+                            },
+                        },
+                        {
+                            assignee: {
+                                email: { contains: filter.assignedTo, mode: 'insensitive' },
+                            },
+                        },
+                        {
+                            targetTeam: {
+                                teamName: { contains: filter.assignedTo, mode: 'insensitive' },
+                            },
+                        },
+                        {
+                            targetGroup: {
+                                groupName: { contains: filter.assignedTo, mode: 'insensitive' },
+                            },
+                        },
+                    ],
+                });
         }
 
         if (filter.createdBy) {
-            if (isUuid(filter.createdBy)) andArray.push({ createdBy: filter.createdBy });
-            else andArray.push({
-                OR: [
-                    { creator: { teamName: { contains: filter.createdBy, mode: 'insensitive' } } },
-                    { creator: { email: { contains: filter.createdBy, mode: 'insensitive' } } }
-                ]
-            });
+            if (isUuid(filter.createdBy))
+                andArray.push({ createdBy: filter.createdBy });
+            else
+                andArray.push({
+                    OR: [
+                        {
+                            creator: {
+                                teamName: { contains: filter.createdBy, mode: 'insensitive' },
+                            },
+                        },
+                        {
+                            creator: {
+                                email: { contains: filter.createdBy, mode: 'insensitive' },
+                            },
+                        },
+                    ],
+                });
         }
 
-        if (filter.taskNo) andArray.push({ taskNo: { contains: filter.taskNo, mode: 'insensitive' } });
-        if (filter.taskTitle) andArray.push({ taskTitle: { contains: filter.taskTitle, mode: 'insensitive' } });
-        if (filter.document) andArray.push({ document: { contains: filter.document, mode: 'insensitive' } });
-        if (filter.remarkChat) andArray.push({ remarkChat: { contains: filter.remarkChat, mode: 'insensitive' } });
+        if (filter.taskNo)
+            andArray.push({
+                taskNo: { contains: filter.taskNo, mode: 'insensitive' },
+            });
+        if (filter.taskTitle)
+            andArray.push({
+                taskTitle: { contains: filter.taskTitle, mode: 'insensitive' },
+            });
+        if (filter.document)
+            andArray.push({
+                document: { contains: filter.document, mode: 'insensitive' },
+            });
+        if (filter.remarkChat)
+            andArray.push({
+                remarkChat: { contains: filter.remarkChat, mode: 'insensitive' },
+            });
 
         // Date Filters
         const dateFields = ['createdTime', 'deadline', 'completeTime'];
-        dateFields.forEach(field => {
+        dateFields.forEach((field) => {
             if ((filter as any)[field]) {
                 const date = new Date((filter as any)[field]);
                 if (!isNaN(date.getTime())) {
                     const startOfDay = new Date(date).setHours(0, 0, 0, 0);
                     const endOfDay = new Date(date).setHours(23, 59, 59, 999);
-                    andArray.push({ [field]: { gte: new Date(startOfDay), lte: new Date(endOfDay) } });
+                    andArray.push({
+                        [field]: { gte: new Date(startOfDay), lte: new Date(endOfDay) },
+                    });
                 }
             }
         });
@@ -353,8 +494,10 @@ export class TaskService {
                     { creator: { teamName: { contains: val, mode: 'insensitive' } } },
                     { creator: { email: { contains: val, mode: 'insensitive' } } },
                     { targetTeam: { teamName: { contains: val, mode: 'insensitive' } } },
-                    { targetGroup: { groupName: { contains: val, mode: 'insensitive' } } }
-                ]
+                    {
+                        targetGroup: { groupName: { contains: val, mode: 'insensitive' } },
+                    },
+                ],
             });
         }
 
@@ -367,7 +510,7 @@ export class TaskService {
                 case TaskViewMode.MY_PENDING:
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
-                        OR: [{ assignedTo: userId }, { targetTeamId: userId }]
+                        OR: [{ assignedTo: userId }, { targetTeamId: userId }],
                     });
                     break;
                 case TaskViewMode.TEAM_PENDING:
@@ -377,8 +520,10 @@ export class TaskService {
                         createdBy: userId,
                         AND: [
                             { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
-                            { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] }
-                        ]
+                            {
+                                OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }],
+                            },
+                        ],
                     });
                     break;
                 case TaskViewMode.MY_COMPLETED:
@@ -388,20 +533,20 @@ export class TaskService {
                     andArray.push({
                         createdBy: userId,
                         isSelfTask: false,
-                        OR: [{ workingBy: { not: userId } }, { workingBy: null }]
+                        OR: [{ workingBy: { not: userId } }, { workingBy: null }],
                     });
                     break;
                 case TaskViewMode.REVIEW_PENDING_BY_ME:
                     andArray.push({
                         createdBy: userId,
-                        taskStatus: TaskStatus.ReviewPending
+                        taskStatus: TaskStatus.ReviewPending,
                     });
                     break;
                 case TaskViewMode.REVIEW_PENDING_BY_TEAM:
                     andArray.push({
                         taskStatus: TaskStatus.ReviewPending,
                         workingBy: userId,
-                        isSelfTask: false
+                        isSelfTask: false,
                     });
                     break;
             }
@@ -414,21 +559,34 @@ export class TaskService {
                     { assignedTo: userId },
                     { workingBy: userId },
                     { targetTeamId: userId },
-                    { targetGroup: { members: { some: { userId } } } }
-                ]
+                    { targetGroup: { members: { some: { userId } } } },
+                ],
             });
         }
 
         if (filter.taskStatus) {
-            const statusValues = typeof filter.taskStatus === 'string'
-                ? filter.taskStatus.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.taskStatus) ? filter.taskStatus : [filter.taskStatus];
-            if (statusValues.length > 0) andArray.push({ taskStatus: { in: statusValues as any } });
+            const statusValues =
+                typeof filter.taskStatus === 'string'
+                    ? filter.taskStatus
+                        .split(/[,\:;|]/)
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                    : Array.isArray(filter.taskStatus)
+                        ? filter.taskStatus
+                        : [filter.taskStatus];
+            if (statusValues.length > 0)
+                andArray.push({ taskStatus: { in: statusValues as any } });
         }
 
         if (filter.workingBy) {
-            if (isUuid(filter.workingBy)) andArray.push({ workingBy: filter.workingBy });
-            else andArray.push({ worker: { teamName: { contains: filter.workingBy, mode: 'insensitive' } } });
+            if (isUuid(filter.workingBy))
+                andArray.push({ workingBy: filter.workingBy });
+            else
+                andArray.push({
+                    worker: {
+                        teamName: { contains: filter.workingBy, mode: 'insensitive' },
+                    },
+                });
         }
 
         const where = { AND: andArray };
@@ -438,7 +596,7 @@ export class TaskService {
             creator: { select: { id: true, teamName: true, email: true } },
             targetTeam: { select: { id: true, teamName: true, email: true } },
             targetGroup: { select: { id: true, groupName: true } },
-            worker: { select: { id: true, teamName: true, email: true } }
+            worker: { select: { id: true, teamName: true, email: true } },
         };
 
         let data: any[] = [];
@@ -446,7 +604,8 @@ export class TaskService {
 
         // Determine effective sortBy field (handle simple mappings if needed)
         let effectiveSortBy = sortBy;
-        if (sortBy === 'completeTime' && isStrictlyCompleted) effectiveSortBy = 'completedAt';
+        if (sortBy === 'completeTime' && isStrictlyCompleted)
+            effectiveSortBy = 'completedAt';
 
         const order = { [effectiveSortBy]: sortOrder };
 
@@ -454,22 +613,23 @@ export class TaskService {
             // MERGE STRATEGY: Fetch from both
             const fetchTake = skip + limit;
 
-            const [pendingData, pendingCount, completedData, completedCount] = await Promise.all([
-                this.prisma.pendingTask.findMany({
-                    where: where as any,
-                    take: fetchTake,
-                    orderBy: order,
-                    include
-                }),
-                this.prisma.pendingTask.count({ where: where as any }),
-                this.prisma.completedTask.findMany({
-                    where: where as any,
-                    take: fetchTake,
-                    orderBy: order,
-                    include
-                }),
-                this.prisma.completedTask.count({ where: where as any })
-            ]);
+            const [pendingData, pendingCount, completedData, completedCount] =
+                await Promise.all([
+                    this.prisma.pendingTask.findMany({
+                        where: where as any,
+                        take: fetchTake,
+                        orderBy: order,
+                        include,
+                    }),
+                    this.prisma.pendingTask.count({ where: where as any }),
+                    this.prisma.completedTask.findMany({
+                        where: where as any,
+                        take: fetchTake,
+                        orderBy: order,
+                        include,
+                    }),
+                    this.prisma.completedTask.count({ where: where as any }),
+                ]);
 
             total = pendingCount + completedCount;
             const combined = [...pendingData, ...completedData];
@@ -487,7 +647,10 @@ export class TaskService {
                 if (valA instanceof Date && valB instanceof Date) {
                     comparison = valA.getTime() - valB.getTime();
                 } else if (typeof valA === 'string' && typeof valB === 'string') {
-                    comparison = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                    comparison = valA.localeCompare(valB, undefined, {
+                        numeric: true,
+                        sensitivity: 'base',
+                    });
                 } else {
                     comparison = valA < valB ? -1 : 1;
                 }
@@ -497,7 +660,6 @@ export class TaskService {
 
             // Slice the requested page
             data = combined.slice(skip, skip + limit);
-
         } else if (isStrictlyCompleted) {
             const [cData, cCount] = await Promise.all([
                 this.prisma.completedTask.findMany({
@@ -505,9 +667,9 @@ export class TaskService {
                     skip,
                     take: limit,
                     orderBy: order,
-                    include
+                    include,
                 }),
-                this.prisma.completedTask.count({ where: where as any })
+                this.prisma.completedTask.count({ where: where as any }),
             ]);
             data = cData;
             total = cCount;
@@ -519,32 +681,43 @@ export class TaskService {
                     skip,
                     take: limit,
                     orderBy: order,
-                    include
+                    include,
                 }),
-                this.prisma.pendingTask.count({ where: where as any })
+                this.prisma.pendingTask.count({ where: where as any }),
             ]);
             data = pData;
             total = pCount;
         }
 
         return {
-            data: data.map(task => this.sortTaskDates(task)),
-            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+            data: data.map((task) => this.sortTaskDates(task)),
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
         };
     }
-
 
     async findById(id: string) {
         // Try Pending first, then Completed
         let task = await this.prisma.pendingTask.findUnique({
             where: { id },
-            include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true }
+            include: {
+                project: true,
+                assignee: true,
+                creator: true,
+                targetGroup: true,
+                targetTeam: true,
+            },
         } as any);
 
         if (!task) {
             task = (await this.prisma.completedTask.findUnique({
                 where: { id },
-                include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true }
+                include: {
+                    project: true,
+                    assignee: true,
+                    creator: true,
+                    targetGroup: true,
+                    targetTeam: true,
+                },
             } as any)) as any;
         }
 
@@ -552,7 +725,13 @@ export class TaskService {
         return this.sortTaskDates(task);
     }
 
-    async update(id: string, dto: UpdateTaskDto, userId: string, role: string, files?: Express.Multer.File[]) {
+    async update(
+        id: string,
+        dto: UpdateTaskDto,
+        userId: string,
+        role: string,
+        files?: Express.Multer.File[],
+    ) {
         const existingTask = await this.findById(id);
 
         // Permission Check: Only Admin/SuperAdmin can update tasks
@@ -571,9 +750,10 @@ export class TaskService {
         if (files && files.length > 0) {
             const savedPaths: string[] = [];
             const uploadDir = path.join(process.cwd(), 'uploads');
-            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            if (!fs.existsSync(uploadDir))
+                fs.mkdirSync(uploadDir, { recursive: true });
 
-            const taskNo = (existingTask as any).taskNo;
+            const taskNo = existingTask.taskNo;
             for (const file of files) {
                 const fileName = `${taskNo}_${Date.now()}_${file.originalname}`;
                 const uploadPath = path.join(uploadDir, fileName);
@@ -582,29 +762,50 @@ export class TaskService {
             }
 
             // Merge existing paths from dto.document with new ones
-            const existingPaths = dto.document ? dto.document.split(',').filter(Boolean) : [];
+            const existingPaths = dto.document
+                ? dto.document.split(',').filter(Boolean)
+                : [];
             document = [...existingPaths, ...savedPaths].join(',');
         }
 
-        const currentEditTime = (existingTask as any).editTime || [];
+        const currentEditTime = existingTask.editTime || [];
         const newEditTime = [...currentEditTime, new Date()];
 
         const reminderTime = dto.reminderTime
-            ? [...new Set([...((existingTask as any).reminderTime || []), ...dto.reminderTime])].sort().map(d => new Date(d))
+            ? [
+                ...new Set([
+                    ...(existingTask.reminderTime || []),
+                    ...dto.reminderTime,
+                ]),
+            ]
+                .sort()
+                .map((d) => new Date(d))
             : undefined;
 
         const reviewedTime = dto.reviewedTime
-            ? [...new Set([...((existingTask as any).reviewedTime || []), ...dto.reviewedTime])].sort().map(d => new Date(d))
+            ? [
+                ...new Set([
+                    ...(existingTask.reviewedTime || []),
+                    ...dto.reviewedTime,
+                ]),
+            ]
+                .sort()
+                .map((d) => new Date(d))
             : undefined;
 
-        const model: any = (existingTask as any).taskStatus === TaskStatus.Completed ? this.prisma.completedTask : this.prisma.pendingTask;
+        const model: any =
+            existingTask.taskStatus === TaskStatus.Completed
+                ? this.prisma.completedTask
+                : this.prisma.pendingTask;
 
         const updated = await model.update({
             where: { id },
             data: {
                 ...dto,
                 taskTitle: dto.taskTitle ? toTitleCase(dto.taskTitle) : undefined,
-                additionalNote: dto.additionalNote ? toTitleCase(dto.additionalNote) : undefined,
+                additionalNote: dto.additionalNote
+                    ? toTitleCase(dto.additionalNote)
+                    : undefined,
                 remarkChat: dto.remarkChat ? toTitleCase(dto.remarkChat) : undefined,
                 editTime: newEditTime,
                 reminderTime: reminderTime,
@@ -612,10 +813,12 @@ export class TaskService {
                 document: document,
                 // Handle Reassignment: If one is set, others must be null
                 assignedTo: dto.assignedTo !== undefined ? dto.assignedTo : undefined,
-                targetGroupId: dto.targetGroupId !== undefined ? dto.targetGroupId : undefined,
-                targetTeamId: dto.targetTeamId !== undefined ? dto.targetTeamId : undefined,
+                targetGroupId:
+                    dto.targetGroupId !== undefined ? dto.targetGroupId : undefined,
+                targetTeamId:
+                    dto.targetTeamId !== undefined ? dto.targetTeamId : undefined,
             },
-            include: { assignee: true, creator: true, targetTeam: true }
+            include: { assignee: true, creator: true, targetTeam: true },
         });
 
         // If assignment changed, notify new assignee (Optimized to avoid duplicate notification if nothing changed)
@@ -633,15 +836,20 @@ export class TaskService {
         }
 
         // Logic for Status Change Notification (e.g., Manually setting to Pending/Completed)
-        if (dto.taskStatus && dto.taskStatus !== (existingTask as any).taskStatus) {
-            const workerId = updated.workingBy || updated.assignedTo || updated.targetTeamId;
+        if (dto.taskStatus && dto.taskStatus !== existingTask.taskStatus) {
+            const workerId =
+                updated.workingBy || updated.assignedTo || updated.targetTeamId;
             // Notify the worker if they are NOT the one making the change (e.g. Admin changed it)
             if (workerId && workerId !== userId) {
                 await this.notificationService.createNotification(workerId, {
                     title: 'Task Status Updated',
                     description: `The status of task "${updated.taskTitle}" has been updated to ${dto.taskStatus}.`,
                     type: 'TASK',
-                    metadata: { taskId: updated.id, taskNo: updated.taskNo, status: dto.taskStatus },
+                    metadata: {
+                        taskId: updated.id,
+                        taskNo: updated.taskNo,
+                        status: dto.taskStatus,
+                    },
                 });
             }
         }
@@ -650,10 +858,15 @@ export class TaskService {
         return this.sortTaskDates(updated);
     }
 
-    async submitForReview(id: string, remark: string, userId: string, files?: Express.Multer.File[]) {
+    async submitForReview(
+        id: string,
+        remark: string,
+        userId: string,
+        files?: Express.Multer.File[],
+    ) {
         const task = await this.prisma.pendingTask.findUnique({
             where: { id },
-            include: { creator: true }
+            include: { creator: true },
         });
 
         if (!task) throw new NotFoundException('Task not found');
@@ -663,7 +876,10 @@ export class TaskService {
             return this.sortTaskDates(task);
         }
 
-        if (task.taskStatus !== TaskStatus.Pending) throw new BadRequestException('Only pending tasks can be submitted for review');
+        if (task.taskStatus !== TaskStatus.Pending)
+            throw new BadRequestException(
+                'Only pending tasks can be submitted for review',
+            );
 
         let document = task.document;
         if (files && files.length > 0) {
@@ -672,7 +888,11 @@ export class TaskService {
                 const timestamp = Date.now();
                 const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
                 const folder = `hrms/tasks/${task.taskNo}`;
-                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
+                const result = await this.cloudinaryService.uploadFile(
+                    file,
+                    folder,
+                    customName,
+                );
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -688,9 +908,9 @@ export class TaskService {
                 remarkChat: remark,
                 workingBy: userId,
                 reviewedTime: { push: new Date() },
-                document: document
+                document: document,
             },
-            include: { creator: true, project: true }
+            include: { creator: true, project: true },
         });
 
         // Notify Creator
@@ -699,7 +919,11 @@ export class TaskService {
                 title: 'Task Submitted for Review',
                 description: `Task "${updated.taskTitle}" (${updated.taskNo}) has been submitted for review.`,
                 type: 'TASK',
-                metadata: { taskId: updated.id, taskNo: updated.taskNo, status: 'ReviewPending' },
+                metadata: {
+                    taskId: updated.id,
+                    taskNo: updated.taskNo,
+                    status: 'ReviewPending',
+                },
             });
         }
 
@@ -707,14 +931,27 @@ export class TaskService {
         return this.sortTaskDates(updated);
     }
 
-    async finalizeCompletion(id: string, remark: string, userId: string, files?: Express.Multer.File[]) {
+    async finalizeCompletion(
+        id: string,
+        remark: string,
+        userId: string,
+        files?: Express.Multer.File[],
+    ) {
         const task = await this.prisma.pendingTask.findUnique({
             where: { id },
-            include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true, worker: true }
+            include: {
+                project: true,
+                assignee: true,
+                creator: true,
+                targetGroup: true,
+                targetTeam: true,
+                worker: true,
+            },
         });
 
         if (!task) throw new NotFoundException('Task not found');
-        if (task.taskStatus !== TaskStatus.ReviewPending) throw new BadRequestException('Only tasks in review can be finalized');
+        if (task.taskStatus !== TaskStatus.ReviewPending)
+            throw new BadRequestException('Only tasks in review can be finalized');
 
         let document = task.document;
         if (files && files.length > 0) {
@@ -723,7 +960,11 @@ export class TaskService {
                 const timestamp = Date.now();
                 const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
                 const folder = `hrms/tasks/${task.taskNo}`;
-                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
+                const result = await this.cloudinaryService.uploadFile(
+                    file,
+                    folder,
+                    customName,
+                );
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -744,7 +985,9 @@ export class TaskService {
                     deadline: task.deadline,
                     completeTime: new Date(),
                     completedAt: new Date(),
-                    reviewedTime: Array.isArray(task.reviewedTime) ? [...task.reviewedTime, new Date()] : [new Date()],
+                    reviewedTime: Array.isArray(task.reviewedTime)
+                        ? [...task.reviewedTime, new Date()]
+                        : [new Date()],
                     reminderTime: task.reminderTime || [],
                     document: document,
                     remarkChat: remark || task.remarkChat,
@@ -761,12 +1004,12 @@ export class TaskService {
 
                 // Create the completed task
                 const completed = await tx.completedTask.create({
-                    data: completedData
+                    data: completedData,
                 });
 
                 // Delete from pending table (Cascade handles children like TaskAcceptance)
                 await tx.pendingTask.delete({
-                    where: { id: task.id }
+                    where: { id: task.id },
                 });
 
                 return completed;
@@ -779,13 +1022,16 @@ export class TaskService {
                     title: 'Task Completed',
                     description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
                     type: 'TASK',
-                    metadata: { taskId: completedTask.id, taskNo: task.taskNo, status: 'Completed' },
+                    metadata: {
+                        taskId: completedTask.id,
+                        taskNo: task.taskNo,
+                        status: 'Completed',
+                    },
                 });
             }
 
             await this.invalidateCache();
             return this.sortTaskDates(completedTask);
-
         } catch (error: any) {
             console.error(`[TaskService] SAVE FAILED for Task ${task.taskNo}`);
             console.error(`[TaskService] Error Detail:`, error.message);
@@ -793,22 +1039,26 @@ export class TaskService {
             // Check for record already in CompletedTask (Idempotency)
             if (error.code === 'P2002') {
                 const alreadyCompleted = await this.prisma.completedTask.findUnique({
-                    where: { taskNo: task.taskNo }
+                    where: { taskNo: task.taskNo },
                 });
                 if (alreadyCompleted) {
                     // If it's already there, just clean up Pending if it still exists
-                    await this.prisma.pendingTask.deleteMany({ where: { taskNo: task.taskNo } }).catch(() => { });
+                    await this.prisma.pendingTask
+                        .deleteMany({ where: { taskNo: task.taskNo } })
+                        .catch(() => { });
                     return this.sortTaskDates(alreadyCompleted);
                 }
             }
-            throw new BadRequestException(`Save Failed: ${error.message || 'Database error'}`);
+            throw new BadRequestException(
+                `Save Failed: ${error.message || 'Database error'}`,
+            );
         }
     }
 
     sortTaskDates(task: any) {
         if (!task) return task;
         const dateFields = ['reviewedTime', 'reminderTime', 'editTime'];
-        dateFields.forEach(field => {
+        dateFields.forEach((field) => {
             if (Array.isArray(task[field])) {
                 task[field] = task[field]
                     .map((d: any) => (d instanceof Date ? d : new Date(d)))
@@ -818,8 +1068,14 @@ export class TaskService {
         });
 
         // Single date fields
-        const singleDateFields = ['completeTime', 'createdTime', 'deadline', 'completedAt', 'updatedAt'];
-        singleDateFields.forEach(field => {
+        const singleDateFields = [
+            'completeTime',
+            'createdTime',
+            'deadline',
+            'completedAt',
+            'updatedAt',
+        ];
+        singleDateFields.forEach((field) => {
             if (task[field] && !(task[field] instanceof Date)) {
                 const d = new Date(task[field]);
                 if (!isNaN(d.getTime())) task[field] = d;
@@ -829,25 +1085,26 @@ export class TaskService {
         return task;
     }
 
-
     async sendReminder(id: string, userId: string) {
         const task = await this.findById(id);
         if (!task) throw new NotFoundException('Task not found');
 
         // Check permission: Creator only
-        if ((task as any).createdBy !== userId) {
-            throw new ForbiddenException('Only the task creator can send a reminder.');
+        if (task.createdBy !== userId) {
+            throw new ForbiddenException(
+                'Only the task creator can send a reminder.',
+            );
         }
 
         const recipients = new Set<string>();
-        if ((task as any).assignedTo) recipients.add((task as any).assignedTo);
-        if ((task as any).targetTeamId) recipients.add((task as any).targetTeamId);
+        if (task.assignedTo) recipients.add(task.assignedTo);
+        if (task.targetTeamId) recipients.add(task.targetTeamId);
 
-        if ((task as any).targetGroupId) {
+        if (task.targetGroupId) {
             const members = await this.prisma.groupMember.findMany({
-                where: { groupId: (task as any).targetGroupId }
+                where: { groupId: task.targetGroupId },
             });
-            members.forEach(m => recipients.add(m.userId));
+            members.forEach((m) => recipients.add(m.userId));
         }
 
         recipients.delete(userId);
@@ -859,51 +1116,71 @@ export class TaskService {
         for (const recipientId of recipients) {
             await this.notificationService.createNotification(recipientId, {
                 title: 'Task Reminder 🔔',
-                description: `Reminder for task: "${(task as any).taskTitle}". Please check and update.`,
+                description: `Reminder for task: "${task.taskTitle}". Please check and update.`,
                 type: 'TASK',
-                metadata: { taskId: task.id, taskNo: (task as any).taskNo, type: 'REMINDER' },
+                metadata: {
+                    taskId: task.id,
+                    taskNo: task.taskNo,
+                    type: 'REMINDER',
+                },
             });
 
             // If it's a group task, ensure/reset the acceptance popup for members
-            if ((task as any).targetGroupId) {
+            if (task.targetGroupId) {
                 await (this.prisma as any).taskAcceptance.upsert({
                     where: {
                         taskId_userId: {
                             taskId: task.id,
-                            userId: recipientId
-                        }
+                            userId: recipientId,
+                        },
                     },
                     update: { status: 'PENDING' },
                     create: {
                         taskId: task.id,
                         userId: recipientId,
-                        groupId: (task as any).targetGroupId,
-                        status: 'PENDING'
-                    }
+                        groupId: task.targetGroupId,
+                        status: 'PENDING',
+                    },
                 });
             }
         }
 
-        const model: any = (task as any).taskStatus === TaskStatus.Completed ? this.prisma.completedTask : this.prisma.pendingTask;
+        const model: any =
+            task.taskStatus === TaskStatus.Completed
+                ? this.prisma.completedTask
+                : this.prisma.pendingTask;
 
         await model.update({
             where: { id },
             data: {
-                reminderTime: { push: new Date() }
-            }
+                reminderTime: { push: new Date() },
+            },
         });
 
         return { message: 'Reminder sent successfully' };
     }
 
-    async rejectTask(id: string, remark: string, userId: string, files?: Express.Multer.File[]) {
+    async rejectTask(
+        id: string,
+        remark: string,
+        userId: string,
+        files?: Express.Multer.File[],
+    ) {
         const task = await this.prisma.pendingTask.findUnique({
             where: { id },
-            include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true, worker: true }
+            include: {
+                project: true,
+                assignee: true,
+                creator: true,
+                targetGroup: true,
+                targetTeam: true,
+                worker: true,
+            },
         });
 
         if (!task) throw new NotFoundException('Task not found');
-        if (task.taskStatus !== TaskStatus.ReviewPending) throw new BadRequestException('Only tasks in review can be rejected');
+        if (task.taskStatus !== TaskStatus.ReviewPending)
+            throw new BadRequestException('Only tasks in review can be rejected');
 
         // Check permission: Only creator can reject
         if (task.createdBy !== userId) {
@@ -917,7 +1194,11 @@ export class TaskService {
                 const timestamp = Date.now();
                 const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
                 const folder = `hrms/tasks/${task.taskNo}`;
-                const result = await this.cloudinaryService.uploadFile(file, folder, customName);
+                const result = await this.cloudinaryService.uploadFile(
+                    file,
+                    folder,
+                    customName,
+                );
                 if (result.secure_url) {
                     savedUrls.push(result.secure_url);
                 }
@@ -932,9 +1213,9 @@ export class TaskService {
                 taskStatus: TaskStatus.Pending,
                 remarkChat: remark,
                 reviewedTime: { push: new Date() },
-                document: document
+                document: document,
             },
-            include: { creator: true, project: true, assignee: true, worker: true }
+            include: { creator: true, project: true, assignee: true, worker: true },
         });
 
         // Notify Worker/Assignee about rejection
@@ -944,7 +1225,11 @@ export class TaskService {
                 title: 'Task Rejected',
                 description: `Your work on task "${task.taskTitle}" has been rejected. Reason: ${remark}`,
                 type: 'TASK',
-                metadata: { taskId: updated.id, taskNo: task.taskNo, status: 'Pending' },
+                metadata: {
+                    taskId: updated.id,
+                    taskNo: task.taskNo,
+                    status: 'Pending',
+                },
             });
         }
 
@@ -956,14 +1241,23 @@ export class TaskService {
         // Find the completed task
         const task = await this.prisma.completedTask.findUnique({
             where: { id },
-            include: { project: true, assignee: true, creator: true, targetGroup: true, targetTeam: true, worker: true }
+            include: {
+                project: true,
+                assignee: true,
+                creator: true,
+                targetGroup: true,
+                targetTeam: true,
+                worker: true,
+            },
         });
 
         if (!task) throw new NotFoundException('Completed task not found');
 
         // Check permission: Only creator can revert
         if (task.createdBy !== userId) {
-            throw new ForbiddenException('Only the task creator can revert a completed task.');
+            throw new ForbiddenException(
+                'Only the task creator can revert a completed task.',
+            );
         }
 
         try {
@@ -993,12 +1287,12 @@ export class TaskService {
 
                 // Create the pending task
                 const pending = await tx.pendingTask.create({
-                    data: pendingData
+                    data: pendingData,
                 });
 
                 // Delete from completed table
                 await tx.completedTask.delete({
-                    where: { id: task.id }
+                    where: { id: task.id },
                 });
 
                 return pending;
@@ -1011,13 +1305,16 @@ export class TaskService {
                     title: 'Task Reverted to Pending',
                     description: `Task "${task.taskTitle}" (${task.taskNo}) has been moved back to pending.`,
                     type: 'TASK',
-                    metadata: { taskId: pendingTask.id, taskNo: task.taskNo, status: 'Pending' },
+                    metadata: {
+                        taskId: pendingTask.id,
+                        taskNo: task.taskNo,
+                        status: 'Pending',
+                    },
                 });
             }
 
             await this.invalidateCache();
             return this.sortTaskDates(pendingTask);
-
         } catch (error: any) {
             console.error(`[TaskService] REVERT FAILED for Task ${task.taskNo}`);
             console.error(`[TaskService] Error Detail:`, error.message);
@@ -1025,15 +1322,19 @@ export class TaskService {
             // Check for record already in PendingTask (Idempotency)
             if (error.code === 'P2002') {
                 const alreadyPending = await this.prisma.pendingTask.findUnique({
-                    where: { taskNo: task.taskNo }
+                    where: { taskNo: task.taskNo },
                 });
                 if (alreadyPending) {
                     // If it's already there, just clean up Completed if it still exists
-                    await this.prisma.completedTask.deleteMany({ where: { taskNo: task.taskNo } }).catch(() => { });
+                    await this.prisma.completedTask
+                        .deleteMany({ where: { taskNo: task.taskNo } })
+                        .catch(() => { });
                     return this.sortTaskDates(alreadyPending);
                 }
             }
-            throw new BadRequestException(`Revert Failed: ${error.message || 'Database error'}`);
+            throw new BadRequestException(
+                `Revert Failed: ${error.message || 'Database error'}`,
+            );
         }
     }
 
@@ -1042,13 +1343,20 @@ export class TaskService {
         throw new ForbiddenException('Task deletion is disabled.');
     }
 
-
     /**
      * Bulk Upload Logic: Excel -> CSV -> Streaming Read -> Batch Insert
      */
     async bulkUpload(file: Express.Multer.File, userId: string) {
-        const tempExcelPath = path.join(process.cwd(), 'uploads', `bulk_${Date.now()}.xlsx`);
-        const tempCsvPath = path.join(process.cwd(), 'uploads', `bulk_${Date.now()}.csv`);
+        const tempExcelPath = path.join(
+            process.cwd(),
+            'uploads',
+            `bulk_${Date.now()}.xlsx`,
+        );
+        const tempCsvPath = path.join(
+            process.cwd(),
+            'uploads',
+            `bulk_${Date.now()}.csv`,
+        );
 
         try {
             // 1. Save Excel file temporarily
@@ -1057,17 +1365,72 @@ export class TaskService {
             // 2. Convert Excel to CSV via Streaming
             await this.convertExcelToCsvStreaming(tempExcelPath, tempCsvPath);
 
-            // 3. Process CSV in chunks
-            const results = await this.processCsvAndInsert(tempCsvPath, userId);
+            const results: any = await this.processCsvAndInsert(
+                tempCsvPath,
+                userId,
+                file.originalname,
+            );
 
-            return {
-                message: 'Bulk upload completed',
-                ...results
-            };
-        } finally {
-            // 4. Cleanup temp files
+            // 4. Cleanup temp files if they were processed synchronously
+            if (!results.isBackground) {
+                if (fs.existsSync(tempExcelPath)) fs.unlinkSync(tempExcelPath);
+                if (fs.existsSync(tempCsvPath)) fs.unlinkSync(tempCsvPath);
+            }
+
+            return results;
+        } catch (error) {
+            // Cleanup on error
             if (fs.existsSync(tempExcelPath)) fs.unlinkSync(tempExcelPath);
             if (fs.existsSync(tempCsvPath)) fs.unlinkSync(tempCsvPath);
+            throw error;
+        }
+    }
+
+    @OnEvent('task.bulk-upload')
+    async handleBackgroundUpload(payload: {
+        csvPath: string;
+        userId: string;
+        fileName: string;
+        excelPath: string;
+    }) {
+        const { csvPath, userId, fileName, excelPath } = payload;
+        this.logger.log(
+            `[BACKGROUND_UPLOAD] Starting background task upload for ${fileName}`,
+        );
+
+        try {
+            const result = await this.processCsvAndInsert(
+                csvPath,
+                userId,
+                fileName,
+                true,
+            );
+
+            await this.notificationService.createNotification(userId, {
+                title: 'Task Upload Completed',
+                description: `Successfully imported ${result.successCount} tasks from ${fileName}. Failed: ${result.failCount}`,
+                type: 'SYSTEM',
+                metadata: {
+                    fileName,
+                    success: result.successCount,
+                    failed: result.failCount,
+                },
+            });
+
+            this.logger.log(
+                `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.successCount}, Failed: ${result.failCount}`,
+            );
+        } catch (error) {
+            this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);
+            await this.notificationService.createNotification(userId, {
+                title: 'Task Upload Failed',
+                description: `Background task upload for ${fileName} failed: ${error.message}`,
+                type: 'SYSTEM',
+                metadata: { fileName, error: error.message },
+            });
+        } finally {
+            if (fs.existsSync(excelPath)) fs.unlinkSync(excelPath);
+            if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
         }
     }
 
@@ -1079,17 +1442,56 @@ export class TaskService {
             for await (const row of worksheet) {
                 if (Array.isArray(row.values)) {
                     // Skip internal exceljs indexing by using values.slice(1)
-                    const rowData = row.values.slice(1).map(v => v === null || v === undefined ? '' : String(v));
+                    const rowData = row.values
+                        .slice(1)
+                        .map((v) => (v === null || v === undefined ? '' : String(v)));
                     writeStream.write(rowData.join(',') + '\n');
                 }
             }
         }
         writeStream.end();
-        return new Promise<boolean>((resolve) => writeStream.on('finish', () => resolve(true)));
+        return new Promise<boolean>((resolve) =>
+            writeStream.on('finish', () => resolve(true)),
+        );
     }
 
-    private async processCsvAndInsert(csvPath: string, userId: string) {
-        const parser = fs.createReadStream(csvPath).pipe(csvParser({ skipLines: 0 }));
+    private async processCsvAndInsert(
+        csvPath: string,
+        userId: string,
+        fileName: string,
+        isFromBackground = false,
+    ) {
+        // First pass: Count records to decide on background processing
+        if (!isFromBackground) {
+            let recordCount = 0;
+            const counterParser = fs.createReadStream(csvPath).pipe(csvParser());
+            for await (const _ of counterParser) {
+                recordCount++;
+            }
+
+            if (recordCount > 500) {
+                // Determine paths to keep
+                const excelPath = csvPath.replace('.csv', '.xlsx');
+                // We don't cleanup here, handleBackgroundUpload will do it.
+
+                this.eventEmitter.emit('task.bulk-upload', {
+                    csvPath,
+                    userId,
+                    fileName,
+                    excelPath,
+                });
+
+                return {
+                    message: `Large file (${recordCount} records) is being processed in the background. You will be notified once completed.`,
+                    isBackground: true,
+                    totalRecords: recordCount,
+                };
+            }
+        }
+
+        const parser = fs
+            .createReadStream(csvPath)
+            .pipe(csvParser({ skipLines: 0 }));
 
         let batch: any[] = [];
         const BATCH_SIZE = 1000;
@@ -1130,7 +1532,12 @@ export class TaskService {
             successCount += batch.length;
         }
 
-        return { successCount, failCount, errors: errors.slice(0, 100) }; // Limit error log size
+        return {
+            message: 'Bulk upload completed',
+            successCount,
+            failCount,
+            errors: errors.slice(0, 100),
+        }; // Limit error log size
     }
 
     private async validateBulkRow(row: any) {
@@ -1154,7 +1561,7 @@ export class TaskService {
                 { targetTeamId: userId },
                 { createdBy: userId },
                 { workingBy: userId },
-            ]
+            ],
         };
 
         const [pendingTasks, completedTasks] = await Promise.all([
@@ -1164,7 +1571,7 @@ export class TaskService {
                     project: { select: { projectName: true } },
                     assignee: { select: { teamName: true } },
                     worker: { select: { teamName: true } },
-                }
+                },
             }),
             this.prisma.completedTask.findMany({
                 where: baseWhere,
@@ -1173,8 +1580,8 @@ export class TaskService {
                     assignee: { select: { teamName: true } },
                     worker: { select: { teamName: true } },
                     creator: { select: { teamName: true } },
-                }
-            })
+                },
+            }),
         ]);
 
         const allTasks = [...pendingTasks, ...completedTasks];
@@ -1189,12 +1596,31 @@ export class TaskService {
             assignee: task.assignee?.teamName || '',
             worker: task.worker?.teamName || '',
             createdBy: task.creator?.teamName || '',
-            createdTime: task.createdTime ? new Date(task.createdTime).toLocaleString() : '',
+            createdTime: task.createdTime
+                ? new Date(task.createdTime).toLocaleString()
+                : '',
             deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
-            editTime: Array.isArray(task.editTime) && task.editTime.length > 0 ? task.editTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
-            reminderTime: Array.isArray(task.reminderTime) && task.reminderTime.length > 0 ? task.reminderTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
-            reviewedTime: Array.isArray(task.reviewedTime) && task.reviewedTime.length > 0 ? task.reviewedTime.map((d: any) => new Date(d).toLocaleString()).join(', ') : '',
-            completeTime: task.completeTime ? new Date(task.completeTime).toLocaleString() : '',
+            editTime:
+                Array.isArray(task.editTime) && task.editTime.length > 0
+                    ? task.editTime
+                        .map((d: any) => new Date(d).toLocaleString())
+                        .join(', ')
+                    : '',
+            reminderTime:
+                Array.isArray(task.reminderTime) && task.reminderTime.length > 0
+                    ? task.reminderTime
+                        .map((d: any) => new Date(d).toLocaleString())
+                        .join(', ')
+                    : '',
+            reviewedTime:
+                Array.isArray(task.reviewedTime) && task.reviewedTime.length > 0
+                    ? task.reviewedTime
+                        .map((d: any) => new Date(d).toLocaleString())
+                        .join(', ')
+                    : '',
+            completeTime: task.completeTime
+                ? new Date(task.completeTime).toLocaleString()
+                : '',
             remark: task.remarkChat || task.additionalNote || '',
         }));
 
@@ -1217,7 +1643,13 @@ export class TaskService {
             { header: 'Remark', key: 'remark', width: 35 },
         ];
 
-        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'tasks_export.xlsx', 'Tasks');
+        await this.excelDownloadService.downloadExcel(
+            res,
+            mappedData,
+            columns,
+            'tasks_export.xlsx',
+            'Tasks',
+        );
     }
 
     private async invalidateCache() {
@@ -1232,13 +1664,21 @@ export class TaskService {
     /**
      * Get activity logs for task-related notifications
      */
-    async getActivityLogs(userId: string, activityIndex: number = 1, taskNo?: string, role?: string, mentionedOnly: boolean = false) {
+    async getActivityLogs(
+        userId: string,
+        activityIndex: number = 1,
+        taskNo?: string,
+        role?: string,
+        mentionedOnly: boolean = false,
+    ) {
         const PAGE_SIZE = 20;
         const skip = (activityIndex - 1) * PAGE_SIZE;
 
         const isAdmin = role === 'Admin' || role === 'HR';
 
-        this.logger.log(`[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}, mentionedOnly: ${mentionedOnly}`);
+        this.logger.log(
+            `[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}, mentionedOnly: ${mentionedOnly}`,
+        );
 
         const where: Prisma.NotificationWhereInput = {};
 
@@ -1260,15 +1700,20 @@ export class TaskService {
 
             const findTask = async (model: any) => {
                 return await model.findFirst({
-                    where: { taskNo: { in: searchPatterns, mode: 'insensitive' as Prisma.QueryMode } },
+                    where: {
+                        taskNo: {
+                            in: searchPatterns,
+                            mode: 'insensitive' as Prisma.QueryMode,
+                        },
+                    },
                     include: {
                         project: { select: { projectName: true } },
                         assignee: { select: { teamName: true, avatar: true } },
                         creator: { select: { teamName: true, avatar: true } },
                         targetTeam: { select: { teamName: true, avatar: true } },
                         targetGroup: { select: { groupName: true } },
-                        worker: { select: { teamName: true, avatar: true } }
-                    }
+                        worker: { select: { teamName: true, avatar: true } },
+                    },
                 });
             };
 
@@ -1277,8 +1722,15 @@ export class TaskService {
 
             // Search globally for any notification mentioning this task
             where.OR = [
-                { description: { contains: cleanNo, mode: 'insensitive' as Prisma.QueryMode } },
-                { title: { contains: cleanNo, mode: 'insensitive' as Prisma.QueryMode } },
+                {
+                    description: {
+                        contains: cleanNo,
+                        mode: 'insensitive' as Prisma.QueryMode,
+                    },
+                },
+                {
+                    title: { contains: cleanNo, mode: 'insensitive' as Prisma.QueryMode },
+                },
                 { metadata: { path: ['taskNo'], equals: taskNo } },
                 { metadata: { path: ['taskNo'], equals: cleanNo } },
             ];
@@ -1292,23 +1744,33 @@ export class TaskService {
             skip,
             take: PAGE_SIZE + 1,
             include: {
-                team: { select: { teamName: true, avatar: true } }
-            }
+                team: { select: { teamName: true, avatar: true } },
+            },
         });
 
         const hasMore = notifications.length > PAGE_SIZE;
         const items = hasMore ? notifications.slice(0, PAGE_SIZE) : notifications;
 
-        const events: any[] = items.map(notification => {
-            const metadata = notification.metadata as any || {};
+        const events: any[] = items.map((notification) => {
+            const metadata = (notification.metadata as any) || {};
             let eventType = 'UPDATE_TASK';
 
             // Map types based on description/meta or type
             if (notification.type === 'TASK_ASSIGNED') eventType = 'ASSIGN_TASK';
-            else if (notification.type === 'COMMENT_MENTION') eventType = 'COMMENT_MENTION';
-            else if (notification.description?.toLowerCase().includes('remark') || notification.description?.toLowerCase().includes('comment')) eventType = 'COMMENT';
-            else if (notification.description?.toLowerCase().includes('tag')) eventType = 'ADD_TAGS_TO_TASK';
-            else if (notification.description?.toLowerCase().includes('file') || notification.description?.toLowerCase().includes('document')) eventType = 'ADD_FILES_TO_TASK';
+            else if (notification.type === 'COMMENT_MENTION')
+                eventType = 'COMMENT_MENTION';
+            else if (
+                notification.description?.toLowerCase().includes('remark') ||
+                notification.description?.toLowerCase().includes('comment')
+            )
+                eventType = 'COMMENT';
+            else if (notification.description?.toLowerCase().includes('tag'))
+                eventType = 'ADD_TAGS_TO_TASK';
+            else if (
+                notification.description?.toLowerCase().includes('file') ||
+                notification.description?.toLowerCase().includes('document')
+            )
+                eventType = 'ADD_FILES_TO_TASK';
 
             return {
                 type: eventType,
@@ -1320,7 +1782,7 @@ export class TaskService {
                 status: (notification as any).status,
                 tags: metadata.tags || [],
                 files: metadata.files || [],
-                assignee: metadata.assigneeName
+                assignee: metadata.assigneeName,
             };
         });
 
@@ -1329,32 +1791,41 @@ export class TaskService {
             // Creation
             events.push({
                 type: 'CREATE_TASK',
-                dateTime: Math.floor(new Date(taskDetails.createdTime).getTime() / 1000),
+                dateTime: Math.floor(
+                    new Date(taskDetails.createdTime).getTime() / 1000,
+                ),
                 taskNo: taskDetails.taskNo,
                 userName: taskDetails.creator?.teamName || 'System',
                 userImg: taskDetails.creator?.avatar || '',
-                comment: taskDetails.remarkChat || `Task created: ${taskDetails.taskTitle}`,
-                files: taskDetails.document ? taskDetails.document.split(',') : []
+                comment:
+                    taskDetails.remarkChat || `Task created: ${taskDetails.taskTitle}`,
+                files: taskDetails.document ? taskDetails.document.split(',') : [],
             });
 
             // Completion
-            if (taskDetails.taskStatus === 'Completed' || (taskDetails as any).completeTime) {
+            if (taskDetails.taskStatus === 'Completed' || taskDetails.completeTime) {
                 events.push({
                     type: 'UPDATE_TASK',
-                    dateTime: Math.floor(new Date((taskDetails as any).completeTime || taskDetails.updatedAt).getTime() / 1000),
+                    dateTime: Math.floor(
+                        new Date(
+                            taskDetails.completeTime || taskDetails.updatedAt,
+                        ).getTime() / 1000,
+                    ),
                     taskNo: taskDetails.taskNo,
                     userName: taskDetails.worker?.teamName || 'System',
                     userImg: taskDetails.worker?.avatar || '',
                     status: 'Completed',
-                    comment: `Task finalized and completed.`
+                    comment: `Task finalized and completed.`,
                 });
             }
         }
 
         // Group by date
         const groupedByDate = new Map<string, any[]>();
-        events.forEach(event => {
-            const dateKey = new Date(event.dateTime * 1000).toISOString().split('T')[0];
+        events.forEach((event) => {
+            const dateKey = new Date(event.dateTime * 1000)
+                .toISOString()
+                .split('T')[0];
             if (!groupedByDate.has(dateKey)) groupedByDate.set(dateKey, []);
             groupedByDate.get(dateKey)!.push(event);
         });

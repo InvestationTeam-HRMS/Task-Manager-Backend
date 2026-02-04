@@ -5,9 +5,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule],
-    controllers: [SubLocationController],
-    providers: [SubLocationService],
-    exports: [SubLocationService],
+  imports: [PrismaModule, RedisModule],
+  controllers: [SubLocationController],
+  providers: [SubLocationService],
+  exports: [SubLocationService],
 })
-export class SubLocationModule { }
+export class SubLocationModule {}

@@ -11,8 +11,18 @@ import { PrismaModule } from '../prisma/prisma.module';
  */
 @Global()
 @Module({
-    imports: [PrismaModule],
-    providers: [AutoNumberService, ExcelUploadService, CloudinaryService, ExcelDownloadService],
-    exports: [AutoNumberService, ExcelUploadService, CloudinaryService, ExcelDownloadService],
+  imports: [PrismaModule],
+  providers: [
+    AutoNumberService,
+    ExcelUploadService,
+    CloudinaryService,
+    ExcelDownloadService,
+  ],
+  exports: [
+    AutoNumberService,
+    ExcelUploadService,
+    CloudinaryService,
+    ExcelDownloadService,
+  ],
 })
-export class CommonModule { }
+export class CommonModule {}

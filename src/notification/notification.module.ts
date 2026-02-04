@@ -7,9 +7,9 @@ import { EmailStrategy } from './strategies/email.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-    imports: [ConfigModule, PrismaModule, EventEmitterModule.forRoot()],
-    controllers: [NotificationController],
-    providers: [NotificationService, EmailStrategy],
-    exports: [NotificationService],
+  imports: [ConfigModule, PrismaModule, EventEmitterModule.forRoot()],
+  controllers: [NotificationController],
+  providers: [NotificationService, EmailStrategy],
+  exports: [NotificationService],
 })
-export class NotificationModule { }
+export class NotificationModule {}

@@ -7,9 +7,9 @@ import { CommonModule } from '../common/common.module';
 import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule, CommonModule, NotificationModule],
-    controllers: [TaskController],
-    providers: [TaskService],
-    exports: [TaskService],
+  imports: [PrismaModule, RedisModule, CommonModule, NotificationModule],
+  controllers: [TaskController],
+  providers: [TaskService],
+  exports: [TaskService],
 })
-export class TaskModule { }
+export class TaskModule {}

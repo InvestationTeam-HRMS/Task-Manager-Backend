@@ -6,9 +6,9 @@ import { RedisModule } from '../redis/redis.module';
 import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule, NotificationModule],
-    controllers: [TeamController],
-    providers: [TeamService],
-    exports: [TeamService],
+  imports: [PrismaModule, RedisModule, NotificationModule],
+  controllers: [TeamController],
+  providers: [TeamService],
+  exports: [TeamService],
 })
-export class TeamModule { }
+export class TeamModule {}

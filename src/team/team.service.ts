@@ -11,6 +11,7 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   CreateTeamDto,
   UpdateTeamDto,
@@ -41,10 +42,10 @@ export class TeamService {
     private configService: ConfigService,
     private notificationService: NotificationService,
     private excelDownloadService: ExcelDownloadService,
+    private eventEmitter: EventEmitter2,
   ) { }
 
   async create(dto: CreateTeamDto, userId: string) {
-
     // Email duplication check
     const existingEmail = await this.prisma.team.findUnique({
       where: { email: dto.email.toLowerCase() },
@@ -102,7 +103,7 @@ export class TeamService {
     // SMTP DISABLED: Email sending is currently not working in production.
     // User will login using the email + password set during creation.
     // After login, user can reset their password manually.
-    // 
+    //
     // To re-enable, uncomment the code below:
     // ------------------------------------------------------------
     // try {
@@ -112,7 +113,9 @@ export class TeamService {
     // }
     // ============================================================
 
-    this.logger.log(`[TEAM_CREATED] ${dto.email} - Password set directly, no invitation email sent (SMTP disabled)`);
+    this.logger.log(
+      `[TEAM_CREATED] ${dto.email} - Password set directly, no invitation email sent (SMTP disabled)`,
+    );
 
     return team;
   }
@@ -129,29 +132,41 @@ export class TeamService {
 
     const cleanedSearch = search?.trim();
     const where: Prisma.TeamWhereInput = {
-      AND: []
+      AND: [],
     };
 
     const andArray = where.AND as Array<Prisma.TeamWhereInput>;
 
     // Handle Status Filter
     if (filter?.status) {
-      const statusValues = typeof filter.status === 'string'
-        ? filter.status.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(filter.status) ? filter.status : [filter.status];
+      const statusValues =
+        typeof filter.status === 'string'
+          ? filter.status
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
+          : Array.isArray(filter.status)
+            ? filter.status
+            : [filter.status];
 
       if (statusValues.length > 0) {
         andArray.push({
-          status: { in: statusValues as any }
+          status: { in: statusValues as any },
         });
       }
     }
 
     const handleMultiIdFilter = (field: string, value: any) => {
       if (!value) return;
-      const values = typeof value === 'string'
-        ? value.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-        : Array.isArray(value) ? value : [value];
+      const values =
+        typeof value === 'string'
+          ? value
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
+          : Array.isArray(value)
+            ? value
+            : [value];
       if (values.length > 0) {
         andArray.push({ [field]: { in: values } });
       }
@@ -164,31 +179,62 @@ export class TeamService {
 
     if (filter?.role) andArray.push(buildMultiValueFilter('role', filter.role));
 
-    if (filter?.groupName) andArray.push({ clientGroup: buildMultiValueFilter('groupName', filter.groupName) });
-    if (filter?.companyName) andArray.push({ company: buildMultiValueFilter('companyName', filter.companyName) });
-    if (filter?.locationName) andArray.push({ location: buildMultiValueFilter('locationName', filter.locationName) });
-    if (filter?.subLocationName) andArray.push({ subLocation: buildMultiValueFilter('subLocationName', filter.subLocationName) });
+    if (filter?.groupName)
+      andArray.push({
+        clientGroup: buildMultiValueFilter('groupName', filter.groupName),
+      });
+    if (filter?.companyName)
+      andArray.push({
+        company: buildMultiValueFilter('companyName', filter.companyName),
+      });
+    if (filter?.locationName)
+      andArray.push({
+        location: buildMultiValueFilter('locationName', filter.locationName),
+      });
+    if (filter?.subLocationName)
+      andArray.push({
+        subLocation: buildMultiValueFilter(
+          'subLocationName',
+          filter.subLocationName,
+        ),
+      });
 
-    if (filter?.email) andArray.push(buildMultiValueFilter('email', filter.email));
-    if (filter?.phone) andArray.push(buildMultiValueFilter('phone', filter.phone));
-    if (filter?.loginMethod) handleMultiIdFilter('loginMethod', filter.loginMethod);
-    if (filter?.teamName) andArray.push(buildMultiValueFilter('teamName', filter.teamName));
-    if (filter?.teamNo) andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
-    if (filter?.remark) andArray.push(buildMultiValueFilter('remark', filter.remark));
-
+    if (filter?.email)
+      andArray.push(buildMultiValueFilter('email', filter.email));
+    if (filter?.phone)
+      andArray.push(buildMultiValueFilter('phone', filter.phone));
+    if (filter?.loginMethod)
+      handleMultiIdFilter('loginMethod', filter.loginMethod);
+    if (filter?.teamName)
+      andArray.push(buildMultiValueFilter('teamName', filter.teamName));
+    if (filter?.teamNo)
+      andArray.push(buildMultiValueFilter('teamNo', filter.teamNo));
+    if (filter?.remark)
+      andArray.push(buildMultiValueFilter('remark', filter.remark));
 
     if (cleanedSearch) {
-      const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+      const searchValues = cleanedSearch
+        .split(/[,\:;|]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
       const allSearchConditions: Prisma.TeamWhereInput[] = [];
 
       for (const val of searchValues) {
         const searchLower = val.toLowerCase();
         const searchTitle = toTitleCase(val);
 
-        allSearchConditions.push({ teamName: { contains: val, mode: 'insensitive' } });
-        allSearchConditions.push({ teamName: { contains: searchTitle, mode: 'insensitive' } });
-        allSearchConditions.push({ email: { contains: val, mode: 'insensitive' } });
-        allSearchConditions.push({ teamNo: { contains: val, mode: 'insensitive' } });
+        allSearchConditions.push({
+          teamName: { contains: val, mode: 'insensitive' },
+        });
+        allSearchConditions.push({
+          teamName: { contains: searchTitle, mode: 'insensitive' },
+        });
+        allSearchConditions.push({
+          email: { contains: val, mode: 'insensitive' },
+        });
+        allSearchConditions.push({
+          teamNo: { contains: val, mode: 'insensitive' },
+        });
 
         if ('active'.includes(searchLower) && searchLower.length >= 3) {
           allSearchConditions.push({ status: TeamStatus.Active });
@@ -198,7 +244,9 @@ export class TeamService {
         }
 
         // Handle Role Search
-        allSearchConditions.push({ role: { contains: searchLower, mode: 'insensitive' } });
+        allSearchConditions.push({
+          role: { contains: searchLower, mode: 'insensitive' },
+        });
       }
 
       if (allSearchConditions.length > 0) {
@@ -209,11 +257,13 @@ export class TeamService {
     if (andArray.length === 0) delete where.AND;
 
     // --- Redis Caching ---
-    const isCacheable = !cleanedSearch && (!filter || Object.keys(filter).length === 0);
+    const isCacheable =
+      !cleanedSearch && (!filter || Object.keys(filter).length === 0);
     const cacheKey = `${this.CACHE_KEY}:list:p${page}:l${limit}:s${sortBy}:${sortOrder}`;
 
     if (isCacheable) {
-      const cached = await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
+      const cached =
+        await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
       if (cached) {
         this.logger.log(`[CACHE_HIT] Team List - ${cacheKey}`);
         return cached;
@@ -322,7 +372,9 @@ export class TeamService {
       status: item.status,
       loginMethod: item.loginMethod || '',
       remark: item.remark || '',
-      createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '',
+      createdAt: item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString()
+        : '',
     }));
 
     const columns = [
@@ -342,7 +394,13 @@ export class TeamService {
       { header: 'Created Date', key: 'createdAt', width: 20 },
     ];
 
-    await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'teams.xlsx', 'Team Members');
+    await this.excelDownloadService.downloadExcel(
+      res,
+      mappedData,
+      columns,
+      'teams.xlsx',
+      'Team Members',
+    );
   }
 
   async findActive(pagination: PaginationDto) {
@@ -442,9 +500,9 @@ export class TeamService {
             assignedCompletedTasks: true,
             workingCompletedTasks: true,
             groupMembers: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     if (!team) {
@@ -453,17 +511,23 @@ export class TeamService {
 
     const { _count } = team;
     const childCounts = [
-      _count.createdPendingTasks > 0 && `${_count.createdPendingTasks} created pending tasks`,
-      _count.assignedPendingTasks > 0 && `${_count.assignedPendingTasks} assigned pending tasks`,
-      _count.workingPendingTasks > 0 && `${_count.workingPendingTasks} working pending tasks`,
-      _count.createdCompletedTasks > 0 && `${_count.createdCompletedTasks} created completed tasks`,
-      _count.assignedCompletedTasks > 0 && `${_count.assignedCompletedTasks} assigned completed tasks`,
-      _count.workingCompletedTasks > 0 && `${_count.workingCompletedTasks} working completed tasks`,
+      _count.createdPendingTasks > 0 &&
+      `${_count.createdPendingTasks} created pending tasks`,
+      _count.assignedPendingTasks > 0 &&
+      `${_count.assignedPendingTasks} assigned pending tasks`,
+      _count.workingPendingTasks > 0 &&
+      `${_count.workingPendingTasks} working pending tasks`,
+      _count.createdCompletedTasks > 0 &&
+      `${_count.createdCompletedTasks} created completed tasks`,
+      _count.assignedCompletedTasks > 0 &&
+      `${_count.assignedCompletedTasks} assigned completed tasks`,
+      _count.workingCompletedTasks > 0 &&
+      `${_count.workingCompletedTasks} working completed tasks`,
     ].filter(Boolean);
 
     if (childCounts.length > 0) {
       throw new BadRequestException(
-        `Cannot delete Team Member because they have: ${childCounts.join(', ')}. Please reassign or remove them first.`
+        `Cannot delete Team Member because they have: ${childCounts.join(', ')}. Please reassign or remove them first.`,
       );
     }
 
@@ -478,26 +542,105 @@ export class TeamService {
   }
 
   async bulkCreate(dto: BulkCreateTeamDto, userId: string) {
-    this.logger.log(`[BULK_CREATE] Starting for ${dto.teams.length} records`);
-    const results: any[] = [];
+    this.logger.log(
+      `[BULK_CREATE_FAST] Starting for ${dto.teams.length} records`,
+    );
     const errors: any[] = [];
+    const results: any[] = [];
+
+    // Optimization 1: Fetch existing emails and teamNos in batches
+    const providedEmails = dto.teams.map((t) => t.email.toLowerCase());
+    const existingEmails = new Set<string>();
+
+    // Check emails in chunks of 5000
+    const emailChunks = this.excelUploadService.chunk(providedEmails, 5000);
+    for (const chunk of emailChunks) {
+      const existing = await this.prisma.team.findMany({
+        where: { email: { in: chunk } },
+        select: { email: true },
+      });
+      existing.forEach((e) => existingEmails.add(e.email.toLowerCase()));
+    }
+
+    const providedTeamNos = dto.teams.map((t) => t.teamNo).filter(Boolean);
+    const existingTeamNos = new Set<string>();
+    if (providedTeamNos.length > 0) {
+      const noChunks = this.excelUploadService.chunk(providedTeamNos, 5000);
+      for (const chunk of noChunks) {
+        const existing = await this.prisma.team.findMany({
+          where: { teamNo: { in: chunk as string[] } },
+          select: { teamNo: true },
+        });
+        existing.forEach((t) => existingTeamNos.add(t.teamNo));
+      }
+    }
+
+    // Optimization 2: Pre-hash default password
+    const defaultPasswordHash = await bcrypt.hash('Welcome@123', 10);
+    const prefix = 'T-';
+    const startNo = await this.autoNumberService.generateTeamNo();
+    let currentNum = parseInt(
+      startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
+    );
+    if (isNaN(currentNum)) currentNum = 11001;
+
+    const dataToInsert: any[] = [];
 
     for (const teamDto of dto.teams) {
       try {
-        const res = await this.create({
+        const email = teamDto.email.toLowerCase();
+        if (existingEmails.has(email)) {
+          errors.push({ email, error: 'Email already exists' });
+          continue;
+        }
+
+        let teamNo = teamDto.teamNo?.trim();
+        if (!teamNo || existingTeamNos.has(teamNo)) {
+          teamNo = `${prefix}${currentNum}`;
+          currentNum++;
+        }
+        existingTeamNos.add(teamNo);
+
+        const password = teamDto.password
+          ? await bcrypt.hash(teamDto.password, 10)
+          : defaultPasswordHash;
+
+        dataToInsert.push({
           ...teamDto,
-          password: teamDto.password || 'Welcome@123',
-        }, userId);
-        results.push(res);
+          teamName: toTitleCase(teamDto.teamName),
+          email,
+          password,
+          status: teamDto.status || TeamStatus.Active,
+          loginMethod: teamDto.loginMethod || LoginMethod.General,
+          teamNo,
+          role: toTitleCase(teamDto.role || 'Employee'),
+          createdBy: userId,
+        });
       } catch (err) {
         errors.push({ email: teamDto.email, error: err.message });
       }
     }
 
+    // Optimization 3: Bulk insert
+    let totalInserted = 0;
+    const batchChunks = this.excelUploadService.chunk(dataToInsert, 1000);
+    for (const chunk of batchChunks) {
+      const result = await this.prisma.team.createMany({
+        data: chunk,
+        skipDuplicates: true,
+      });
+      totalInserted += result.count;
+    }
+
+    this.logger.log(
+      `[BULK_CREATE_COMPLETED] Processed: ${dto.teams.length} | Inserted: ${totalInserted}`,
+    );
+    await this.invalidateCache();
+
     return {
-      success: results.length,
-      failed: errors.length,
-      message: `Successfully processed ${results.length} records.`,
+      success: totalInserted,
+      failed: dto.teams.length - totalInserted,
+      message: `Successfully processed ${totalInserted} records.`,
       errors,
     };
   }
@@ -555,24 +698,48 @@ export class TeamService {
 
     const requiredColumns = ['teamName', 'email'];
 
-    const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
-      file,
-      columnMapping,
-      requiredColumns,
-    );
-
-    if (data.length === 0) {
-      throw new BadRequestException('No valid data found or required columns missing');
-    }
+    const { data, errors: parseErrors } =
+      await this.excelUploadService.parseFile<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+      );
 
     const processedData: any[] = [];
     for (const row of data) {
       processedData.push({
         ...row,
-        status: row.status ? this.excelUploadService.validateEnum(row.status, TeamStatus, 'Status') : TeamStatus.Active,
+        status: row.status
+          ? this.excelUploadService.validateEnum(
+            row.status,
+            TeamStatus,
+            'Status',
+          )
+          : TeamStatus.Active,
         role: row.role ? toTitleCase(row.role) : 'Employee',
         loginMethod: LoginMethod.General,
       });
+    }
+
+    if (processedData.length === 0) {
+      throw new BadRequestException(
+        'No valid data found or required columns missing',
+      );
+    }
+
+    // --- BACKGROUND PROCESSING TRIGGER ---
+    if (processedData.length > 500) {
+      this.eventEmitter.emit('team.bulk-upload', {
+        data: processedData,
+        userId,
+        fileName: file.originalname,
+      });
+
+      return {
+        message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
+        isBackground: true,
+        totalRecords: processedData.length,
+      };
     }
 
     const result = await this.bulkCreate({ teams: processedData }, userId);
@@ -581,16 +748,55 @@ export class TeamService {
     return result;
   }
 
+  @OnEvent('team.bulk-upload')
+  async handleBackgroundUpload(payload: {
+    data: any[];
+    userId: string;
+    fileName: string;
+  }) {
+    const { data, userId, fileName } = payload;
+    this.logger.log(
+      `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+    );
+
+    try {
+      const result = await this.bulkCreate({ teams: data }, userId);
+
+      await this.notificationService.createNotification(userId, {
+        title: 'Team Import Completed',
+        description: `Successfully imported ${result.success} team members from ${fileName}. Failed: ${result.failed}`,
+        type: 'SYSTEM',
+        metadata: { fileName, success: result.success, failed: result.failed },
+      });
+
+      this.logger.log(
+        `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+      );
+    } catch (error) {
+      this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);
+      await this.notificationService.createNotification(userId, {
+        title: 'Team Import Failed',
+        description: `Background import for ${fileName} failed: ${error.message}`,
+        type: 'SYSTEM',
+        metadata: { fileName, error: error.message },
+      });
+    }
+  }
+
   async resendInvitation(id: string, userId: string) {
     const team = await this.findById(id);
     const fullName = team.teamName;
 
     try {
       await this.triggerInvitation(team.email, fullName);
-      await this.logAudit(userId, 'RESEND_INVITATION', id, null, { email: team.email });
+      await this.logAudit(userId, 'RESEND_INVITATION', id, null, {
+        email: team.email,
+      });
       return { message: `Invitation resent to ${team.email}` };
     } catch (err) {
-      throw new BadRequestException(`Failed to resend invitation: ${err.message}`);
+      throw new BadRequestException(
+        `Failed to resend invitation: ${err.message}`,
+      );
     }
   }
 
@@ -605,7 +811,9 @@ export class TeamService {
 
       // 2. Send email via NotificationService
       // await this.notificationService.sendInvitation(email, teamName, token);
-      this.logger.log(`⚠️  [SMTP_DISABLED] INVITATION for ${email}. Token: ${token}`);
+      this.logger.log(
+        `⚠️  [SMTP_DISABLED] INVITATION for ${email}. Token: ${token}`,
+      );
       return true;
     } catch (error) {
       this.logger.error(`[INVITATION_FAIL] ${error.message}`);

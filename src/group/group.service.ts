@@ -10,6 +10,8 @@ import { RedisService } from '../redis/redis.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
 import { ExcelUploadService } from '../common/services/excel-upload.service';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { NotificationService } from '../notification/notification.service';
 import {
     CreateGroupDto,
     UpdateGroupDto,
@@ -37,6 +39,8 @@ export class GroupService {
         private autoNumberService: AutoNumberService,
         private excelUploadService: ExcelUploadService,
         private excelDownloadService: ExcelDownloadService,
+        private eventEmitter: EventEmitter2,
+        private notificationService: NotificationService,
     ) { }
 
     async create(dto: CreateGroupDto, userId: string) {
@@ -68,7 +72,7 @@ export class GroupService {
         // Create GroupMember entries if teamMemberIds provided
         if (teamMemberIds && teamMemberIds.length > 0) {
             await this.prisma.groupMember.createMany({
-                data: teamMemberIds.map(memberId => ({
+                data: teamMemberIds.map((memberId) => ({
                     groupId: group.id,
                     userId: memberId,
                     role: 'MEMBER',
@@ -95,7 +99,7 @@ export class GroupService {
 
         const cleanedSearch = search?.trim();
         const where: Prisma.GroupWhereInput = {
-            AND: []
+            AND: [],
         };
 
         const andArray = where.AND as Array<Prisma.GroupWhereInput>;
@@ -103,20 +107,33 @@ export class GroupService {
 
         // Handle Status Filter
         if (filter?.status) {
-            const statusValues = typeof filter.status === 'string'
-                ? filter.status.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean)
-                : Array.isArray(filter.status) ? filter.status : [filter.status];
+            const statusValues =
+                typeof filter.status === 'string'
+                    ? filter.status
+                        .split(/[,\:;|]/)
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                    : Array.isArray(filter.status)
+                        ? filter.status
+                        : [filter.status];
 
             if (statusValues.length > 0) {
                 andArray.push({
-                    status: { in: statusValues as any }
+                    status: { in: statusValues as any },
                 });
             }
         }
 
-        if (filter?.groupName) andArray.push(buildMultiValueFilter('groupName', toTitleCase(filter.groupName)));
-        if (filter?.groupNo) andArray.push(buildMultiValueFilter('groupNo', filter.groupNo));
-        if (filter?.remark) andArray.push(buildMultiValueFilter('remark', toTitleCase(filter.remark)));
+        if (filter?.groupName)
+            andArray.push(
+                buildMultiValueFilter('groupName', toTitleCase(filter.groupName)),
+            );
+        if (filter?.groupNo)
+            andArray.push(buildMultiValueFilter('groupNo', filter.groupNo));
+        if (filter?.remark)
+            andArray.push(
+                buildMultiValueFilter('remark', toTitleCase(filter.remark)),
+            );
 
         // Handle Array Filters (IDs)
         if (filter?.clientGroupIds && filter.clientGroupIds.length > 0) {
@@ -135,10 +152,12 @@ export class GroupService {
         // Handle Text Filters for Related Entities
         if (filter?.companyName) {
             const companies = await this.prisma.clientCompany.findMany({
-                where: { companyName: { contains: filter.companyName, mode: 'insensitive' } },
-                select: { id: true }
+                where: {
+                    companyName: { contains: filter.companyName, mode: 'insensitive' },
+                },
+                select: { id: true },
             });
-            const companyIds = companies.map(c => c.id);
+            const companyIds = companies.map((c) => c.id);
             if (companyIds.length > 0) {
                 andArray.push({ companyIds: { hasSome: companyIds } });
             } else {
@@ -149,10 +168,12 @@ export class GroupService {
 
         if (filter?.locationName) {
             const locations = await this.prisma.clientLocation.findMany({
-                where: { locationName: { contains: filter.locationName, mode: 'insensitive' } },
-                select: { id: true }
+                where: {
+                    locationName: { contains: filter.locationName, mode: 'insensitive' },
+                },
+                select: { id: true },
             });
-            const locationIds = locations.map(l => l.id);
+            const locationIds = locations.map((l) => l.id);
             if (locationIds.length > 0) {
                 andArray.push({ locationIds: { hasSome: locationIds } });
             } else {
@@ -162,10 +183,15 @@ export class GroupService {
 
         if (filter?.subLocationName) {
             const subLocations = await this.prisma.subLocation.findMany({
-                where: { subLocationName: { contains: filter.subLocationName, mode: 'insensitive' } },
-                select: { id: true }
+                where: {
+                    subLocationName: {
+                        contains: filter.subLocationName,
+                        mode: 'insensitive',
+                    },
+                },
+                select: { id: true },
             });
-            const subLocationIds = subLocations.map(sl => sl.id);
+            const subLocationIds = subLocations.map((sl) => sl.id);
             if (subLocationIds.length > 0) {
                 andArray.push({ subLocationIds: { hasSome: subLocationIds } });
             } else {
@@ -179,18 +205,18 @@ export class GroupService {
                     OR: [
                         { teamName: { contains: filter.teamMember, mode: 'insensitive' } },
                         { email: { contains: filter.teamMember, mode: 'insensitive' } },
-                    ]
+                    ],
                 },
-                select: { id: true }
+                select: { id: true },
             });
-            const teamIds = teams.map(t => t.id);
+            const teamIds = teams.map((t) => t.id);
             if (teamIds.length > 0) {
                 andArray.push({
                     members: {
                         some: {
-                            userId: { in: teamIds }
-                        }
-                    }
+                            userId: { in: teamIds },
+                        },
+                    },
                 });
             } else {
                 andArray.push({ id: 'none' });
@@ -198,18 +224,31 @@ export class GroupService {
         }
 
         if (cleanedSearch) {
-            const searchValues = cleanedSearch.split(/[,\:;|]/).map(v => v.trim()).filter(Boolean);
+            const searchValues = cleanedSearch
+                .split(/[,\:;|]/)
+                .map((v) => v.trim())
+                .filter(Boolean);
             const allSearchConditions: Prisma.GroupWhereInput[] = [];
 
             for (const val of searchValues) {
                 const searchLower = val.toLowerCase();
                 const searchTitle = toTitleCase(val);
 
-                allSearchConditions.push({ groupName: { contains: val, mode: 'insensitive' } });
-                allSearchConditions.push({ groupName: { contains: searchTitle, mode: 'insensitive' } });
-                allSearchConditions.push({ groupNo: { contains: val, mode: 'insensitive' } });
-                allSearchConditions.push({ remark: { contains: val, mode: 'insensitive' } });
-                allSearchConditions.push({ remark: { contains: searchTitle, mode: 'insensitive' } });
+                allSearchConditions.push({
+                    groupName: { contains: val, mode: 'insensitive' },
+                });
+                allSearchConditions.push({
+                    groupName: { contains: searchTitle, mode: 'insensitive' },
+                });
+                allSearchConditions.push({
+                    groupNo: { contains: val, mode: 'insensitive' },
+                });
+                allSearchConditions.push({
+                    remark: { contains: val, mode: 'insensitive' },
+                });
+                allSearchConditions.push({
+                    remark: { contains: searchTitle, mode: 'insensitive' },
+                });
 
                 if ('active'.includes(searchLower) && searchLower.length >= 3) {
                     allSearchConditions.push({ status: GroupStatus.Active });
@@ -230,11 +269,13 @@ export class GroupService {
         if (andArray.length === 0) delete where.AND;
 
         // --- Redis Caching ---
-        const isCacheable = !cleanedSearch && (!filter || Object.keys(filter).length === 0);
+        const isCacheable =
+            !cleanedSearch && (!filter || Object.keys(filter).length === 0);
         const cacheKey = `${this.CACHE_KEY}:list:p${page}:l${limit}:s${sortBy}:${sortOrder}`;
 
         if (isCacheable) {
-            const cached = await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
+            const cached =
+                await this.redisService.getCache<PaginatedResponse<any>>(cacheKey);
             if (cached) {
                 this.logger.log(`[CACHE_HIT] Group List - ${cacheKey}`);
                 return cached;
@@ -260,83 +301,97 @@ export class GroupService {
                         },
                     },
                     _count: {
-                        select: { pendingTasks: true, completedTasks: true }
-                    }
+                        select: { pendingTasks: true, completedTasks: true },
+                    },
                 },
             }),
             this.prisma.group.count({ where }),
         ]);
 
         // Collect all unique IDs to fetch names
-        const allClientGroupIds = [...new Set(rawData.flatMap(g => g.clientGroupIds || []))];
-        const allCompanyIds = [...new Set(rawData.flatMap(g => g.companyIds || []))];
-        const allLocationIds = [...new Set(rawData.flatMap(g => g.locationIds || []))];
-        const allSubLocationIds = [...new Set(rawData.flatMap(g => g.subLocationIds || []))];
+        const allClientGroupIds = [
+            ...new Set(rawData.flatMap((g) => g.clientGroupIds || [])),
+        ];
+        const allCompanyIds = [
+            ...new Set(rawData.flatMap((g) => g.companyIds || [])),
+        ];
+        const allLocationIds = [
+            ...new Set(rawData.flatMap((g) => g.locationIds || [])),
+        ];
+        const allSubLocationIds = [
+            ...new Set(rawData.flatMap((g) => g.subLocationIds || [])),
+        ];
 
         // Fetch all related entities in parallel
-        const [clientGroups, companies, locations, subLocations] = await Promise.all([
-            allClientGroupIds.length > 0
-                ? this.prisma.clientGroup.findMany({
-                    where: { id: { in: allClientGroupIds } },
-                    select: { id: true, groupName: true }
-                })
-                : [] as { id: string; groupName: string }[],
-            allCompanyIds.length > 0
-                ? this.prisma.clientCompany.findMany({
-                    where: { id: { in: allCompanyIds } },
-                    select: { id: true, companyName: true }
-                })
-                : [] as { id: string; companyName: string }[],
-            allLocationIds.length > 0
-                ? this.prisma.clientLocation.findMany({
-                    where: { id: { in: allLocationIds } },
-                    select: { id: true, locationName: true }
-                })
-                : [] as { id: string; locationName: string }[],
-            allSubLocationIds.length > 0
-                ? this.prisma.subLocation.findMany({
-                    where: { id: { in: allSubLocationIds } },
-                    select: { id: true, subLocationName: true }
-                })
-                : [] as { id: string; subLocationName: string }[],
-        ]);
+        const [clientGroups, companies, locations, subLocations] =
+            await Promise.all([
+                allClientGroupIds.length > 0
+                    ? this.prisma.clientGroup.findMany({
+                        where: { id: { in: allClientGroupIds } },
+                        select: { id: true, groupName: true },
+                    })
+                    : ([] as { id: string; groupName: string }[]),
+                allCompanyIds.length > 0
+                    ? this.prisma.clientCompany.findMany({
+                        where: { id: { in: allCompanyIds } },
+                        select: { id: true, companyName: true },
+                    })
+                    : ([] as { id: string; companyName: string }[]),
+                allLocationIds.length > 0
+                    ? this.prisma.clientLocation.findMany({
+                        where: { id: { in: allLocationIds } },
+                        select: { id: true, locationName: true },
+                    })
+                    : ([] as { id: string; locationName: string }[]),
+                allSubLocationIds.length > 0
+                    ? this.prisma.subLocation.findMany({
+                        where: { id: { in: allSubLocationIds } },
+                        select: { id: true, subLocationName: true },
+                    })
+                    : ([] as { id: string; subLocationName: string }[]),
+            ]);
 
         // Create lookup maps
         const clientGroupMap = new Map<string, string>();
-        clientGroups.forEach(cg => clientGroupMap.set(cg.id, cg.groupName));
+        clientGroups.forEach((cg) => clientGroupMap.set(cg.id, cg.groupName));
 
         const companyMap = new Map<string, string>();
-        companies.forEach(c => companyMap.set(c.id, c.companyName));
+        companies.forEach((c) => companyMap.set(c.id, c.companyName));
 
         const locationMap = new Map<string, string>();
-        locations.forEach(l => locationMap.set(l.id, l.locationName));
+        locations.forEach((l) => locationMap.set(l.id, l.locationName));
 
         const subLocationMap = new Map<string, string>();
-        subLocations.forEach(sl => subLocationMap.set(sl.id, sl.subLocationName));
+        subLocations.forEach((sl) => subLocationMap.set(sl.id, sl.subLocationName));
 
         // Add resolved names and teamMemberEmails to each group
-        const data = rawData.map(group => ({
+        const data = rawData.map((group) => ({
             ...group,
-            clientGroupName: (group.clientGroupIds || [])
-                .map(id => clientGroupMap.get(id))
-                .filter(Boolean)
-                .join(', ') || '-',
-            companyName: (group.companyIds || [])
-                .map(id => companyMap.get(id))
-                .filter(Boolean)
-                .join(', ') || '-',
-            locationName: (group.locationIds || [])
-                .map(id => locationMap.get(id))
-                .filter(Boolean)
-                .join(', ') || '-',
-            subLocationName: (group.subLocationIds || [])
-                .map(id => subLocationMap.get(id))
-                .filter(Boolean)
-                .join(', ') || '-',
-            teamMemberEmails: group.members
-                .map(m => m.team?.email)
-                .filter(Boolean)
-                .join(', ') || '-',
+            clientGroupName:
+                (group.clientGroupIds || [])
+                    .map((id) => clientGroupMap.get(id))
+                    .filter(Boolean)
+                    .join(', ') || '-',
+            companyName:
+                (group.companyIds || [])
+                    .map((id) => companyMap.get(id))
+                    .filter(Boolean)
+                    .join(', ') || '-',
+            locationName:
+                (group.locationIds || [])
+                    .map((id) => locationMap.get(id))
+                    .filter(Boolean)
+                    .join(', ') || '-',
+            subLocationName:
+                (group.subLocationIds || [])
+                    .map((id) => subLocationMap.get(id))
+                    .filter(Boolean)
+                    .join(', ') || '-',
+            teamMemberEmails:
+                group.members
+                    .map((m) => m.team?.email)
+                    .filter(Boolean)
+                    .join(', ') || '-',
         }));
 
         const response = new PaginatedResponse(data, total, page, limit);
@@ -378,7 +433,13 @@ export class GroupService {
             { header: 'Remark', key: 'remark', width: 30 },
         ];
 
-        await this.excelDownloadService.downloadExcel(res, mappedData, columns, 'internal_groups.xlsx', 'Internal Groups');
+        await this.excelDownloadService.downloadExcel(
+            res,
+            mappedData,
+            columns,
+            'internal_groups.xlsx',
+            'Internal Groups',
+        );
     }
 
     async findActive(pagination: PaginationDto) {
@@ -413,10 +474,10 @@ export class GroupService {
         });
 
         // Add teamMemberEmails field to each group
-        return groups.map(group => ({
+        return groups.map((group) => ({
             ...group,
             teamMemberEmails: group.members
-                .map(m => m.team?.email)
+                .map((m) => m.team?.email)
                 .filter(Boolean)
                 .join(', '),
         }));
@@ -455,7 +516,7 @@ export class GroupService {
         return {
             ...group,
             teamMemberEmails: group.members
-                .map(m => m.team?.email)
+                .map((m) => m.team?.email)
                 .filter(Boolean)
                 .join(', '),
         };
@@ -496,7 +557,7 @@ export class GroupService {
 
             if (teamMemberIds.length > 0) {
                 await this.prisma.groupMember.createMany({
-                    data: teamMemberIds.map(memberId => ({
+                    data: teamMemberIds.map((memberId) => ({
                         groupId: id,
                         userId: memberId,
                         role: 'MEMBER',
@@ -538,9 +599,9 @@ export class GroupService {
                         members: true,
                         pendingTasks: true,
                         completedTasks: true,
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         if (!group) {
@@ -556,7 +617,7 @@ export class GroupService {
 
         if (childCounts.length > 0) {
             throw new BadRequestException(
-                `Cannot delete Group because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`
+                `Cannot delete Group because it contains: ${childCounts.join(', ')}. Please delete or reassign them first.`,
             );
         }
 
@@ -571,24 +632,97 @@ export class GroupService {
     }
 
     async bulkCreate(dto: BulkCreateGroupDto, userId: string) {
-        this.logger.log(`[BULK_CREATE] Starting for ${dto.groups.length} records`);
+        this.logger.log(
+            `[BULK_CREATE_FAST] Starting for ${dto.groups.length} records`,
+        );
         const { toTitleCase } = await import('../common/utils/string-helper');
         const errors: any[] = [];
-        const results: any[] = [];
+        const dataToInsert: any[] = [];
+
+        // Optimization 1: Batch check for group name duplicates
+        const providedNames = dto.groups.map((g) => toTitleCase(g.groupName));
+        const existingNames = new Set<string>();
+        const nameChunks = this.excelUploadService.chunk(providedNames, 5000);
+        for (const chunk of nameChunks) {
+            const results = await this.prisma.group.findMany({
+                where: { groupName: { in: chunk } },
+                select: { groupName: true },
+            });
+            results.forEach((r) => existingNames.add(r.groupName));
+        }
+
+        // Optimization 2: Batch check for group no duplicates
+        const providedNos = dto.groups.map((g) => g.groupNo).filter(Boolean);
+        const existingNos = new Set<string>();
+        if (providedNos.length > 0) {
+            const noChunks = this.excelUploadService.chunk(providedNos, 5000);
+            for (const chunk of noChunks) {
+                const results = await this.prisma.group.findMany({
+                    where: { groupNo: { in: chunk as string[] } },
+                    select: { groupNo: true },
+                });
+                results.forEach((r) => existingNos.add(r.groupNo));
+            }
+        }
+
+        const prefix = 'G-';
+        const startNo = await this.autoNumberService.generateGroupNo();
+        let currentNum = parseInt(
+            startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
+        );
+        if (isNaN(currentNum)) currentNum = 11001;
 
         for (const groupDto of dto.groups) {
             try {
-                const res = await this.create(groupDto, userId);
-                results.push(res);
+                const groupName = toTitleCase(groupDto.groupName);
+                if (existingNames.has(groupName)) {
+                    errors.push({ groupName, error: 'Group name already exists' });
+                    continue;
+                }
+                existingNames.add(groupName);
+
+                let groupNo = groupDto.groupNo?.trim();
+                if (!groupNo || existingNos.has(groupNo)) {
+                    groupNo = `${prefix}${currentNum}`;
+                    currentNum++;
+                }
+                existingNos.add(groupNo);
+
+                // Extract teamMemberIds from dto (not a Prisma field)
+                const { teamMemberIds, ...groupData } = groupDto;
+
+                dataToInsert.push({
+                    ...groupData,
+                    groupName,
+                    groupNo,
+                    status: groupDto.status || GroupStatus.Active,
+                    createdBy: userId,
+                });
             } catch (err) {
                 errors.push({ groupName: groupDto.groupName, error: err.message });
             }
         }
 
+        // Optimization 3: Bulk insert
+        let totalInserted = 0;
+        const batchChunks = this.excelUploadService.chunk(dataToInsert, 1000);
+        for (const chunk of batchChunks) {
+            const result = await this.prisma.group.createMany({
+                data: chunk,
+                skipDuplicates: true,
+            });
+            totalInserted += result.count;
+        }
+
+        this.logger.log(
+            `[BULK_CREATE_COMPLETED] Processed: ${dto.groups.length} | Inserted: ${totalInserted}`,
+        );
+        await this.invalidateCache();
+
         return {
-            success: results.length,
-            failed: errors.length,
-            message: `Successfully processed ${results.length} records.`,
+            success: totalInserted,
+            failed: dto.groups.length - totalInserted,
+            message: `Successfully processed ${totalInserted} records.`,
             errors,
         };
     }
@@ -645,28 +779,87 @@ export class GroupService {
 
         const requiredColumns = ['groupName'];
 
-        const { data, errors: parseErrors } = await this.excelUploadService.parseFile<any>(
-            file,
-            columnMapping,
-            requiredColumns,
-        );
-
-        if (data.length === 0) {
-            throw new BadRequestException('No valid data found or required columns missing');
-        }
+        const { data, errors: parseErrors } =
+            await this.excelUploadService.parseFile<any>(
+                file,
+                columnMapping,
+                requiredColumns,
+            );
 
         const processedData: any[] = [];
         for (const row of data) {
             processedData.push({
                 ...row,
-                status: row.status ? this.excelUploadService.validateEnum(row.status, GroupStatus, 'Status') : GroupStatus.Active,
+                status: row.status
+                    ? this.excelUploadService.validateEnum(
+                        row.status,
+                        GroupStatus,
+                        'Status',
+                    )
+                    : GroupStatus.Active,
             });
+        }
+
+        if (processedData.length === 0) {
+            throw new BadRequestException(
+                'No valid data found or required columns missing',
+            );
+        }
+
+        // --- BACKGROUND PROCESSING TRIGGER ---
+        if (processedData.length > 500) {
+            this.eventEmitter.emit('group.bulk-upload', {
+                data: processedData,
+                userId,
+                fileName: file.originalname,
+            });
+
+            return {
+                message: `Large file (${processedData.length} records) is being processed in the background. You will be notified once completed.`,
+                isBackground: true,
+                totalRecords: processedData.length,
+            };
         }
 
         const result = await this.bulkCreate({ groups: processedData }, userId);
         result.errors = [...(result.errors || []), ...parseErrors];
 
         return result;
+    }
+
+    @OnEvent('group.bulk-upload')
+    async handleBackgroundUpload(payload: {
+        data: any[];
+        userId: string;
+        fileName: string;
+    }) {
+        const { data, userId, fileName } = payload;
+        this.logger.log(
+            `[BACKGROUND_UPLOAD] Starting background upload for ${data.length} records from ${fileName}`,
+        );
+
+        try {
+            const result = await this.bulkCreate({ groups: data }, userId);
+
+            await this.notificationService.createNotification(userId, {
+                title: 'Group Import Completed',
+                description: `Successfully imported ${result.success} groups from ${fileName}. Failed: ${result.failed}`,
+                type: 'SYSTEM',
+                metadata: { fileName, success: result.success, failed: result.failed },
+            });
+
+            this.logger.log(
+                `[BACKGROUND_UPLOAD_COMPLETED] Success: ${result.success}, Failed: ${result.failed}`,
+            );
+        } catch (error) {
+            this.logger.error(`[BACKGROUND_UPLOAD_FAILED] Error: ${error.message}`);
+            await this.notificationService.createNotification(userId, {
+                title: 'Group Import Failed',
+                description: `Background import for ${fileName} failed: ${error.message}`,
+                type: 'SYSTEM',
+                metadata: { fileName, error: error.message },
+            });
+        }
     }
 
     private async invalidateCache() {

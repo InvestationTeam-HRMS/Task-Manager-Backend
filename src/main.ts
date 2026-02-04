@@ -16,32 +16,37 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   // Security Headers
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https:", "http://localhost:*", "ws:", "wss:"],
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'", 'https:', 'http://localhost:*', 'ws:', 'wss:'],
+        },
       },
-    },
-    crossOriginEmbedderPolicy: false,
-  }));
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // Trust Proxy for secure cookies behind load balancers (Vercel/Render/Heroku/Nginx)
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
-
-
 
   // Compression for faster API responses
   app.use(compression());
 
   // Cookie Parser
-  app.use(cookieParser(configService.get('COOKIE_SECRET', 'task-manager-secret')));
+  app.use(
+    cookieParser(configService.get('COOKIE_SECRET', 'task-manager-secret')),
+  );
 
   // CORS Configuration
-  const corsOrigins = configService.get('CORS_ORIGIN')?.split(',').map(origin => origin.trim()) || ['http://localhost:5173'];
+  const corsOrigins = configService
+    .get('CORS_ORIGIN')
+    ?.split(',')
+    .map((origin) => origin.trim()) || ['http://localhost:5173'];
   app.enableCors({
     origin: corsOrigins,
     credentials: true,
@@ -52,7 +57,7 @@ async function bootstrap() {
       'X-Requested-With',
       'X-Client-Host',
       'X-User-Agent',
-      'X-Session-Id',  // 🔐 For incognito/cross-origin session fallback
+      'X-Session-Id', // 🔐 For incognito/cross-origin session fallback
       'Accept',
     ],
   });

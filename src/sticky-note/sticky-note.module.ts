@@ -4,8 +4,8 @@ import { StickyNoteController } from './sticky-note.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [StickyNoteController],
-    providers: [StickyNoteService],
+  imports: [PrismaModule],
+  controllers: [StickyNoteController],
+  providers: [StickyNoteService],
 })
-export class StickyNoteModule { }
+export class StickyNoteModule {}

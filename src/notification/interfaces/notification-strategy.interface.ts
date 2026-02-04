@@ -1,9 +1,8 @@
-
 export enum OtpChannel {
-    EMAIL = 'EMAIL',
+  EMAIL = 'EMAIL',
 }
 
 export interface NotificationStrategy {
-    sendOtp(recipient: string, otp: string): Promise<boolean>;
-    getChannelName(): OtpChannel;
+  sendOtp(recipient: string, otp: string): Promise<boolean>;
+  getChannelName(): OtpChannel;
 }

@@ -136,7 +136,10 @@ export class PdfService {
     doc.moveDown(0.3);
 
     // Auth
-    doc.fontSize(9).font('Helvetica-Bold').text('Authentication: ', { continued: true });
+    doc
+      .fontSize(9)
+      .font('Helvetica-Bold')
+      .text('Authentication: ', { continued: true });
     doc
       .font('Helvetica')
       .text(api.authRequired ? 'Required (Bearer Token)' : 'Not Required');
