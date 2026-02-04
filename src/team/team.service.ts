@@ -764,7 +764,7 @@ export class TeamService {
         file,
         columnMapping,
         requiredColumns,
-        1000,
+        500, // Reduced from 1000 to 500 for better memory management
         async (batch) => {
           const toInsert: CreateTeamDto[] = [];
 
@@ -773,10 +773,10 @@ export class TeamService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    row.status,
-                    TeamStatus,
-                    'Status',
-                  )
+                  row.status,
+                  TeamStatus,
+                  'Status',
+                )
                 : TeamStatus.Active;
 
               toInsert.push({
