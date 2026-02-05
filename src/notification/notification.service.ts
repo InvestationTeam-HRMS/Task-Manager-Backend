@@ -56,10 +56,6 @@ export class NotificationService implements OnModuleInit {
     teamId: string,
     data: { title: string; description: string; type?: string; metadata?: any },
   ) {
-    this.logger.log(
-      `🔔 Notification Created: ${data.title} for user ${teamId}`,
-    );
-
     const notification = await this.prisma.notification.create({
       data: {
         teamId,
@@ -71,12 +67,8 @@ export class NotificationService implements OnModuleInit {
       },
     });
 
-    this.logger.log(`📤 Emitting notification.created event for user ${teamId}, notificationId: ${notification.id}`);
-
     // Emit event for real-time notification (this triggers SSE and Push)
     this.eventEmitter.emit('notification.created', { teamId, notification });
-
-    this.logger.log(`✅ Event emitted successfully for notification ${notification.id}`);
 
     return notification;
   }
@@ -161,14 +153,9 @@ export class NotificationService implements OnModuleInit {
   }
 
   getNotificationStream(teamId: string): Observable<MessageEvent> {
-    this.logger.log(`[SSE] 🌊 Creating notification stream for user ${teamId}`);
-
     return new Observable((observer) => {
-      this.logger.log(`[SSE] 📡 Stream observer created for user ${teamId}`);
-
       // Send initial unread count
       this.getUnreadCount(teamId).then((count) => {
-        this.logger.log(`[SSE] 📊 Sending initial unread count: ${count} to user ${teamId}`);
         observer.next({
           data: JSON.stringify({ type: 'unread-count', count }),
         } as MessageEvent);
@@ -176,8 +163,6 @@ export class NotificationService implements OnModuleInit {
 
       // Listen for new notifications for this user
       const listener = async (payload: any) => {
-        this.logger.log(`[SSE] Event received - TargetUser: ${payload.teamId}, ConnectedUser: ${teamId}, Match: ${payload.teamId === teamId}`);
-
         if (payload.teamId === teamId) {
           try {
             const count = await this.getUnreadCount(teamId);
@@ -192,8 +177,6 @@ export class NotificationService implements OnModuleInit {
             observer.next({
               data: JSON.stringify(eventData),
             } as MessageEvent);
-
-            this.logger.log(`[SSE] 📨 Notification sent via SSE to user ${teamId}, NotificationId: ${payload.notification?.id}`);
           } catch (error) {
             this.logger.error('Error fetching unread count for SSE:', error);
             observer.next({
@@ -203,8 +186,6 @@ export class NotificationService implements OnModuleInit {
               }),
             } as MessageEvent);
           }
-        } else {
-          this.logger.debug(`[SSE] ⏭️ Skipping - Event for ${payload.teamId}, but SSE is for ${teamId}`);
         }
       };
 

@@ -977,10 +977,7 @@ export class TaskService {
             });
 
             // Notify Creator
-            this.logger.log(`[SUBMIT_FOR_REVIEW] Task: ${updated.taskNo}, CreatedBy: ${updated.createdBy}, CurrentUser: ${userId}`);
-
             if (updated.createdBy && updated.createdBy !== userId) {
-                this.logger.log(`[SUBMIT_FOR_REVIEW] Sending notification to creator: ${updated.createdBy}`);
                 await this.notificationService.createNotification(updated.createdBy, {
                     title: isAlreadyInReview ? 'New Remark on Task' : 'Task Submitted for Review',
                     description: isAlreadyInReview
@@ -993,9 +990,6 @@ export class TaskService {
                         status: isAlreadyInReview ? 'Remark Added' : 'Review Pending',
                     },
                 });
-                this.logger.log(`[SUBMIT_FOR_REVIEW] ✅ Notification sent to creator ${updated.createdBy}`);
-            } else {
-                this.logger.warn(`[SUBMIT_FOR_REVIEW] ⚠️ No notification sent. CreatedBy: ${updated.createdBy}, UserId: ${userId}`);
             }
 
             await this.invalidateCache();
@@ -1094,10 +1088,7 @@ export class TaskService {
 
             // Notify Worker/Assignee about completion
             const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-            this.logger.log(`[FINALIZE_COMPLETION] Task: ${task.taskNo}, WorkerId: ${workerId}, CurrentUser: ${userId}`);
-
             if (workerId && workerId !== userId) {
-                this.logger.log(`[FINALIZE_COMPLETION] Sending completion notification to worker: ${workerId}`);
                 await this.notificationService.createNotification(workerId, {
                     title: 'Task Completed',
                     description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
@@ -1108,9 +1099,6 @@ export class TaskService {
                         status: 'Completed',
                     },
                 });
-                this.logger.log(`[FINALIZE_COMPLETION] ✅ Completion notification sent to ${workerId}`);
-            } else {
-                this.logger.warn(`[FINALIZE_COMPLETION] ⚠️ No notification sent. WorkerId: ${workerId}, UserId: ${userId}`);
             }
 
             await this.invalidateCache();
@@ -1305,10 +1293,7 @@ export class TaskService {
 
         // Notify Worker/Assignee about rejection
         const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-        this.logger.log(`[REJECT_TASK] Task: ${task.taskNo}, WorkerId: ${workerId}, CurrentUser: ${userId}`);
-
         if (workerId && workerId !== userId) {
-            this.logger.log(`[REJECT_TASK] Sending rejection notification to worker: ${workerId}`);
             await this.notificationService.createNotification(workerId, {
                 title: 'Task Rejected',
                 description: `Your work on task "${task.taskTitle}" (${task.taskNo}) has been rejected. Reason: ${remark}`,
@@ -1319,9 +1304,6 @@ export class TaskService {
                     status: 'Pending',
                 },
             });
-            this.logger.log(`[REJECT_TASK] ✅ Rejection notification sent to ${workerId}`);
-        } else {
-            this.logger.warn(`[REJECT_TASK] ⚠️ No notification sent. WorkerId: ${workerId}, UserId: ${userId}`);
         }
 
         await this.invalidateCache();
