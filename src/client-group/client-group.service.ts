@@ -502,7 +502,7 @@ export class ClientGroupService {
         );
         const country = clientGroupDto.country
           ? toTitleCase(clientGroupDto.country)
-          : undefined;
+          : 'Unknown';
         const remark = clientGroupDto.remark
           ? toTitleCase(clientGroupDto.remark)
           : undefined;
