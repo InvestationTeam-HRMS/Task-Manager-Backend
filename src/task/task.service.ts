@@ -1086,19 +1086,25 @@ export class TaskService {
                 return completed;
             });
 
-            // Notify Worker/Assignee about completion
-            const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-            if (workerId && workerId !== userId) {
-                await this.notificationService.createNotification(workerId, {
-                    title: 'Task Completed',
-                    description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
-                    type: 'TASK',
-                    metadata: {
-                        taskId: completedTask.id,
-                        taskNo: task.taskNo,
-                        status: 'Completed',
-                    },
-                });
+            // Notify Worker and Original Assignee about completion
+            const recipients = new Set<string>();
+            if (task.workingBy) recipients.add(task.workingBy);
+            if (task.assignedTo) recipients.add(task.assignedTo);
+            if (task.targetTeamId) recipients.add(task.targetTeamId);
+
+            for (const recipientId of recipients) {
+                if (recipientId && recipientId !== userId) {
+                    await this.notificationService.createNotification(recipientId, {
+                        title: 'Task Completed',
+                        description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
+                        type: 'TASK',
+                        metadata: {
+                            taskId: completedTask.id,
+                            taskNo: task.taskNo,
+                            status: 'Completed',
+                        },
+                    });
+                }
             }
 
             await this.invalidateCache();
@@ -1291,19 +1297,25 @@ export class TaskService {
             include: { creator: true, project: true, assignee: true, worker: true },
         });
 
-        // Notify Worker/Assignee about rejection
-        const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-        if (workerId && workerId !== userId) {
-            await this.notificationService.createNotification(workerId, {
-                title: 'Task Rejected',
-                description: `Your work on task "${task.taskTitle}" (${task.taskNo}) has been rejected. Reason: ${remark}`,
-                type: 'TASK',
-                metadata: {
-                    taskId: updated.id,
-                    taskNo: task.taskNo,
-                    status: 'Pending',
-                },
-            });
+        // Notify Worker and Original Assignee about rejection
+        const recipients = new Set<string>();
+        if (task.workingBy) recipients.add(task.workingBy);
+        if (task.assignedTo) recipients.add(task.assignedTo);
+        if (task.targetTeamId) recipients.add(task.targetTeamId);
+
+        for (const recipientId of recipients) {
+            if (recipientId && recipientId !== userId) {
+                await this.notificationService.createNotification(recipientId, {
+                    title: 'Task Rejected',
+                    description: `Your work on task "${task.taskTitle}" (${task.taskNo}) has been rejected. Reason: ${remark}`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.id,
+                        taskNo: task.taskNo,
+                        status: 'Pending',
+                    },
+                });
+            }
         }
 
         await this.invalidateCache();
@@ -1371,19 +1383,25 @@ export class TaskService {
                 return pending;
             });
 
-            // Notify Worker/Assignee about revert
-            const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
-            if (workerId && workerId !== userId) {
-                await this.notificationService.createNotification(workerId, {
-                    title: 'Task Reverted to Pending',
-                    description: `Task "${task.taskTitle}" (${task.taskNo}) has been moved back to pending.`,
-                    type: 'TASK',
-                    metadata: {
-                        taskId: pendingTask.id,
-                        taskNo: task.taskNo,
-                        status: 'Pending',
-                    },
-                });
+            // Notify Worker and Original Assignee about revert
+            const recipients = new Set<string>();
+            if (task.workingBy) recipients.add(task.workingBy);
+            if (task.assignedTo) recipients.add(task.assignedTo);
+            if (task.targetTeamId) recipients.add(task.targetTeamId);
+
+            for (const recipientId of recipients) {
+                if (recipientId && recipientId !== userId) {
+                    await this.notificationService.createNotification(recipientId, {
+                        title: 'Task Reverted to Pending',
+                        description: `Task "${task.taskTitle}" (${task.taskNo}) has been moved back to pending.`,
+                        type: 'TASK',
+                        metadata: {
+                            taskId: pendingTask.id,
+                            taskNo: task.taskNo,
+                            status: 'Pending',
+                        },
+                    });
+                }
             }
 
             await this.invalidateCache();

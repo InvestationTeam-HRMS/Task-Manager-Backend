@@ -68,7 +68,10 @@ export class NotificationService implements OnModuleInit {
     });
 
     // Emit event for real-time notification (this triggers SSE and Push)
-    this.eventEmitter.emit('notification.created', { teamId, notification });
+    // Small delay to ensure DB transaction is fully committed before clients fetch unread count
+    setTimeout(() => {
+      this.eventEmitter.emit('notification.created', { teamId, notification });
+    }, 200);
 
     return notification;
   }
@@ -94,23 +97,17 @@ export class NotificationService implements OnModuleInit {
 
     // We use a loop instead of createMany if we want individual notification objects to emit
     // but createMany is faster. To handle both, we'll create individual notifications for the event.
-    const result = await this.prisma.notification.createMany({
-      data: notificationsData,
-    });
-
-    // Fetch created notifications to get IDs (or just emit with data if IDs aren't critical for initial push)
-    // For performance, we'll emit with the data we have.
+    let count = 0;
     for (const member of members) {
-      this.eventEmitter.emit('notification.created', {
-        teamId: member.userId,
-        notification: {
-          ...data,
-          createdAt: new Date(),
-        },
-      });
+      try {
+        const notification = await this.createNotification(member.userId, data);
+        if (notification) count++;
+      } catch (err) {
+        this.logger.error(`Failed to broadcast to member ${member.userId}: ${err.message}`);
+      }
     }
 
-    return result;
+    return { count };
   }
 
   async findAllForUser(teamId: string) {
