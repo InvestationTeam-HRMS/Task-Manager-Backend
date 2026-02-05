@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-// Removed UserRole import from @prisma/client
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -28,7 +27,7 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
-    // Admin check
+    // Admin check - full access
     if (user.role?.toUpperCase() === 'ADMIN') {
       return true;
     }
@@ -38,14 +37,16 @@ export class PermissionsGuard implements CanActivate {
     const hasPermission = requiredPermissions.every((permission) => {
       const [module, action] = permission.split(':');
 
-      // Check if user has explicit 'all' permission for this action
-      if (userPermissions.all?.includes(action)) {
+      // Check if user has global permissions
+      if (userPermissions.all === true) {
         return true;
       }
 
-      // Check module specific permission with case-insensitive fallback
+      // Get module permissions - handle both old array format and new object format
       let modulePermissions = userPermissions[module];
+      
       if (!modulePermissions) {
+        // Case-insensitive fallback
         const key = Object.keys(userPermissions).find(
           (k) => k.toLowerCase() === module.toLowerCase(),
         );
@@ -54,27 +55,49 @@ export class PermissionsGuard implements CanActivate {
         }
       }
 
-      if (!Array.isArray(modulePermissions)) {
+      // If no permissions for this module
+      if (!modulePermissions) {
         return false;
       }
 
-      // Direct match
-      if (modulePermissions.includes(action)) {
-        return true;
+      // Handle old array format (backward compatibility)
+      if (Array.isArray(modulePermissions)) {
+        // Direct match
+        if (modulePermissions.includes(action)) {
+          return true;
+        }
+        // Synonym check
+        if (
+          (action === 'create' && modulePermissions.includes('add')) ||
+          (action === 'add' && modulePermissions.includes('create'))
+        ) {
+          return true;
+        }
+        // View permission when user has any action
+        if (action === 'view' && modulePermissions.length > 0) {
+          return true;
+        }
+        return false;
       }
 
-      // Synonym check: 'add' <-> 'create'
-      if (
-        (action === 'create' && modulePermissions.includes('add')) ||
-        (action === 'add' && modulePermissions.includes('create'))
-      ) {
-        return true;
-      }
-
-      // Treat "view" as an implied permission when user has any action in this module.
-      // This keeps list pages visible while still blocking the specific view icon/action.
-      if (action === 'view' && modulePermissions.length > 0) {
-        return true;
+      // Handle new object format: { read: true, write: false, delete: true }
+      if (typeof modulePermissions === 'object') {
+        switch (action) {
+          case 'view':
+          case 'read':
+            return modulePermissions.read === true;
+          case 'add':
+          case 'create':
+          case 'edit':
+          case 'update':
+          case 'write':
+            return modulePermissions.write === true;
+          case 'delete':
+            return modulePermissions.delete === true;
+          default:
+            // For any other actions, check if property exists and is true
+            return modulePermissions[action] === true;
+        }
       }
 
       return false;

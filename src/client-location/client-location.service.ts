@@ -896,6 +896,12 @@ export class ClientLocationService {
                     );
                 }
 
+                if (!companyId) {
+                    throw new Error(
+                        `Company Name is required to resolve Company ID`,
+                    );
+                }
+
                 processedData.push({
                     locationNo: row.locationNo,
                     locationName: row.locationName,
@@ -1036,6 +1042,12 @@ export class ClientLocationService {
                             if (!clientGroupId) {
                                 throw new Error(
                                     `Either "Company Name" or "Client Group Name" is required to resolve Client Group`,
+                                );
+                            }
+
+                            if (!companyId) {
+                                throw new Error(
+                                    `Company Name is required to resolve Company ID`,
                                 );
                             }
 
