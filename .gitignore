@@ -70,3 +70,6 @@ tmp/
 *.seed
 *.pid.lock
 .eslintcache
+
+#firebase
+firebase-service-account.json
