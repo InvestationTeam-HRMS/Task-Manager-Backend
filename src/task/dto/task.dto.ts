@@ -9,7 +9,13 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { TaskStatus, AcceptanceStatus } from '@prisma/client';
+import { AcceptanceStatus } from '@prisma/client';
+
+export enum TaskStatus {
+  Pending = 'Pending',
+  ReviewPending = 'Review Pending',
+  Completed = 'Completed',
+}
 
 export class CreateTaskDto {
   @IsString()
@@ -71,7 +77,7 @@ export class UpdateTaskDto {
 
   @IsOptional()
   @IsEnum(TaskStatus)
-  taskStatus?: TaskStatus;
+  taskStatus?: string;
 
   @IsOptional()
   @IsString()
@@ -134,8 +140,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class FilterTaskDto extends PaginationDto {
   @IsOptional()
-  @IsEnum(TaskStatus)
-  taskStatus?: TaskStatus;
+  taskStatus?: string | string[];
 
   @IsOptional()
   @IsString()

@@ -481,7 +481,7 @@ model PendingTask {
   taskNo         String     @unique @map("task_no")
   taskTitle      String     @map("task_title")
   priority       String?
-  taskStatus     TaskStatus @default(Pending) @map("task_status")
+  taskStatus     String @default("Pending") @map("task_status")
   additionalNote String?    @map("additional_note")
   deadline       DateTime?
   reviewedTime   DateTime[] @map("reviewed_time")
@@ -520,7 +520,7 @@ model CompletedTask {
   taskNo         String     @unique @map("task_no")
   taskTitle      String     @map("task_title")
   priority       String?
-  taskStatus     TaskStatus @default(Completed) @map("task_status")
+  taskStatus     String @default("Completed") @map("task_status")
   additionalNote String?    @map("additional_note")
   deadline       DateTime?
   completeTime   DateTime?  @map("complete_time")
@@ -671,8 +671,4 @@ enum IpAddressStatus {
   Inactive
 }
 
-enum TaskStatus {
-  Pending
-  ReviewPending
-  Completed
-}
+// TaskStatus enum removed in favor of string field to support spaces in status values

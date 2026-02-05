@@ -19,7 +19,8 @@ import {
 } from './dto/task.dto';
 import { NotificationService } from '../notification/notification.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { Prisma, TaskStatus, AcceptanceStatus } from '@prisma/client';
+import { Prisma, AcceptanceStatus } from '@prisma/client';
+import { TaskStatus } from './dto/task.dto';
 import { toTitleCase } from '../common/utils/string-helper';
 import { ExcelDownloadService } from '../common/services/excel-download.service';
 import * as ExcelJS from 'exceljs';
@@ -330,23 +331,30 @@ export class TaskService {
         const skip = (page - 1) * limit;
         const { toTitleCase } = await import('../common/utils/string-helper');
 
+        const statusValues = filter.taskStatus
+            ? typeof filter.taskStatus === 'string'
+                ? filter.taskStatus
+                    .split(/[,\:;|]/)
+                    .map((v) => v.trim())
+                    .filter(Boolean)
+                : Array.isArray(filter.taskStatus)
+                    ? filter.taskStatus
+                    : [filter.taskStatus]
+            : [];
+
         const isStrictlyCompleted =
             filter.viewMode === TaskViewMode.MY_COMPLETED ||
             filter.viewMode === TaskViewMode.TEAM_COMPLETED ||
-            (Array.isArray(filter.taskStatus) &&
-                filter.taskStatus.every((s) => s === TaskStatus.Completed)) ||
-            filter.taskStatus === TaskStatus.Completed;
+            (statusValues.length > 0 &&
+                statusValues.every((s) => s === TaskStatus.Completed));
 
         const isStrictlyPending =
             filter.viewMode === TaskViewMode.MY_PENDING ||
             filter.viewMode === TaskViewMode.TEAM_PENDING ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_ME ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_TEAM ||
-            (Array.isArray(filter.taskStatus) &&
-                filter.taskStatus.every((s) => s !== TaskStatus.Completed)) ||
-            (filter.taskStatus &&
-                filter.taskStatus !== TaskStatus.Completed &&
-                typeof filter.taskStatus === 'string');
+            (statusValues.length > 0 &&
+                statusValues.every((s) => s !== TaskStatus.Completed));
 
         // Mixed view if neither strictly pending nor strictly completed
         const isMixedView = !isStrictlyCompleted && !isStrictlyPending;
@@ -566,18 +574,8 @@ export class TaskService {
             });
         }
 
-        if (filter.taskStatus) {
-            const statusValues =
-                typeof filter.taskStatus === 'string'
-                    ? filter.taskStatus
-                        .split(/[,\:;|]/)
-                        .map((v) => v.trim())
-                        .filter(Boolean)
-                    : Array.isArray(filter.taskStatus)
-                        ? filter.taskStatus
-                        : [filter.taskStatus];
-            if (statusValues.length > 0)
-                andArray.push({ taskStatus: { in: statusValues as any } });
+        if (statusValues.length > 0) {
+            andArray.push({ taskStatus: { in: statusValues as any } });
         }
 
         if (filter.workingBy) {
@@ -873,7 +871,7 @@ export class TaskService {
     ) {
         try {
             this.logger.log(`submitForReview called - id: ${id}, userId: ${userId}, remark: ${remark}, filesCount: ${files?.length || 0}`);
-            
+
             const task = await this.prisma.pendingTask.findUnique({
                 where: { id },
                 include: { creator: true },
@@ -882,7 +880,7 @@ export class TaskService {
             if (!task) throw new NotFoundException('Task not found');
 
             // Idempotency check: If already ReviewPending, treat as success
-            if (task.taskStatus === TaskStatus.ReviewPending) {
+            if ((task.taskStatus as any) === TaskStatus.ReviewPending) {
                 return this.sortTaskDates(task);
             }
 
@@ -929,7 +927,7 @@ export class TaskService {
             const updated = await this.prisma.pendingTask.update({
                 where: { id },
                 data: {
-                    taskStatus: TaskStatus.ReviewPending,
+                    taskStatus: TaskStatus.ReviewPending as any,
                     remarkChat: remark,
                     workingBy: userId,
                     reviewedTime: { push: new Date() },
@@ -947,7 +945,7 @@ export class TaskService {
                     metadata: {
                         taskId: updated.id,
                         taskNo: updated.taskNo,
-                        status: 'ReviewPending',
+                        status: 'Review Pending',
                     },
                 });
             }
@@ -979,7 +977,7 @@ export class TaskService {
         });
 
         if (!task) throw new NotFoundException('Task not found');
-        if (task.taskStatus !== TaskStatus.ReviewPending)
+        if ((task.taskStatus as any) !== TaskStatus.ReviewPending)
             throw new BadRequestException('Only tasks in review can be finalized');
 
         let document = task.document;
@@ -1011,7 +1009,7 @@ export class TaskService {
                     taskNo: task.taskNo,
                     taskTitle: task.taskTitle,
                     priority: task.priority,
-                    taskStatus: TaskStatus.Completed,
+                    taskStatus: TaskStatus.Completed as any,
                     additionalNote: task.additionalNote,
                     deadline: task.deadline,
                     completeTime: new Date(),
@@ -1210,7 +1208,7 @@ export class TaskService {
         });
 
         if (!task) throw new NotFoundException('Task not found');
-        if (task.taskStatus !== TaskStatus.ReviewPending)
+        if ((task.taskStatus as any) !== TaskStatus.ReviewPending)
             throw new BadRequestException('Only tasks in review can be rejected');
 
         // Check permission: Only creator can reject
@@ -1243,7 +1241,7 @@ export class TaskService {
         const updated = await this.prisma.pendingTask.update({
             where: { id },
             data: {
-                taskStatus: TaskStatus.Pending,
+                taskStatus: TaskStatus.Pending as any,
                 remarkChat: remark,
                 reviewedTime: { push: new Date() },
                 document: document,
