@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { isAdminRole } from '../../common/utils/role-utils';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -28,7 +29,7 @@ export class PermissionsGuard implements CanActivate {
     }
 
     // Admin check - full access
-    if (user.role?.toUpperCase() === 'ADMIN') {
+    if (isAdminRole(user.role)) {
       return true;
     }
 

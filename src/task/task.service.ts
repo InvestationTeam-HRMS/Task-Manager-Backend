@@ -29,6 +29,7 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { pipeline, Readable } from 'stream';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { isAdminRole } from '../common/utils/role-utils';
 
 const csvParser = require('csv-parser');
 
@@ -375,7 +376,7 @@ export class TaskService {
 
         const andArray: any[] = [];
         const isAdmin =
-            role?.toUpperCase() === 'ADMIN' ||
+            isAdminRole(role) ||
             role?.toUpperCase() === 'HR' ||
             role?.toUpperCase() === 'MANAGER';
         const isUuid = (v: string) =>
@@ -750,7 +751,7 @@ export class TaskService {
 
         // Permission Check: Only Admin/SuperAdmin can update tasks
         // (Per user request: "admin ne hr ko task assign kia toh sirf admin edit kar skta hai")
-        const isAdmin = role?.toUpperCase() === 'ADMIN';
+        const isAdmin = isAdminRole(role);
         if (!isAdmin) {
             throw new ForbiddenException('Only Admins can edit tasks.');
         }
@@ -1798,7 +1799,7 @@ export class TaskService {
         const PAGE_SIZE = 20;
         const skip = (activityIndex - 1) * PAGE_SIZE;
 
-        const isAdmin = role === 'Admin' || role === 'HR';
+        const isAdmin = isAdminRole(role) || role?.toUpperCase() === 'HR';
 
         this.logger.log(
             `[ActivityLogs] Fetching logs for userId: ${userId}, role: ${role}, index: ${activityIndex}, taskNo: ${taskNo || 'none'}, mentionedOnly: ${mentionedOnly}`,

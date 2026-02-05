@@ -2,9 +2,12 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoleDto, UpdateRoleDto } from './dto/role.dto';
+import { ADMIN_PERMISSIONS } from '../common/constants/admin-permissions';
+import { isAdminRole } from '../common/utils/role-utils';
 
 @Injectable()
 export class RoleService {
@@ -12,6 +15,19 @@ export class RoleService {
 
   async create(dto: CreateRoleDto) {
     const { name, description, accessRight, permissions } = dto as any;
+
+    if (isAdminRole(name)) {
+      const existingAdminRole = await this.prisma.role.findFirst({
+        where: {
+          name: {
+            in: ['Admin', 'ADMIN', 'Super Admin', 'SUPER ADMIN', 'SUPER_ADMIN'],
+          },
+        },
+      });
+      if (existingAdminRole) {
+        throw new ConflictException('Admin role already exists');
+      }
+    }
 
     const existing = await this.prisma.role.findUnique({
       where: { name },
@@ -56,11 +72,16 @@ export class RoleService {
       return a.name.localeCompare(b.name);
     });
 
-    return sortedRoles.map((role) => ({
-      ...role,
-      users: [],
-      accessRight: (role.permissions as any) || {},
-    }));
+    return sortedRoles.map((role) => {
+      const accessRight = isAdminRole(role.name)
+        ? ADMIN_PERMISSIONS
+        : (role.permissions as any) || {};
+      return {
+        ...role,
+        users: [],
+        accessRight,
+      };
+    });
   }
 
   async findOne(id: string) {
@@ -69,12 +90,17 @@ export class RoleService {
     return {
       ...role,
       users: [],
-      accessRight: (role.permissions as any) || {},
+      accessRight: isAdminRole(role.name)
+        ? ADMIN_PERMISSIONS
+        : (role.permissions as any) || {},
     };
   }
 
   async update(id: string, dto: UpdateRoleDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    if (isAdminRole(existing.name)) {
+      throw new ForbiddenException('Admin role permissions are locked');
+    }
     const { name, description, accessRight, permissions } = dto as any;
 
     return this.prisma.role.update({
@@ -88,7 +114,10 @@ export class RoleService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    if (isAdminRole(existing.name)) {
+      throw new ForbiddenException('Admin role cannot be deleted');
+    }
     return this.prisma.role.delete({ where: { id } });
   }
 }

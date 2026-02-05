@@ -5,6 +5,8 @@ const { ExtractJwt, Strategy } = PassportJWT;
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+import { ADMIN_PERMISSIONS } from '../../common/constants/admin-permissions';
+import { isAdminRole } from '../../common/utils/role-utils';
 
 /**
  * 🔐 WhatsApp-Style JWT Strategy (with Incognito Support)
@@ -139,15 +141,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Get permissions from custom role if assigned, otherwise empty
-    const permissions: any = identity.customRole?.permissions || {};
+    let permissions: any = {};
 
-    // Fallback: If no custom role permissions, assign default based on ENUM role
-    if (Object.keys(permissions).length === 0) {
-      if (
-        identity.role === 'ADMIN' ||
-        identity.role === 'MANAGER' ||
-        identity.role === 'HR'
-      ) {
+    if (identity.customRole?.permissions) {
+      try {
+        permissions =
+          typeof identity.customRole.permissions === 'string'
+            ? JSON.parse(identity.customRole.permissions)
+            : identity.customRole.permissions;
+      } catch {
+        permissions = {};
+      }
+    }
+
+    if (isAdminRole(identity.role)) {
+      permissions = { ...ADMIN_PERMISSIONS, isSuperAdmin: true };
+    } else if (Object.keys(permissions).length === 0) {
+      const roleUpper = identity.role?.toUpperCase?.() || '';
+      if (roleUpper === 'MANAGER' || roleUpper === 'HR') {
         permissions['organization'] = ['add', 'view', 'edit', 'delete'];
         permissions['project'] = ['add', 'view', 'edit', 'delete'];
         permissions['task'] = ['add', 'view', 'edit', 'delete'];
@@ -155,10 +166,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         permissions['group'] = ['add', 'view', 'edit', 'delete'];
         permissions['ip_address'] = ['add', 'view', 'edit', 'delete'];
       }
-    }
-
-    if (identity.role === 'ADMIN') {
-      permissions.isSuperAdmin = true;
     }
 
     return {

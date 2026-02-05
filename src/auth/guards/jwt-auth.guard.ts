@@ -8,6 +8,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { RedisService } from '../../redis/redis.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ADMIN_PERMISSIONS } from '../../common/constants/admin-permissions';
+import { isAdminRole } from '../../common/utils/role-utils';
 
 /**
  * 🔐 Hybrid Auth Guard (Session + JWT + Header Fallback)
@@ -111,7 +113,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!team) return null;
 
     // Parse permissions from role
-    let permissions = {};
+    let permissions: any = {};
     if (team.customRole?.permissions) {
       try {
         permissions =
@@ -121,6 +123,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       } catch (e) {
         permissions = {};
       }
+    }
+
+    if (isAdminRole(team.role)) {
+      permissions = { ...ADMIN_PERMISSIONS, isSuperAdmin: true };
     }
 
     return {

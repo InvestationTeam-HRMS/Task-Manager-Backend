@@ -21,6 +21,7 @@ import {
   ResendOtpDto,
   SetPasswordDto,
   UpdateProfileDto,
+  AdminSetupDto,
 } from './dto/auth.dto';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -31,6 +32,17 @@ export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
   constructor(private authService: AuthService) {}
+
+  @Get('setup-status')
+  async setupStatus() {
+    return this.authService.getSetupStatus();
+  }
+
+  @Post('setup-admin')
+  async setupAdmin(@Body() dto: AdminSetupDto, @Req() req: Request) {
+    const ipAddress = req.ip || req.socket.remoteAddress || '';
+    return this.authService.setupAdmin(dto, ipAddress);
+  }
 
   @Post('login')
   async login(

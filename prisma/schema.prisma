@@ -315,6 +315,7 @@ model Team {
   passwordChangedAt      DateTime?          @map("password_changed_at")
   allowedIps             String[]           @default([]) @map("allowed_ips")
   deletedAt              DateTime?          @map("deleted_at")
+  isSystemUser           Boolean            @default(false) @map("is_system_user")
   activityLogs           ActivityLog[]
   auditLogs              AuditLog[]
   createdCompanies       ClientCompany[]    @relation("CompanyCreatedByTeam")
@@ -355,6 +356,7 @@ model Team {
   updater                Team?              @relation("TeamUpdatedByTeam", fields: [updatedBy], references: [id])
   updatedTeams           Team[]             @relation("TeamUpdatedByTeam")
   customRole             Role?              @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  systemStateAsSuperAdmin SystemState?      @relation("SystemStateSuperAdmin")
 
   @@index([teamNo])
   @@index([clientGroupId])
@@ -563,6 +565,18 @@ model Role {
   teams       Team[]
 
   @@map("roles")
+}
+
+model SystemState {
+  id                String   @id @default("SYSTEM")
+  systemInitialized Boolean  @default(false) @map("system_initialized")
+  superAdminId      String?  @unique @map("super_admin_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  superAdmin        Team?    @relation("SystemStateSuperAdmin", fields: [superAdminId], references: [id], onDelete: SetNull)
+
+  @@index([systemInitialized])
+  @@map("system_state")
 }
 
 model StickyNote {

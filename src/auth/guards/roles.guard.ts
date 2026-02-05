@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { isAdminRole, normalizeRole } from '../../common/utils/role-utils';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -32,9 +33,15 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    const userRoleUpper = identity.role?.toUpperCase();
-    const requiredRolesUpper = requiredRoles.map((r) => r.toUpperCase());
-    const hasPermission = requiredRolesUpper.includes(userRoleUpper);
+    const userRoleKey = normalizeRole(identity.role);
+    const requiredRoleKeys = requiredRoles.map((r) => normalizeRole(r));
+    const isAdmin = isAdminRole(identity.role);
+
+    const hasPermission =
+      requiredRoleKeys.includes(userRoleKey) ||
+      (isAdmin &&
+        (requiredRoleKeys.includes('ADMIN') ||
+          requiredRoleKeys.includes('SUPER_ADMIN')));
 
     if (!hasPermission) {
       this.logger.warn(

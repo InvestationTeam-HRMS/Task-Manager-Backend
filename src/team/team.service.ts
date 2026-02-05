@@ -28,6 +28,7 @@ import { TeamStatus, LoginMethod, Prisma } from '@prisma/client';
 import { buildMultiValueFilter } from '../common/utils/prisma-helper';
 import { NotificationService } from '../notification/notification.service';
 import { toTitleCase } from '../common/utils/string-helper';
+import { isAdminRole } from '../common/utils/role-utils';
 
 @Injectable()
 export class TeamService {
@@ -83,6 +84,12 @@ export class TeamService {
       if (customRole) {
         roleName = toTitleCase(customRole.name);
       }
+    }
+
+    if (isAdminRole(roleName)) {
+      throw new BadRequestException(
+        'Admin role can only be created via system setup',
+      );
     }
 
     const team = await this.prisma.team.create({
@@ -421,11 +428,20 @@ export class TeamService {
       throw new NotFoundException('Team member not found');
     }
 
+    if (isAdminRole(team.role) || team.isSystemUser) {
+      throw new BadRequestException('System admin cannot be deleted');
+    }
+
     return team;
   }
 
   async update(id: string, dto: UpdateTeamDto, userId: string) {
     const existing = await this.findById(id);
+    const existingIsAdmin = isAdminRole(existing.role) || existing.isSystemUser;
+
+    if (existingIsAdmin && (dto.role || dto.roleId)) {
+      throw new BadRequestException('Admin role cannot be modified');
+    }
 
     // Email duplication check if changed
     if (dto.email && dto.email.toLowerCase() !== existing.email) {
@@ -458,6 +474,12 @@ export class TeamService {
       if (customRole) {
         data.role = toTitleCase(customRole.name);
       }
+    }
+
+    if (!existingIsAdmin && data.role && isAdminRole(data.role)) {
+      throw new BadRequestException(
+        'Admin role can only be assigned via system setup',
+      );
     }
 
     const updated = await this.prisma.team.update({
@@ -609,6 +631,15 @@ export class TeamService {
           ? await bcrypt.hash(teamDto.password, 10)
           : defaultPasswordHash;
 
+        const roleName = toTitleCase(teamDto.role || 'Employee');
+        if (isAdminRole(roleName)) {
+          errors.push({
+            email,
+            error: 'Admin role can only be created via system setup',
+          });
+          continue;
+        }
+
         dataToInsert.push({
           ...teamDto,
           teamName: toTitleCase(teamDto.teamName),
@@ -617,7 +648,7 @@ export class TeamService {
           status: teamDto.status || TeamStatus.Active,
           loginMethod: teamDto.loginMethod || LoginMethod.General,
           teamNo,
-          role: toTitleCase(teamDto.role || 'Employee'),
+          role: roleName,
           createdBy: userId,
         });
       } catch (err) {

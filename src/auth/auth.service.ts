@@ -18,16 +18,22 @@ import {
   ChangePasswordDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  AdminSetupDto,
   UpdateProfileDto,
   OtpChannel,
 } from './dto/auth.dto';
 import { NotificationService } from '../notification/notification.service';
 import { CloudinaryService } from '../common/services/cloudinary.service';
+import { AutoNumberService } from '../common/services/auto-number.service';
+import { ADMIN_PERMISSIONS, ADMIN_ROLE_NAME } from '../common/constants/admin-permissions';
+import { isAdminRole } from '../common/utils/role-utils';
+import { toTitleCase } from '../common/utils/string-helper';
 // Removed UserRole import from @prisma/client
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly SYSTEM_STATE_ID = 'SYSTEM';
 
   constructor(
     private prisma: PrismaService,
@@ -36,11 +42,191 @@ export class AuthService {
     private redisService: RedisService,
     private notificationService: NotificationService,
     private cloudinaryService: CloudinaryService,
+    private autoNumberService: AutoNumberService,
   ) {}
+
+  async getSetupStatus() {
+    const [state, adminRole] = await Promise.all([
+      this.prisma.systemState.findUnique({
+        where: { id: this.SYSTEM_STATE_ID },
+      }),
+      this.prisma.role.findFirst({
+        where: { name: { equals: ADMIN_ROLE_NAME, mode: 'insensitive' } },
+        select: { id: true },
+      }),
+    ]);
+
+    const adminWhere: any = {
+      OR: [
+        { isSystemUser: true },
+        {
+          role: {
+            in: ['Admin', 'ADMIN', 'Super Admin', 'SUPER ADMIN', 'SUPER_ADMIN'],
+          },
+        },
+      ],
+    };
+
+    if (adminRole?.id) {
+      adminWhere.OR.push({ roleId: adminRole.id });
+    }
+
+    const adminCandidate = await this.prisma.team.findFirst({
+      where: adminWhere,
+      select: { id: true, teamName: true },
+    });
+
+    const adminExists = !!adminCandidate;
+    const systemInitialized = state?.systemInitialized || adminExists;
+
+    if (adminExists && (!state || !state.systemInitialized)) {
+      await this.prisma.systemState.upsert({
+        where: { id: this.SYSTEM_STATE_ID },
+        update: {
+          systemInitialized: true,
+          superAdminId: adminCandidate?.id,
+        },
+        create: {
+          id: this.SYSTEM_STATE_ID,
+          systemInitialized: true,
+          superAdminId: adminCandidate?.id,
+        },
+      });
+    }
+
+    if (adminCandidate?.id) {
+      const normalizedName = (adminCandidate.teamName || '').trim();
+      if (!normalizedName || normalizedName.toLowerCase() === 'organization') {
+        await this.prisma.team.update({
+          where: { id: adminCandidate.id },
+          data: { teamName: 'Admin' },
+        });
+      }
+    }
+
+    return {
+      systemInitialized,
+      adminExists,
+    };
+  }
+
+  async setupAdmin(dto: AdminSetupDto, ipAddress: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const systemState = await tx.systemState.findUnique({
+        where: { id: this.SYSTEM_STATE_ID },
+      });
+      if (systemState?.systemInitialized) {
+        throw new ConflictException('System is already initialized');
+      }
+
+      const existingAdmin = await tx.team.findFirst({
+        where: {
+          OR: [
+            { isSystemUser: true },
+            {
+              role: {
+                in: ['Admin', 'ADMIN', 'Super Admin', 'SUPER ADMIN', 'SUPER_ADMIN'],
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      if (existingAdmin) {
+        throw new ConflictException('A system admin already exists');
+      }
+
+      const emailExists = await tx.team.findUnique({
+        where: { email: dto.email.toLowerCase() },
+        select: { id: true },
+      });
+      if (emailExists) {
+        throw new ConflictException('Email already registered');
+      }
+
+      let adminRole = await tx.role.findFirst({
+        where: { name: { equals: ADMIN_ROLE_NAME, mode: 'insensitive' } },
+      });
+
+      if (!adminRole) {
+        adminRole = await tx.role.create({
+          data: {
+            name: ADMIN_ROLE_NAME,
+            description: 'System Administrator (Full Access)',
+            permissions: ADMIN_PERMISSIONS,
+          },
+        });
+      } else {
+        adminRole = await tx.role.update({
+          where: { id: adminRole.id },
+          data: {
+            permissions: ADMIN_PERMISSIONS,
+          },
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(
+        dto.password,
+        parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
+      );
+
+      const teamNo = await this.autoNumberService.generateTeamNo();
+
+      const resolvedTeamName =
+        dto.teamName && dto.teamName.trim().length > 0
+          ? dto.teamName.trim()
+          : 'Admin';
+
+      const admin = await tx.team.create({
+        data: {
+          teamNo,
+          teamName: toTitleCase(resolvedTeamName),
+          email: dto.email.toLowerCase(),
+          password: hashedPassword,
+          role: ADMIN_ROLE_NAME,
+          roleId: adminRole.id,
+          status: 'Active',
+          loginMethod: 'General',
+          isSystemUser: true,
+          lastLoginIp: ipAddress,
+        },
+      });
+
+      await tx.systemState.upsert({
+        where: { id: this.SYSTEM_STATE_ID },
+        update: {
+          systemInitialized: true,
+          superAdminId: admin.id,
+        },
+        create: {
+          id: this.SYSTEM_STATE_ID,
+          systemInitialized: true,
+          superAdminId: admin.id,
+        },
+      });
+
+      return admin;
+    });
+
+    await this.logActivity(
+      result.id,
+      'CREATE',
+      'System admin created via setup',
+      ipAddress,
+      true,
+    );
+
+    const userWithPermissions = await this.getUserWithPermissions(result.id);
+
+    return {
+      message: 'Admin setup completed successfully',
+      user: userWithPermissions,
+    };
+  }
 
   async login(dto: LoginDto, ipAddress: string, userAgent?: string) {
     const identity = await this.prisma.team.findUnique({
-      where: { email: dto.email },
+      where: { email: dto.email.toLowerCase() },
     });
 
     if (!identity || identity.deletedAt) {
@@ -60,8 +246,8 @@ export class AuthService {
     }
 
     const loginMethod = identity.loginMethod;
-    const isAdmin = identity.role === 'ADMIN';
-    const isSuperAdmin = identity.role === 'ADMIN';
+    const isAdmin = isAdminRole(identity.role);
+    const isSuperAdmin = isAdminRole(identity.role);
 
     // 1. IP Check for methods requiring it (Ip_address, Ip_Otp)
     const requiresIpCheck =
@@ -171,7 +357,7 @@ export class AuthService {
     userAgent?: string,
   ) {
     const identity = await this.prisma.team.findUnique({
-      where: { email: dto.email },
+      where: { email: dto.email.toLowerCase() },
     });
 
     if (!identity) {
@@ -179,8 +365,8 @@ export class AuthService {
     }
 
     const loginMethod = identity.loginMethod;
-    const isAdmin = identity.role === 'ADMIN';
-    const isSuperAdmin = identity.role === 'ADMIN';
+    const isAdmin = isAdminRole(identity.role);
+    const isSuperAdmin = isAdminRole(identity.role);
 
     // 1. Double check IP for methods requiring it (Ip_address, Ip_Otp)
     const requiresIpCheck =
@@ -214,7 +400,9 @@ export class AuthService {
       const storedOtp = await this.redisService.getLoginOTP(dto.email);
       // ... OTP check removed ...
     }
-    this.logger.log(`[AUTH] Login verified for ${dto.email} (No OTP required)`);
+    this.logger.log(
+      `[AUTH] Login verified for ${dto.email} (No OTP required)`,
+    );
 
     // Create session
     const sessionId = uuidv4();
@@ -533,16 +721,26 @@ export class AuthService {
       return null;
     }
 
-    const permissions: any = user.customRole?.permissions || {};
+    let permissions: any = {};
 
-    // Fallback: If no custom role permissions, assign default based on role name
-    if (Object.keys(permissions).length === 0) {
+    if (user.customRole?.permissions) {
+      try {
+        permissions =
+          typeof user.customRole.permissions === 'string'
+            ? JSON.parse(user.customRole.permissions)
+            : user.customRole.permissions;
+      } catch {
+        permissions = {};
+      }
+    }
+
+    // Admin must always have full permissions
+    if (isAdminRole(user.role)) {
+      permissions = { ...ADMIN_PERMISSIONS, isSuperAdmin: true };
+    } else if (Object.keys(permissions).length === 0) {
+      // Fallback: If no custom role permissions, assign default based on role name
       const roleUpper = user.role.toUpperCase();
-      if (
-        roleUpper === 'ADMIN' ||
-        roleUpper === 'MANAGER' ||
-        roleUpper === 'HR'
-      ) {
+      if (roleUpper === 'MANAGER' || roleUpper === 'HR') {
         permissions['organization'] = ['add', 'view', 'edit', 'delete'];
         permissions['project'] = ['add', 'view', 'edit', 'delete'];
         permissions['task'] = ['add', 'view', 'edit', 'delete'];
@@ -550,11 +748,6 @@ export class AuthService {
         permissions['group'] = ['add', 'view', 'edit', 'delete'];
         permissions['ip_address'] = ['add', 'view', 'edit', 'delete'];
       }
-    }
-
-    // Add isSuperAdmin flag if user has ADMIN role
-    if (user.role.toUpperCase() === 'ADMIN') {
-      permissions.isSuperAdmin = true;
     }
 
     const roleName = user.customRole?.name || user.role;

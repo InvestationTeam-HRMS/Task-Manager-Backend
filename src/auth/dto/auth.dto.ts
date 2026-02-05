@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEnum,
   Length,
+  Matches,
 } from 'class-validator';
 
 export enum OtpChannel {
@@ -105,4 +106,22 @@ export class UpdateProfileDto {
   @IsString()
   @IsOptional()
   country?: string;
+}
+
+export class AdminSetupDto {
+  @IsString()
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message:
+      'Password must include uppercase, lowercase, number, and special character',
+  })
+  password: string;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(2)
+  teamName?: string;
+
+  @IsEmail()
+  email: string;
 }
