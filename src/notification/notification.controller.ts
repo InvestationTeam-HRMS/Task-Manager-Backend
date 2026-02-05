@@ -15,13 +15,17 @@ import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { Observable } from 'rxjs';
-import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
+import { RegisterFcmTokenDto } from './dto/register-fcm-token.dto';
+import { FcmService } from './fcm.service';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationController {
   private readonly logger = new Logger(NotificationController.name);
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly fcmService: FcmService,
+  ) { }
 
   @Get()
   findAll(@GetUser('id') userId: string) {
@@ -50,19 +54,21 @@ export class NotificationController {
     return this.notificationService.markAllAsRead(userId);
   }
 
-  @Post('subscribe')
-  subscribe(
+
+
+  // FCM Endpoints
+  @Post('fcm/register')
+  async registerFcmToken(
     @GetUser('id') userId: string,
-    @Body() dto: CreatePushSubscriptionDto,
+    @Body() dto: RegisterFcmTokenDto,
   ) {
-    return this.notificationService.createPushSubscription(userId, dto);
+    await this.fcmService.registerToken(userId, dto.token);
+    return { success: true, message: 'FCM token registered successfully' };
   }
 
-  @Delete('unsubscribe')
-  unsubscribe(
-    @GetUser('id') userId: string,
-    @Body('endpoint') endpoint: string,
-  ) {
-    return this.notificationService.deletePushSubscription(userId, endpoint);
+  @Delete('fcm/unregister')
+  async unregisterFcmToken(@Body('token') token: string) {
+    await this.fcmService.unregisterToken(token);
+    return { success: true, message: 'FCM token unregistered successfully' };
   }
 }

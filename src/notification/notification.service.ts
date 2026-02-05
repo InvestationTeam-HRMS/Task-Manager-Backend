@@ -1,35 +1,55 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import * as webpush from 'web-push';
+import { Injectable, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationStrategy } from './interfaces/notification-strategy.interface';
 import { EmailStrategy } from './strategies/email.strategy';
 import { OtpChannel } from '../auth/dto/auth.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Observable, Subject, interval } from 'rxjs';
 import { map, takeUntil, startWith } from 'rxjs/operators';
 import { MessageEvent } from '@nestjs/common';
+import { FcmService } from './fcm.service';
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleInit {
   private readonly logger = new Logger(NotificationService.name);
   private strategies: Map<OtpChannel, NotificationStrategy> = new Map();
-  private notificationStreams = new Map<string, Subject<any>>();
 
   constructor(
     private prisma: PrismaService,
     private emailStrategy: EmailStrategy,
     private eventEmitter: EventEmitter2,
     private configService: ConfigService,
+    private fcmService: FcmService,
   ) {
     this.strategies.set(OtpChannel.EMAIL, emailStrategy);
+  }
 
-    // Setup web-push
-    webpush.setVapidDetails(
-      `mailto:${this.configService.get('VAPID_EMAIL', 'noreply@yourapp.com')}`,
-      this.configService.get('VAPID_PUBLIC_KEY'),
-      this.configService.get('VAPID_PRIVATE_KEY'),
-    );
+  onModuleInit() {
+    this.logger.log('🚀 Notification Service Initialized');
+  }
+
+  @OnEvent('notification.created', { async: true })
+  async handleNotificationCreated(payload: { teamId: string; notification: any }) {
+    const { teamId, notification } = payload;
+
+    // Send Background Push Notifications
+    try {
+      // FCM Push (Mobile/Enhanced Web)
+      await this.fcmService.sendToUser(teamId, {
+        title: notification.title,
+        body: notification.description,
+        data: {
+          id: String(notification.id || ''),
+          type: notification.type || 'SYSTEM',
+          ...(notification.metadata ? Object.fromEntries(
+            Object.entries(notification.metadata).map(([k, v]) => [k, String(v)])
+          ) : {}),
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Push notification failed for user ${teamId}: ${err.message}`);
+    }
   }
 
   async createNotification(
@@ -51,17 +71,12 @@ export class NotificationService {
       },
     });
 
-    // Emit event for real-time notification
+    this.logger.log(`📤 Emitting notification.created event for user ${teamId}, notificationId: ${notification.id}`);
+
+    // Emit event for real-time notification (this triggers SSE and Push)
     this.eventEmitter.emit('notification.created', { teamId, notification });
 
-    // Send push notification for background (async, don't wait)
-    setImmediate(() => {
-      this.sendPushNotification(teamId, {
-        title: data.title,
-        body: data.description,
-        data: { id: notification.id, ...data.metadata },
-      }).catch((err) => this.logger.error(`Push fail: ${err.message}`));
-    });
+    this.logger.log(`✅ Event emitted successfully for notification ${notification.id}`);
 
     return notification;
   }
@@ -85,15 +100,21 @@ export class NotificationService {
       metadata: data.metadata || {},
     }));
 
+    // We use a loop instead of createMany if we want individual notification objects to emit
+    // but createMany is faster. To handle both, we'll create individual notifications for the event.
     const result = await this.prisma.notification.createMany({
       data: notificationsData,
     });
 
-    // Emit events for each member
+    // Fetch created notifications to get IDs (or just emit with data if IDs aren't critical for initial push)
+    // For performance, we'll emit with the data we have.
     for (const member of members) {
       this.eventEmitter.emit('notification.created', {
         teamId: member.userId,
-        notification: data,
+        notification: {
+          ...data,
+          createdAt: new Date(),
+        },
       });
     }
 
@@ -109,17 +130,28 @@ export class NotificationService {
   }
 
   async markAsRead(id: string, teamId: string) {
-    return this.prisma.notification.update({
+    const updated = await this.prisma.notification.update({
       where: { id, teamId },
       data: { isRead: true },
     });
+
+    // Emit event to update unread count in real-time
+    const newCount = await this.getUnreadCount(teamId);
+    this.eventEmitter.emit('notification.read', { teamId, count: newCount });
+
+    return updated;
   }
 
   async markAllAsRead(teamId: string) {
-    return this.prisma.notification.updateMany({
+    const result = await this.prisma.notification.updateMany({
       where: { teamId, isRead: false },
       data: { isRead: true },
     });
+
+    // Emit event to update unread count to 0 in real-time
+    this.eventEmitter.emit('notification.read', { teamId, count: 0 });
+
+    return result;
   }
 
   async getUnreadCount(teamId: string) {
@@ -129,9 +161,14 @@ export class NotificationService {
   }
 
   getNotificationStream(teamId: string): Observable<MessageEvent> {
+    this.logger.log(`[SSE] 🌊 Creating notification stream for user ${teamId}`);
+
     return new Observable((observer) => {
+      this.logger.log(`[SSE] 📡 Stream observer created for user ${teamId}`);
+
       // Send initial unread count
       this.getUnreadCount(teamId).then((count) => {
+        this.logger.log(`[SSE] 📊 Sending initial unread count: ${count} to user ${teamId}`);
         observer.next({
           data: JSON.stringify({ type: 'unread-count', count }),
         } as MessageEvent);
@@ -139,6 +176,8 @@ export class NotificationService {
 
       // Listen for new notifications for this user
       const listener = async (payload: any) => {
+        this.logger.log(`[SSE] Event received - TargetUser: ${payload.teamId}, ConnectedUser: ${teamId}, Match: ${payload.teamId === teamId}`);
+
         if (payload.teamId === teamId) {
           try {
             const count = await this.getUnreadCount(teamId);
@@ -153,6 +192,8 @@ export class NotificationService {
             observer.next({
               data: JSON.stringify(eventData),
             } as MessageEvent);
+
+            this.logger.log(`[SSE] 📨 Notification sent via SSE to user ${teamId}, NotificationId: ${payload.notification?.id}`);
           } catch (error) {
             this.logger.error('Error fetching unread count for SSE:', error);
             observer.next({
@@ -162,10 +203,26 @@ export class NotificationService {
               }),
             } as MessageEvent);
           }
+        } else {
+          this.logger.debug(`[SSE] ⏭️ Skipping - Event for ${payload.teamId}, but SSE is for ${teamId}`);
         }
       };
 
       this.eventEmitter.on('notification.created', listener);
+
+      // Listen for notification read events to update count
+      const readListener = async (payload: any) => {
+        if (payload.teamId === teamId) {
+          observer.next({
+            data: JSON.stringify({
+              type: 'unread-count',
+              count: payload.count,
+            }),
+          } as MessageEvent);
+        }
+      };
+
+      this.eventEmitter.on('notification.read', readListener);
 
       const heartbeat = setInterval(() => {
         observer.next({
@@ -178,6 +235,7 @@ export class NotificationService {
 
       return () => {
         this.eventEmitter.off('notification.created', listener);
+        this.eventEmitter.off('notification.read', readListener);
         clearInterval(heartbeat);
         this.logger.log(`SSE connection closed for user ${teamId}`);
       };
@@ -226,53 +284,4 @@ export class NotificationService {
     }
   }
 
-  async createPushSubscription(teamId: string, dto: any) {
-    return this.prisma.pushSubscription.upsert({
-      where: { endpoint: dto.endpoint },
-      update: { teamId },
-      create: {
-        teamId,
-        endpoint: dto.endpoint,
-        p256dh: dto.keys.p256dh,
-        auth: dto.keys.auth,
-      },
-    });
-  }
-
-  async deletePushSubscription(teamId: string, endpoint: string) {
-    return this.prisma.pushSubscription.deleteMany({
-      where: { teamId, endpoint },
-    });
-  }
-
-  async sendPushNotification(teamId: string, payload: any) {
-    const subscriptions = await this.prisma.pushSubscription.findMany({
-      where: { teamId },
-    });
-
-    await Promise.all(
-      subscriptions.map(async (sub) => {
-        const pushSubscription = {
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: sub.p256dh,
-            auth: sub.auth,
-          },
-        };
-
-        try {
-          await webpush.sendNotification(
-            pushSubscription,
-            JSON.stringify(payload),
-          );
-        } catch (error: any) {
-          if (error.statusCode === 404 || error.statusCode === 410) {
-            await this.prisma.pushSubscription.delete({
-              where: { id: sub.id },
-            });
-          }
-        }
-      }),
-    );
-  }
 }

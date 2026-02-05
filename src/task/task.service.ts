@@ -279,7 +279,7 @@ export class TaskService {
                 updated.pendingTask.createdBy,
                 {
                     title: 'Task Accepted',
-                    description: `A member has accepted the task "${updated.pendingTask.taskTitle}".`,
+                    description: `A member has accepted the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
                     type: 'TASK',
                     metadata: {
                         taskId: updated.pendingTask.id,
@@ -300,7 +300,7 @@ export class TaskService {
                         // Don't notify the one who just accepted
                         await this.notificationService.createNotification(member.userId, {
                             title: 'Task Accepted by Peer',
-                            description: `The task "${updated.pendingTask.taskTitle}" has been accepted by someone else in your group.`,
+                            description: `The task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}) has been accepted by someone else in your group.`,
                             type: 'TASK',
                             metadata: {
                                 taskId: updated.pendingTask.id,
@@ -310,6 +310,20 @@ export class TaskService {
                     }
                 }
             }
+        } else if (status === 'REJECTED') {
+            // Notify creator that a group member rejected the task
+            await this.notificationService.createNotification(
+                updated.pendingTask.createdBy,
+                {
+                    title: 'Task Acceptance Rejected',
+                    description: `A group member has declined the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.pendingTask.id,
+                        taskNo: updated.pendingTask.taskNo,
+                    },
+                },
+            );
         }
 
         await this.invalidateCache();
@@ -857,6 +871,35 @@ export class TaskService {
                     },
                 });
             }
+        } else if (dto.remarkChat && dto.remarkChat !== existingTask.remarkChat) {
+            // CASE: Remark updated by Admin/Creator without status change
+            const workerId = updated.workingBy || updated.assignedTo || updated.targetTeamId;
+            if (workerId && workerId !== userId) {
+                await this.notificationService.createNotification(workerId, {
+                    title: 'New Remark on Task',
+                    description: `A new remark has been added to task "${updated.taskTitle}" (${updated.taskNo}).`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.id,
+                        taskNo: updated.taskNo,
+                        remark: dto.remarkChat,
+                    },
+                });
+            }
+        } else if (dto.taskTitle || dto.additionalNote || dto.deadline || dto.priority) {
+            // CASE: Task details updated (title, note, deadline, priority changed)
+            const workerId = updated.workingBy || updated.assignedTo || updated.targetTeamId;
+            if (workerId && workerId !== userId) {
+                await this.notificationService.createNotification(workerId, {
+                    title: 'Task Details Updated',
+                    description: `The task "${updated.taskTitle}" (${updated.taskNo}) has been updated by the creator.`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.id,
+                        taskNo: updated.taskNo,
+                    },
+                });
+            }
         }
 
         await this.invalidateCache();
@@ -879,12 +922,9 @@ export class TaskService {
 
             if (!task) throw new NotFoundException('Task not found');
 
-            // Idempotency check: If already ReviewPending, treat as success
-            if ((task.taskStatus as any) === TaskStatus.ReviewPending) {
-                return this.sortTaskDates(task);
-            }
+            const isAlreadyInReview = (task.taskStatus as any) === TaskStatus.ReviewPending;
 
-            if (task.taskStatus !== TaskStatus.Pending)
+            if (!isAlreadyInReview && task.taskStatus !== TaskStatus.Pending)
                 throw new BadRequestException(
                     'Only pending tasks can be submitted for review',
                 );
@@ -937,17 +977,25 @@ export class TaskService {
             });
 
             // Notify Creator
-            if (updated.createdBy) {
+            this.logger.log(`[SUBMIT_FOR_REVIEW] Task: ${updated.taskNo}, CreatedBy: ${updated.createdBy}, CurrentUser: ${userId}`);
+
+            if (updated.createdBy && updated.createdBy !== userId) {
+                this.logger.log(`[SUBMIT_FOR_REVIEW] Sending notification to creator: ${updated.createdBy}`);
                 await this.notificationService.createNotification(updated.createdBy, {
-                    title: 'Task Submitted for Review',
-                    description: `Task "${updated.taskTitle}" (${updated.taskNo}) has been submitted for review.`,
+                    title: isAlreadyInReview ? 'New Remark on Task' : 'Task Submitted for Review',
+                    description: isAlreadyInReview
+                        ? `Assignee has added a new remark to task "${updated.taskTitle}" (${updated.taskNo}).`
+                        : `Task "${updated.taskTitle}" (${updated.taskNo}) has been submitted for review.`,
                     type: 'TASK',
                     metadata: {
                         taskId: updated.id,
                         taskNo: updated.taskNo,
-                        status: 'Review Pending',
+                        status: isAlreadyInReview ? 'Remark Added' : 'Review Pending',
                     },
                 });
+                this.logger.log(`[SUBMIT_FOR_REVIEW] ✅ Notification sent to creator ${updated.createdBy}`);
+            } else {
+                this.logger.warn(`[SUBMIT_FOR_REVIEW] ⚠️ No notification sent. CreatedBy: ${updated.createdBy}, UserId: ${userId}`);
             }
 
             await this.invalidateCache();
@@ -1046,7 +1094,10 @@ export class TaskService {
 
             // Notify Worker/Assignee about completion
             const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
+            this.logger.log(`[FINALIZE_COMPLETION] Task: ${task.taskNo}, WorkerId: ${workerId}, CurrentUser: ${userId}`);
+
             if (workerId && workerId !== userId) {
+                this.logger.log(`[FINALIZE_COMPLETION] Sending completion notification to worker: ${workerId}`);
                 await this.notificationService.createNotification(workerId, {
                     title: 'Task Completed',
                     description: `Your task "${task.taskTitle}" (${task.taskNo}) has been successfully finalized.`,
@@ -1057,6 +1108,9 @@ export class TaskService {
                         status: 'Completed',
                     },
                 });
+                this.logger.log(`[FINALIZE_COMPLETION] ✅ Completion notification sent to ${workerId}`);
+            } else {
+                this.logger.warn(`[FINALIZE_COMPLETION] ⚠️ No notification sent. WorkerId: ${workerId}, UserId: ${userId}`);
             }
 
             await this.invalidateCache();
@@ -1251,10 +1305,13 @@ export class TaskService {
 
         // Notify Worker/Assignee about rejection
         const workerId = task.workingBy || task.assignedTo || task.targetTeamId;
+        this.logger.log(`[REJECT_TASK] Task: ${task.taskNo}, WorkerId: ${workerId}, CurrentUser: ${userId}`);
+
         if (workerId && workerId !== userId) {
+            this.logger.log(`[REJECT_TASK] Sending rejection notification to worker: ${workerId}`);
             await this.notificationService.createNotification(workerId, {
                 title: 'Task Rejected',
-                description: `Your work on task "${task.taskTitle}" has been rejected. Reason: ${remark}`,
+                description: `Your work on task "${task.taskTitle}" (${task.taskNo}) has been rejected. Reason: ${remark}`,
                 type: 'TASK',
                 metadata: {
                     taskId: updated.id,
@@ -1262,6 +1319,9 @@ export class TaskService {
                     status: 'Pending',
                 },
             });
+            this.logger.log(`[REJECT_TASK] ✅ Rejection notification sent to ${workerId}`);
+        } else {
+            this.logger.warn(`[REJECT_TASK] ⚠️ No notification sent. WorkerId: ${workerId}, UserId: ${userId}`);
         }
 
         await this.invalidateCache();

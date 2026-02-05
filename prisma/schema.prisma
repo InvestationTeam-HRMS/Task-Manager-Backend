@@ -339,7 +339,7 @@ model Team {
   workingPendingTasks    PendingTask[]      @relation("PendingTaskWorkingByTeam")
   createdProjects        Project[]          @relation("ProjectCreatedByTeam")
   updatedProjects        Project[]          @relation("ProjectUpdatedByTeam")
-  pushSubscriptions      PushSubscription[]
+  fcmTokens              FcmToken[]
   refreshTokens          RefreshToken[]
   sessions               Session[]
   stickyNotes            StickyNote[]
@@ -578,20 +578,22 @@ model StickyNote {
   @@map("sticky_notes")
 }
 
-model PushSubscription {
+
+
+
+model FcmToken {
   id        String   @id @default(uuid()) @db.Uuid
   teamId    String   @map("team_id") @db.Uuid
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
+  token     String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId])
-  @@map("push_subscriptions")
+  @@index([isActive])
+  @@map("fcm_tokens")
 }
-
-
 
 enum UserStatus {
   Active
