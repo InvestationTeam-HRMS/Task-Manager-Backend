@@ -548,6 +548,7 @@ export class TaskService {
                         taskStatus: TaskStatus.ReviewPending,
                         workingBy: userId,
                         isSelfTask: false,
+                        createdBy: { not: userId }, // Exclude tasks created by the same user
                     });
                     break;
             }

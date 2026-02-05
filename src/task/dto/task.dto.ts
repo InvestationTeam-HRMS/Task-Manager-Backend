@@ -218,3 +218,9 @@ export class UpdateTaskAcceptanceDto {
   @IsNotEmpty()
   status: AcceptanceStatus;
 }
+
+export class SubmitReviewDto {
+  @IsString()
+  @IsNotEmpty()
+  remark: string;
+}
