@@ -871,71 +871,93 @@ export class TaskService {
         userId: string,
         files?: Express.Multer.File[],
     ) {
-        const task = await this.prisma.pendingTask.findUnique({
-            where: { id },
-            include: { creator: true },
-        });
-
-        if (!task) throw new NotFoundException('Task not found');
-
-        // Idempotency check: If already ReviewPending, treat as success
-        if (task.taskStatus === TaskStatus.ReviewPending) {
-            return this.sortTaskDates(task);
-        }
-
-        if (task.taskStatus !== TaskStatus.Pending)
-            throw new BadRequestException(
-                'Only pending tasks can be submitted for review',
-            );
-
-        let document = task.document;
-        if (files && files.length > 0) {
-            const savedUrls: string[] = [];
-            for (const file of files) {
-                const timestamp = Date.now();
-                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
-                const folder = `hrms/tasks/${task.taskNo}`;
-                const result = await this.cloudinaryService.uploadFile(
-                    file,
-                    folder,
-                    customName,
-                );
-                if (result.secure_url) {
-                    savedUrls.push(result.secure_url);
-                }
-            }
-            const existingDocs = task.document ? task.document.split(',') : [];
-            document = [...existingDocs, ...savedUrls].join(',');
-        }
-
-        const updated = await this.prisma.pendingTask.update({
-            where: { id },
-            data: {
-                taskStatus: TaskStatus.ReviewPending,
-                remarkChat: remark,
-                workingBy: userId,
-                reviewedTime: { push: new Date() },
-                document: document,
-            },
-            include: { creator: true, project: true },
-        });
-
-        // Notify Creator
-        if (updated.createdBy) {
-            await this.notificationService.createNotification(updated.createdBy, {
-                title: 'Task Submitted for Review',
-                description: `Task "${updated.taskTitle}" (${updated.taskNo}) has been submitted for review.`,
-                type: 'TASK',
-                metadata: {
-                    taskId: updated.id,
-                    taskNo: updated.taskNo,
-                    status: 'ReviewPending',
-                },
+        try {
+            this.logger.log(`submitForReview called - id: ${id}, userId: ${userId}, remark: ${remark}, filesCount: ${files?.length || 0}`);
+            
+            const task = await this.prisma.pendingTask.findUnique({
+                where: { id },
+                include: { creator: true },
             });
-        }
 
-        await this.invalidateCache();
-        return this.sortTaskDates(updated);
+            if (!task) throw new NotFoundException('Task not found');
+
+            // Idempotency check: If already ReviewPending, treat as success
+            if (task.taskStatus === TaskStatus.ReviewPending) {
+                return this.sortTaskDates(task);
+            }
+
+            if (task.taskStatus !== TaskStatus.Pending)
+                throw new BadRequestException(
+                    'Only pending tasks can be submitted for review',
+                );
+
+            // Validate remark
+            if (!remark || remark.trim() === '') {
+                throw new BadRequestException('Remark is required');
+            }
+
+            let document = task.document;
+            if (files && files.length > 0) {
+                this.logger.log(`Processing ${files.length} files for task ${task.taskNo}`);
+                const savedUrls: string[] = [];
+                for (const file of files) {
+                    try {
+                        const timestamp = Date.now();
+                        // Remove # from task number for Cloudinary compatibility
+                        const sanitizedTaskNo = task.taskNo.replace('#', '');
+                        const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
+                        const folder = `hrms/tasks/${sanitizedTaskNo}`;
+                        this.logger.log(`Uploading file: ${customName}`);
+                        const result = await this.cloudinaryService.uploadFile(
+                            file,
+                            folder,
+                            customName,
+                        );
+                        if (result.secure_url) {
+                            savedUrls.push(result.secure_url);
+                            this.logger.log(`File uploaded successfully: ${result.secure_url}`);
+                        }
+                    } catch (fileError) {
+                        this.logger.error(`File upload failed: ${fileError.message}`, fileError.stack);
+                        throw new BadRequestException(`Failed to upload file: ${file.originalname}`);
+                    }
+                }
+                const existingDocs = task.document ? task.document.split(',') : [];
+                document = [...existingDocs, ...savedUrls].join(',');
+            }
+
+            const updated = await this.prisma.pendingTask.update({
+                where: { id },
+                data: {
+                    taskStatus: TaskStatus.ReviewPending,
+                    remarkChat: remark,
+                    workingBy: userId,
+                    reviewedTime: { push: new Date() },
+                    document: document,
+                },
+                include: { creator: true, project: true },
+            });
+
+            // Notify Creator
+            if (updated.createdBy) {
+                await this.notificationService.createNotification(updated.createdBy, {
+                    title: 'Task Submitted for Review',
+                    description: `Task "${updated.taskTitle}" (${updated.taskNo}) has been submitted for review.`,
+                    type: 'TASK',
+                    metadata: {
+                        taskId: updated.id,
+                        taskNo: updated.taskNo,
+                        status: 'ReviewPending',
+                    },
+                });
+            }
+
+            await this.invalidateCache();
+            return this.sortTaskDates(updated);
+        } catch (error) {
+            this.logger.error(`submitForReview failed: ${error.message}`, error.stack);
+            throw error;
+        }
     }
 
     async finalizeCompletion(
@@ -965,8 +987,10 @@ export class TaskService {
             const savedUrls: string[] = [];
             for (const file of files) {
                 const timestamp = Date.now();
-                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
-                const folder = `hrms/tasks/${task.taskNo}`;
+                // Remove # from task number for Cloudinary compatibility
+                const sanitizedTaskNo = task.taskNo.replace('#', '');
+                const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${sanitizedTaskNo}`;
                 const result = await this.cloudinaryService.uploadFile(
                     file,
                     folder,
@@ -1199,8 +1223,10 @@ export class TaskService {
             const savedUrls: string[] = [];
             for (const file of files) {
                 const timestamp = Date.now();
-                const customName = `${task.taskNo}_${timestamp}_${file.originalname}`;
-                const folder = `hrms/tasks/${task.taskNo}`;
+                // Remove # from task number for Cloudinary compatibility
+                const sanitizedTaskNo = task.taskNo.replace('#', '');
+                const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
+                const folder = `hrms/tasks/${sanitizedTaskNo}`;
                 const result = await this.cloudinaryService.uploadFile(
                     file,
                     folder,

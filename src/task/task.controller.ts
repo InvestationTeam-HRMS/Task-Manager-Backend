@@ -140,13 +140,13 @@ export class TaskController {
   @UseInterceptors(FilesInterceptor('attachments'))
   async submitReview(
     @Param('id') id: string,
-    @Body() dto: { remark: string },
+    @Body('remark') remark: string,
     @GetUser('id') userId: string,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
     const result = await this.taskService.submitForReview(
       id,
-      dto.remark,
+      remark,
       userId,
       files,
     );
