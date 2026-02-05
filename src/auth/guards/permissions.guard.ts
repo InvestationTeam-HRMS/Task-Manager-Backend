@@ -35,6 +35,47 @@ export class PermissionsGuard implements CanActivate {
 
     const userPermissions = user.permissions || {};
 
+    const getModulePermissions = (module: string) => {
+      let modulePermissions = userPermissions[module];
+      if (!modulePermissions) {
+        const key = Object.keys(userPermissions).find(
+          (k) => k.toLowerCase() === module.toLowerCase(),
+        );
+        if (key) {
+          modulePermissions = userPermissions[key];
+        }
+      }
+      return modulePermissions;
+    };
+
+    const hasTeamAccess = () => {
+      const teamPermissions = getModulePermissions('team');
+      if (!teamPermissions) return false;
+      if (teamPermissions === true) return true;
+      if (Array.isArray(teamPermissions)) {
+        const lower = teamPermissions.map((p) => p.toLowerCase());
+        return (
+          lower.includes('create') ||
+          lower.includes('add') ||
+          lower.includes('edit') ||
+          lower.includes('update') ||
+          lower.includes('view') ||
+          lower.includes('read') ||
+          lower.includes('write')
+        );
+      }
+      if (typeof teamPermissions === 'object') {
+        return (
+          teamPermissions.read === true ||
+          teamPermissions.write === true ||
+          teamPermissions.create === true ||
+          teamPermissions.add === true ||
+          teamPermissions.view === true
+        );
+      }
+      return false;
+    };
+
     const hasPermission = requiredPermissions.every((permission) => {
       const [module, action] = permission.split(':');
 
@@ -43,18 +84,13 @@ export class PermissionsGuard implements CanActivate {
         return true;
       }
 
-      // Get module permissions - handle both old array format and new object format
-      let modulePermissions = userPermissions[module];
-      
-      if (!modulePermissions) {
-        // Case-insensitive fallback
-        const key = Object.keys(userPermissions).find(
-          (k) => k.toLowerCase() === module.toLowerCase(),
-        );
-        if (key) {
-          modulePermissions = userPermissions[key];
-        }
+      // Allow role list for team creators/viewers (needed for team assignment)
+      if (permission === 'rbac:view' && hasTeamAccess()) {
+        return true;
       }
+
+      // Get module permissions - handle both old array format and new object format
+      let modulePermissions = getModulePermissions(module);
 
       // If no permissions for this module
       if (!modulePermissions) {
