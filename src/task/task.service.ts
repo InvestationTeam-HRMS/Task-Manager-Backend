@@ -318,6 +318,7 @@ export class TaskService {
                     data: {
                         assignedTo: userId,
                         taskStatus: TaskStatus.Pending, // Ensure it stays pending but assigned
+                        workingBy: null, // Clear previous worker info if re-pooling
                     },
                 });
 
@@ -367,6 +368,19 @@ export class TaskService {
                 }
             }
         } else if (status === 'REJECTED') {
+            // If the user who rejected was the one currently assigned, clear the assignment
+            // so others in the group can accept it.
+            if (acceptance.pendingTask.assignedTo === userId) {
+                await (this.prisma as any).pendingTask.update({
+                    where: { id: acceptance.taskId },
+                    data: {
+                        assignedTo: null,
+                        workingBy: null,
+                        taskStatus: TaskStatus.Pending // Ensure it returns to Pending if it was in Review
+                    },
+                });
+            }
+
             // Notify creator that a group member rejected the task
             await this.notificationService.createNotification(
                 updated.pendingTask.createdBy,
@@ -589,7 +603,15 @@ export class TaskService {
                 case TaskViewMode.MY_PENDING:
                     andArray.push({
                         taskStatus: TaskStatus.Pending,
-                        OR: [{ assignedTo: userId }, { targetTeamId: userId }],
+                        OR: [
+                            { assignedTo: userId },
+                            {
+                                AND: [
+                                    { assignedTo: null },
+                                    { targetTeamId: userId },
+                                ],
+                            },
+                        ],
                     });
                     break;
                 case TaskViewMode.TEAM_PENDING:
@@ -640,15 +662,10 @@ export class TaskService {
                     { workingBy: userId },
                     { targetTeamId: userId },
                     {
-                        targetGroup: {
-                            members: { some: { userId } },
-                            taskAcceptances: {
-                                some: {
-                                    userId,
-                                    status: { not: 'REJECTED' },
-                                },
-                            },
-                        },
+                        AND: [
+                            { assignedTo: null },
+                            { targetGroup: { members: { some: { userId } } } },
+                        ],
                     },
                 ],
             });
