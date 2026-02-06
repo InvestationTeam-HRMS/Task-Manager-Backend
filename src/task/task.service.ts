@@ -632,7 +632,7 @@ export class TaskService {
             }
         }
 
-        if (!isAdmin && userId && !filter.viewMode) {
+        if (!isAdmin && userId && (!filter.viewMode || filter.viewMode === TaskViewMode.ALL)) {
             andArray.push({
                 OR: [
                     { createdBy: userId },

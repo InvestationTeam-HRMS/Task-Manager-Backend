@@ -46,7 +46,7 @@ export class AuthService {
     private notificationService: NotificationService,
     private cloudinaryService: CloudinaryService,
     private autoNumberService: AutoNumberService,
-  ) {}
+  ) { }
 
   async getSetupStatus() {
     const [state, adminRole] = await Promise.all([
@@ -239,7 +239,7 @@ export class AuthService {
     });
 
     if (!identity || identity.deletedAt) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Email not found. Please register first.');
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -247,7 +247,7 @@ export class AuthService {
       identity.password,
     );
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Incorrect password. Please try again.');
     }
 
     if (identity.status !== 'Active') {
