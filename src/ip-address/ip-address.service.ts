@@ -456,7 +456,7 @@ export class IpAddressService {
     );
     const errors: any[] = [];
 
-    const prefix = 'I-';
+    const prefix = process.env.I_NUMBER_PREFIX || 'I-';
     const startNo = await this.autoNumberService.generateIpNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),

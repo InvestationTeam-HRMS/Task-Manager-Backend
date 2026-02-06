@@ -603,7 +603,7 @@ export class TeamService {
 
     // Optimization 2: Pre-hash default password
     const defaultPasswordHash = await bcrypt.hash('Welcome@123', 10);
-    const prefix = 'T-';
+    const prefix = process.env.TEAM_NUMBER_PREFIX || 'T-';
     const startNo = await this.autoNumberService.generateTeamNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),

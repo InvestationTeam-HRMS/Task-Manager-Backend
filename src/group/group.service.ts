@@ -25,6 +25,7 @@ import {
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { PaginatedResponse } from '../common/dto/api-response.dto';
 import { GroupStatus, Prisma } from '@prisma/client';
+import * as fs from 'fs';
 
 import { buildMultiValueFilter } from '../common/utils/prisma-helper';
 
@@ -670,7 +671,7 @@ export class GroupService {
       }
     }
 
-    const prefix = 'G-';
+    const prefix = process.env.G_NUMBER_PREFIX || 'G-';
     const startNo = await this.autoNumberService.generateGroupNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
@@ -832,6 +833,19 @@ export class GroupService {
       columnMapping: {
         groupNo: ['groupno', 'no', 'code'],
         groupName: ['groupname', 'name'],
+        clientGroupName: ['clientgroup', 'client group', 'clientgroupname'],
+        companyName: [
+          'company',
+          'companyname',
+          'clientcompany',
+          'clientcompanyname',
+        ],
+        locationName: ['location', 'locationname'],
+        subLocationName: [
+          'sublocation',
+          'sub location',
+          'sublocationname',
+        ],
         status: ['status', 'state', 'active'],
         remark: ['remark', 'remarks', 'notes'],
       },
@@ -849,20 +863,157 @@ export class GroupService {
         requiredColumns,
       );
 
+    if (data.length === 0) {
+      throw new BadRequestException(
+        'No valid data found to import. Please check file format and column names.',
+      );
+    }
+
+    const { toTitleCase } = await import('../common/utils/string-helper');
+
+    const splitNames = (value: any): string[] => {
+      if (value === null || value === undefined) return [];
+      return String(value)
+        .split(/[,\;|]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    };
+
+    const normalizeName = (value: string) => toTitleCase(value.trim());
+
+    const clientGroupNames = new Set<string>();
+    const companyNames = new Set<string>();
+    const locationNames = new Set<string>();
+    const subLocationNames = new Set<string>();
+
+    data.forEach((row) => {
+      splitNames(row.clientGroupName).forEach((n) =>
+        clientGroupNames.add(normalizeName(n)),
+      );
+      splitNames(row.companyName).forEach((n) =>
+        companyNames.add(normalizeName(n)),
+      );
+      splitNames(row.locationName).forEach((n) =>
+        locationNames.add(normalizeName(n)),
+      );
+      splitNames(row.subLocationName).forEach((n) =>
+        subLocationNames.add(normalizeName(n)),
+      );
+    });
+
+    const [clientGroups, companies, locations, subLocations] =
+      await Promise.all([
+        clientGroupNames.size > 0
+          ? this.prisma.clientGroup.findMany({
+              where: { groupName: { in: Array.from(clientGroupNames) } },
+              select: { id: true, groupName: true },
+            })
+          : [],
+        companyNames.size > 0
+          ? this.prisma.clientCompany.findMany({
+              where: { companyName: { in: Array.from(companyNames) } },
+              select: { id: true, companyName: true },
+            })
+          : [],
+        locationNames.size > 0
+          ? this.prisma.clientLocation.findMany({
+              where: { locationName: { in: Array.from(locationNames) } },
+              select: { id: true, locationName: true },
+            })
+          : [],
+        subLocationNames.size > 0
+          ? this.prisma.subLocation.findMany({
+              where: { subLocationName: { in: Array.from(subLocationNames) } },
+              select: { id: true, subLocationName: true },
+            })
+          : [],
+      ]);
+
+    const clientGroupMap = new Map<string, string>(
+      clientGroups.map(
+        (cg) => [cg.groupName.toLowerCase(), cg.id] as [string, string],
+      ),
+    );
+    const companyMap = new Map<string, string>(
+      companies.map(
+        (c) => [c.companyName.toLowerCase(), c.id] as [string, string],
+      ),
+    );
+    const locationMap = new Map<string, string>(
+      locations.map(
+        (l) => [l.locationName.toLowerCase(), l.id] as [string, string],
+      ),
+    );
+    const subLocationMap = new Map<string, string>(
+      subLocations.map(
+        (sl) => [sl.subLocationName.toLowerCase(), sl.id] as [string, string],
+      ),
+    );
+
+    const resolveIds = (
+      value: any,
+      map: Map<string, string>,
+      label: string,
+    ) => {
+      const names = splitNames(value).map(normalizeName);
+      if (names.length === 0) return [] as string[];
+      const ids: string[] = [];
+      const missing: string[] = [];
+      for (const name of names) {
+        const id = map.get(name.toLowerCase());
+        if (!id) {
+          missing.push(name);
+        } else {
+          ids.push(id);
+        }
+      }
+      if (missing.length > 0) {
+        throw new Error(`${label} not found: ${missing.join(', ')}`);
+      }
+      return Array.from(new Set(ids));
+    };
+
     const processedData: Array<CreateGroupDto & { _rowNumber?: number }> = [];
     const processingErrors: any[] = [];
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       try {
+        const clientGroupIds = resolveIds(
+          row.clientGroupName,
+          clientGroupMap,
+          'Client Group',
+        );
+        const companyIds = resolveIds(
+          row.companyName,
+          companyMap,
+          'Company',
+        );
+        const locationIds = resolveIds(
+          row.locationName,
+          locationMap,
+          'Location',
+        );
+        const subLocationIds = resolveIds(
+          row.subLocationName,
+          subLocationMap,
+          'Sub Location',
+        );
+
         processedData.push({
-          ...row,
+          groupNo: row.groupNo,
+          groupName: row.groupName,
+          clientGroupIds,
+          companyIds,
+          locationIds,
+          subLocationIds,
           status: row.status
-            ? this.excelUploadService.validateEnum(
+            ? (this.excelUploadService.validateEnum(
                 row.status,
                 GroupStatus,
                 'Status',
-              )
+              ) as GroupStatus)
             : GroupStatus.Active,
+          remark: row.remark,
           _rowNumber: i + 2,
         });
       } catch (err) {
@@ -885,6 +1036,127 @@ export class GroupService {
   ) {
     const { columnMapping, requiredColumns } = this.getUploadConfig();
 
+    const { toTitleCase } = await import('../common/utils/string-helper');
+
+    const splitNames = (value: any): string[] => {
+      if (value === null || value === undefined) return [];
+      return String(value)
+        .split(/[,\;|]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    };
+
+    const normalizeName = (value: string) => toTitleCase(value.trim());
+
+    const clientGroupNames = new Set<string>();
+    const companyNames = new Set<string>();
+    const locationNames = new Set<string>();
+    const subLocationNames = new Set<string>();
+
+    try {
+      await this.excelUploadService.streamFileInBatches<any>(
+        file,
+        columnMapping,
+        requiredColumns,
+        2000,
+        async (batch) => {
+          for (const item of batch) {
+            const row = item.data;
+            splitNames(row.clientGroupName).forEach((n) =>
+              clientGroupNames.add(normalizeName(n)),
+            );
+            splitNames(row.companyName).forEach((n) =>
+              companyNames.add(normalizeName(n)),
+            );
+            splitNames(row.locationName).forEach((n) =>
+              locationNames.add(normalizeName(n)),
+            );
+            splitNames(row.subLocationName).forEach((n) =>
+              subLocationNames.add(normalizeName(n)),
+            );
+          }
+        },
+        { cleanup: false },
+      );
+    } catch (error) {
+      if (file?.path) {
+        await fs.promises.unlink(file.path).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    const [clientGroups, companies, locations, subLocations] =
+      await Promise.all([
+        clientGroupNames.size > 0
+          ? this.prisma.clientGroup.findMany({
+              where: { groupName: { in: Array.from(clientGroupNames) } },
+              select: { id: true, groupName: true },
+            })
+          : [],
+        companyNames.size > 0
+          ? this.prisma.clientCompany.findMany({
+              where: { companyName: { in: Array.from(companyNames) } },
+              select: { id: true, companyName: true },
+            })
+          : [],
+        locationNames.size > 0
+          ? this.prisma.clientLocation.findMany({
+              where: { locationName: { in: Array.from(locationNames) } },
+              select: { id: true, locationName: true },
+            })
+          : [],
+        subLocationNames.size > 0
+          ? this.prisma.subLocation.findMany({
+              where: { subLocationName: { in: Array.from(subLocationNames) } },
+              select: { id: true, subLocationName: true },
+            })
+          : [],
+      ]);
+
+    const clientGroupMap = new Map<string, string>(
+      clientGroups.map(
+        (cg) => [cg.groupName.toLowerCase(), cg.id] as [string, string],
+      ),
+    );
+    const companyMap = new Map<string, string>(
+      companies.map(
+        (c) => [c.companyName.toLowerCase(), c.id] as [string, string],
+      ),
+    );
+    const locationMap = new Map<string, string>(
+      locations.map(
+        (l) => [l.locationName.toLowerCase(), l.id] as [string, string],
+      ),
+    );
+    const subLocationMap = new Map<string, string>(
+      subLocations.map(
+        (sl) => [sl.subLocationName.toLowerCase(), sl.id] as [string, string],
+      ),
+    );
+
+    const resolveIds = (
+      value: any,
+      map: Map<string, string>,
+      label: string,
+    ) => {
+      const names = splitNames(value).map(normalizeName);
+      if (names.length === 0) return [] as string[];
+      const ids: string[] = [];
+      const missing: string[] = [];
+      for (const name of names) {
+        const id = map.get(name.toLowerCase());
+        if (!id) {
+          missing.push(name);
+        } else {
+          ids.push(id);
+        }
+      }
+      if (missing.length > 0) {
+        throw new Error(`${label} not found: ${missing.join(', ')}`);
+      }
+      return Array.from(new Set(ids));
+    };
+
     let totalInserted = 0;
     let totalFailed = 0;
     const errors: any[] = [];
@@ -901,15 +1173,42 @@ export class GroupService {
           for (const item of batch) {
             const row = item.data;
             try {
+              const clientGroupIds = resolveIds(
+                row.clientGroupName,
+                clientGroupMap,
+                'Client Group',
+              );
+              const companyIds = resolveIds(
+                row.companyName,
+                companyMap,
+                'Company',
+              );
+              const locationIds = resolveIds(
+                row.locationName,
+                locationMap,
+                'Location',
+              );
+              const subLocationIds = resolveIds(
+                row.subLocationName,
+                subLocationMap,
+                'Sub Location',
+              );
+
               toInsert.push({
-                ...row,
+                groupNo: row.groupNo,
+                groupName: row.groupName,
+                clientGroupIds,
+                companyIds,
+                locationIds,
+                subLocationIds,
                 status: row.status
-                  ? this.excelUploadService.validateEnum(
+                  ? (this.excelUploadService.validateEnum(
                       row.status,
                       GroupStatus,
                       'Status',
-                    )
+                    ) as GroupStatus)
                   : GroupStatus.Active,
+                remark: row.remark,
                 _rowNumber: item.rowNumber,
               });
             } catch (err) {

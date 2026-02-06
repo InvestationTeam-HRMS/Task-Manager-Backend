@@ -567,7 +567,7 @@ export class ProjectService {
 
     const errors: any[] = [];
 
-    const prefix = 'P-';
+    const prefix = process.env.P_NUMBER_PREFIX || 'P-';
     const startNo = await this.autoNumberService.generateProjectNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
@@ -786,7 +786,14 @@ export class ProjectService {
       columnMapping: {
         projectNo: ['projectno', 'projectnumber'],
         projectName: ['projectname', 'name'],
-        subLocationName: ['sublocationname', 'clientsublocationname'],
+        subLocationName: [
+          'sublocation',
+          'sub location',
+          'sub_location',
+          'sub-location',
+          'sublocationname',
+          'clientsublocationname',
+        ],
         deadline: ['deadline', 'duedate', 'enddate'],
         priority: ['priority'],
         status: ['status'],

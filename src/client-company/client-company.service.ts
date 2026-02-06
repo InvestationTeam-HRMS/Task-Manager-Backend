@@ -508,7 +508,7 @@ export class ClientCompanyService {
 
     const errors: any[] = [];
 
-    const prefix = 'CC-';
+    const prefix = process.env.CC_NUMBER_PREFIX || 'CC-';
     const startNo = await this.autoNumberService.generateCompanyNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),

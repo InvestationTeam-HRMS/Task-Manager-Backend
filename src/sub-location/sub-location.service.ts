@@ -518,12 +518,12 @@ export class SubLocationService {
 
     const errors: any[] = [];
 
-    const prefix = 'SL-';
+    const prefix = process.env.CS_NUMBER_PREFIX || 'CS-';
     const startNo = await this.autoNumberService.generateSubLocationNo();
-    let currentNum =
-      parseInt(
-        startNo.replace('CSL-', '').replace(new RegExp(`^${prefix}`, 'i'), ''),
-      ) || 10001;
+    let currentNum = parseInt(
+      startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
+    );
+    if (isNaN(currentNum)) currentNum = 11001;
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];

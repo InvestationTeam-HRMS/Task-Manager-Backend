@@ -583,7 +583,7 @@ export class ClientLocationService {
 
     const errors: any[] = [];
 
-    const prefix = 'CL-';
+    const prefix = process.env.CL_NUMBER_PREFIX || 'CL-';
     const startNo = await this.autoNumberService.generateLocationNo();
     let currentNum = parseInt(
       startNo.replace(new RegExp(`^${prefix}`, 'i'), ''),
