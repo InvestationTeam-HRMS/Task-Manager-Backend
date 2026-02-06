@@ -13,7 +13,14 @@ export class ExcelDownloadService {
   ) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(sheetName);
-    const isLargeDataset = data.length > 5000;
+    const safeString = (value: any) => {
+      if (value === null || value === undefined) return '-';
+      if (value instanceof Date) return value.toLocaleDateString();
+      if (Array.isArray(value)) return value.join(', ');
+      if (typeof value === 'object') return JSON.stringify(value);
+      const str = value.toString();
+      return str.trim() === '' ? '-' : str;
+    };
 
     // 1. Set Columns
     worksheet.columns = columns.map((col) => ({
@@ -23,7 +30,14 @@ export class ExcelDownloadService {
     }));
 
     // 2. Add Data
-    worksheet.addRows(data);
+    const normalizedData = data.map((row) => {
+      const normalizedRow: Record<string, any> = {};
+      columns.forEach((col) => {
+        normalizedRow[col.key] = safeString(row?.[col.key]);
+      });
+      return normalizedRow;
+    });
+    worksheet.addRows(normalizedData);
 
     // 3. Always apply consistent header styling (cheap, even for large datasets)
     const headerRow = worksheet.getRow(1);
@@ -54,48 +68,33 @@ export class ExcelDownloadService {
       to: { row: 1, column: columns.length },
     };
 
-    // 5. Data formatting - SKIP expensive formatting for very large datasets
-    if (!isLargeDataset) {
-      worksheet.eachRow((row, rowNumber) => {
-        // Skip header row (already styled)
-        if (rowNumber === 1) return;
-        row.height = 20;
-        row.eachCell({ includeEmpty: true }, (cell) => {
-          if (
-            cell.value === undefined ||
-            cell.value === null ||
-            cell.value === ''
-          ) {
-            cell.value = '-';
-          }
-          cell.alignment = {
-            vertical: 'middle',
-            horizontal: 'left',
-            indent: 1,
-          };
-        });
+    // 5. Data formatting (always) - align and keep values under correct columns
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.height = 20;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'left',
+          indent: 1,
+        };
       });
+    });
 
-      // 6. Auto Column Width (small datasets only)
-      worksheet.columns.forEach((column: any) => {
-        let maxLength = 0;
-        const headerText = column.header ? column.header.toString() : '';
-        maxLength = headerText.length;
-        column.eachCell({ includeEmpty: true }, (cell) => {
-          const columnLength = cell.value ? cell.value.toString().length : 0;
-          if (columnLength > maxLength) {
-            maxLength = columnLength;
-          }
-        });
-        column.width = Math.min(Math.max(maxLength + 4, 12), 50);
+    // 6. Auto Column Width (based on actual data)
+    const maxLengths = columns.map((col) => (col.header || '').toString().length);
+    normalizedData.forEach((row) => {
+      columns.forEach((col, idx) => {
+        const value = safeString(row[col.key]);
+        const len = value.length;
+        if (len > maxLengths[idx]) {
+          maxLengths[idx] = len;
+        }
       });
-    } else {
-      // Minimal width based on header text for large datasets (fast, consistent look)
-      worksheet.columns.forEach((column: any) => {
-        const headerText = column.header ? column.header.toString() : '';
-        column.width = Math.min(Math.max(headerText.length + 4, 12), 30);
-      });
-    }
+    });
+    worksheet.columns.forEach((column: any, idx: number) => {
+      column.width = Math.min(Math.max(maxLengths[idx] + 4, 12), 50);
+    });
 
     // 7. Response
     res.setHeader(

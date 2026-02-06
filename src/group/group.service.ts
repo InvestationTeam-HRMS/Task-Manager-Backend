@@ -644,6 +644,11 @@ export class GroupService {
     const errors: any[] = [];
     const dataToInsert: any[] = [];
     const metaToInsert: Array<{ rowNumber?: number; groupNo: string }> = [];
+    const memberAssignments: Array<{
+      rowNumber?: number;
+      groupNo: string;
+      teamMemberIds: string[];
+    }> = [];
 
     // Optimization 1: Batch check for group name duplicates
     const providedNames = dto.groups.map((g) => toTitleCase(g.groupName));
@@ -701,6 +706,9 @@ export class GroupService {
 
         // Extract teamMemberIds from dto (not a Prisma field)
         const { teamMemberIds, ...groupData } = payload;
+        const normalizedTeamMemberIds = Array.isArray(teamMemberIds)
+          ? Array.from(new Set(teamMemberIds.filter(Boolean)))
+          : [];
 
         dataToInsert.push({
           ...groupData,
@@ -713,6 +721,13 @@ export class GroupService {
           rowNumber: _rowNumber,
           groupNo,
         });
+        if (normalizedTeamMemberIds.length > 0) {
+          memberAssignments.push({
+            rowNumber: _rowNumber,
+            groupNo,
+            teamMemberIds: normalizedTeamMemberIds,
+          });
+        }
       } catch (err) {
         errors.push({ groupName: groupDto.groupName, error: err.message });
       }
@@ -753,6 +768,7 @@ export class GroupService {
     }
 
     // Optimization 3: Bulk insert
+    const uploadStartedAt = new Date();
     let totalInserted = 0;
     const batchChunks = this.excelUploadService.chunk(dataToInsert, 1000);
     for (const chunk of batchChunks) {
@@ -766,6 +782,61 @@ export class GroupService {
         errors.push({
           error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
         });
+      }
+    }
+
+    if (memberAssignments.length > 0) {
+      const groupNosForMembers = memberAssignments
+        .map((m) => m.groupNo)
+        .filter(Boolean);
+
+      if (groupNosForMembers.length > 0) {
+        const createdGroups = await this.prisma.group.findMany({
+          where: {
+            groupNo: { in: groupNosForMembers as string[] },
+            createdBy: userId,
+            createdAt: { gte: uploadStartedAt },
+          },
+          select: { id: true, groupNo: true },
+        });
+        const groupIdByNo = new Map<string, string>(
+          createdGroups.map(
+            (g) => [g.groupNo, g.id] as [string, string],
+          ),
+        );
+
+        const groupMembersToInsert: Array<{
+          groupId: string;
+          userId: string;
+          role: string;
+        }> = [];
+
+        for (const assignment of memberAssignments) {
+          const groupId = groupIdByNo.get(assignment.groupNo);
+          if (!groupId) {
+            errors.push({
+              row: assignment.rowNumber,
+              groupNo: assignment.groupNo,
+              error:
+                'Group not created (possible duplicate). Team members skipped.',
+            });
+            continue;
+          }
+          for (const memberId of assignment.teamMemberIds) {
+            groupMembersToInsert.push({
+              groupId,
+              userId: memberId,
+              role: 'MEMBER',
+            });
+          }
+        }
+
+        if (groupMembersToInsert.length > 0) {
+          await this.prisma.groupMember.createMany({
+            data: groupMembersToInsert,
+            skipDuplicates: true,
+          });
+        }
       }
     }
 
@@ -846,6 +917,18 @@ export class GroupService {
           'sub location',
           'sublocationname',
         ],
+        teamMember: [
+          'teammember',
+          'team member',
+          'teammembers',
+          'team members',
+          'teammembername',
+          'team member name',
+          'member',
+          'members',
+          'teamemail',
+          'team email',
+        ],
         status: ['status', 'state', 'active'],
         remark: ['remark', 'remarks', 'notes'],
       },
@@ -885,6 +968,7 @@ export class GroupService {
     const companyNames = new Set<string>();
     const locationNames = new Set<string>();
     const subLocationNames = new Set<string>();
+    const teamMemberTokens = new Set<string>();
 
     data.forEach((row) => {
       splitNames(row.clientGroupName).forEach((n) =>
@@ -899,9 +983,12 @@ export class GroupService {
       splitNames(row.subLocationName).forEach((n) =>
         subLocationNames.add(normalizeName(n)),
       );
+      splitNames(row.teamMember).forEach((n) =>
+        teamMemberTokens.add(n.trim()),
+      );
     });
 
-    const [clientGroups, companies, locations, subLocations] =
+    const [clientGroups, companies, locations, subLocations, teamMembers] =
       await Promise.all([
         clientGroupNames.size > 0
           ? this.prisma.clientGroup.findMany({
@@ -927,6 +1014,21 @@ export class GroupService {
               select: { id: true, subLocationName: true },
             })
           : [],
+        teamMemberTokens.size > 0
+          ? this.prisma.team.findMany({
+              where: {
+                OR: Array.from(teamMemberTokens).flatMap((token) => [
+                  { email: { equals: token, mode: 'insensitive' } },
+                  { teamName: { equals: token, mode: 'insensitive' } },
+                ]),
+              },
+              select: { id: true, email: true, teamName: true },
+            })
+          : ([] as Array<{
+              id: string;
+              email: string | null;
+              teamName: string | null;
+            }>),
       ]);
 
     const clientGroupMap = new Map<string, string>(
@@ -949,6 +1051,22 @@ export class GroupService {
         (sl) => [sl.subLocationName.toLowerCase(), sl.id] as [string, string],
       ),
     );
+    const teamEmailMap = new Map<string, string>(
+      teamMembers
+        .filter(
+          (t): t is { id: string; email: string; teamName: string | null } =>
+            typeof t.email === 'string' && t.email.trim().length > 0,
+        )
+        .map((t) => [t.email!.toLowerCase(), t.id] as [string, string]),
+    );
+    const teamNameMap = new Map<string, string[]>();
+    teamMembers.forEach((t) => {
+      if (!t.teamName) return;
+      const key = t.teamName.toLowerCase();
+      const list = teamNameMap.get(key) || [];
+      list.push(t.id);
+      teamNameMap.set(key, list);
+    });
 
     const resolveIds = (
       value: any,
@@ -969,6 +1087,41 @@ export class GroupService {
       }
       if (missing.length > 0) {
         throw new Error(`${label} not found: ${missing.join(', ')}`);
+      }
+      return Array.from(new Set(ids));
+    };
+    const resolveTeamMemberIds = (value: any) => {
+      const tokens = splitNames(value);
+      if (tokens.length === 0) return [] as string[];
+      const ids: string[] = [];
+      const missing: string[] = [];
+      const ambiguous: string[] = [];
+      for (const token of tokens) {
+        const emailKey = token.toLowerCase();
+        const emailMatch = teamEmailMap.get(emailKey);
+        if (emailMatch) {
+          ids.push(emailMatch);
+          continue;
+        }
+        const nameKey = token.toLowerCase();
+        const nameMatches = teamNameMap.get(nameKey);
+        if (!nameMatches) {
+          missing.push(token);
+          continue;
+        }
+        if (nameMatches.length > 1) {
+          ambiguous.push(token);
+          continue;
+        }
+        ids.push(nameMatches[0]);
+      }
+      if (ambiguous.length > 0) {
+        throw new Error(
+          `Team Member name is ambiguous: ${ambiguous.join(', ')}. Use email instead.`,
+        );
+      }
+      if (missing.length > 0) {
+        throw new Error(`Team Member not found: ${missing.join(', ')}`);
       }
       return Array.from(new Set(ids));
     };
@@ -998,6 +1151,7 @@ export class GroupService {
           subLocationMap,
           'Sub Location',
         );
+        const teamMemberIds = resolveTeamMemberIds(row.teamMember);
 
         processedData.push({
           groupNo: row.groupNo,
@@ -1006,6 +1160,7 @@ export class GroupService {
           companyIds,
           locationIds,
           subLocationIds,
+          teamMemberIds,
           status: row.status
             ? (this.excelUploadService.validateEnum(
                 row.status,
@@ -1052,6 +1207,7 @@ export class GroupService {
     const companyNames = new Set<string>();
     const locationNames = new Set<string>();
     const subLocationNames = new Set<string>();
+    const teamMemberTokens = new Set<string>();
 
     try {
       await this.excelUploadService.streamFileInBatches<any>(
@@ -1074,6 +1230,9 @@ export class GroupService {
             splitNames(row.subLocationName).forEach((n) =>
               subLocationNames.add(normalizeName(n)),
             );
+            splitNames(row.teamMember).forEach((n) =>
+              teamMemberTokens.add(n.trim()),
+            );
           }
         },
         { cleanup: false },
@@ -1085,7 +1244,7 @@ export class GroupService {
       throw error;
     }
 
-    const [clientGroups, companies, locations, subLocations] =
+    const [clientGroups, companies, locations, subLocations, teamMembers] =
       await Promise.all([
         clientGroupNames.size > 0
           ? this.prisma.clientGroup.findMany({
@@ -1111,6 +1270,21 @@ export class GroupService {
               select: { id: true, subLocationName: true },
             })
           : [],
+        teamMemberTokens.size > 0
+          ? this.prisma.team.findMany({
+              where: {
+                OR: Array.from(teamMemberTokens).flatMap((token) => [
+                  { email: { equals: token, mode: 'insensitive' } },
+                  { teamName: { equals: token, mode: 'insensitive' } },
+                ]),
+              },
+              select: { id: true, email: true, teamName: true },
+            })
+          : ([] as Array<{
+              id: string;
+              email: string | null;
+              teamName: string | null;
+            }>),
       ]);
 
     const clientGroupMap = new Map<string, string>(
@@ -1133,6 +1307,22 @@ export class GroupService {
         (sl) => [sl.subLocationName.toLowerCase(), sl.id] as [string, string],
       ),
     );
+    const teamEmailMap = new Map<string, string>(
+      teamMembers
+        .filter(
+          (t): t is { id: string; email: string; teamName: string | null } =>
+            typeof t.email === 'string' && t.email.trim().length > 0,
+        )
+        .map((t) => [t.email!.toLowerCase(), t.id] as [string, string]),
+    );
+    const teamNameMap = new Map<string, string[]>();
+    teamMembers.forEach((t) => {
+      if (!t.teamName) return;
+      const key = t.teamName.toLowerCase();
+      const list = teamNameMap.get(key) || [];
+      list.push(t.id);
+      teamNameMap.set(key, list);
+    });
 
     const resolveIds = (
       value: any,
@@ -1153,6 +1343,41 @@ export class GroupService {
       }
       if (missing.length > 0) {
         throw new Error(`${label} not found: ${missing.join(', ')}`);
+      }
+      return Array.from(new Set(ids));
+    };
+    const resolveTeamMemberIds = (value: any) => {
+      const tokens = splitNames(value);
+      if (tokens.length === 0) return [] as string[];
+      const ids: string[] = [];
+      const missing: string[] = [];
+      const ambiguous: string[] = [];
+      for (const token of tokens) {
+        const emailKey = token.toLowerCase();
+        const emailMatch = teamEmailMap.get(emailKey);
+        if (emailMatch) {
+          ids.push(emailMatch);
+          continue;
+        }
+        const nameKey = token.toLowerCase();
+        const nameMatches = teamNameMap.get(nameKey);
+        if (!nameMatches) {
+          missing.push(token);
+          continue;
+        }
+        if (nameMatches.length > 1) {
+          ambiguous.push(token);
+          continue;
+        }
+        ids.push(nameMatches[0]);
+      }
+      if (ambiguous.length > 0) {
+        throw new Error(
+          `Team Member name is ambiguous: ${ambiguous.join(', ')}. Use email instead.`,
+        );
+      }
+      if (missing.length > 0) {
+        throw new Error(`Team Member not found: ${missing.join(', ')}`);
       }
       return Array.from(new Set(ids));
     };
@@ -1193,6 +1418,7 @@ export class GroupService {
                 subLocationMap,
                 'Sub Location',
               );
+              const teamMemberIds = resolveTeamMemberIds(row.teamMember);
 
               toInsert.push({
                 groupNo: row.groupNo,
@@ -1201,6 +1427,7 @@ export class GroupService {
                 companyIds,
                 locationIds,
                 subLocationIds,
+                teamMemberIds,
                 status: row.status
                   ? (this.excelUploadService.validateEnum(
                       row.status,
