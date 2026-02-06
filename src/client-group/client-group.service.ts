@@ -122,7 +122,13 @@ export class ClientGroupService {
       // These fields don't exist in ClientGroup, fallback to default
       orderBy = { createdAt: sortOrder };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on ClientGroup model, otherwise fallback to createdAt
+      const validFields = ['id', 'groupNo', 'groupName', 'groupCode', 'country', 'status', 'remark', 'createdAt', 'updatedAt'];
+      if (validFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     if (filter?.status) {

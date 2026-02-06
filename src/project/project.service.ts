@@ -108,16 +108,28 @@ export class ProjectService {
 
     // Map frontend sort fields to Prisma orderBy
     let orderBy: any;
-    if (sortBy === 'groupNo' || sortBy === 'groupName') {
-      orderBy = { clientGroup: { groupNo: sortOrder } };
-    } else if (sortBy === 'companyName') {
+    if (sortBy === 'groupNo' || sortBy === 'groupName' || sortBy === 'clientGroupName') {
+      orderBy = { clientGroup: { groupName: sortOrder } };
+    } else if (sortBy === 'companyName' || sortBy === 'companyNo') {
       orderBy = { company: { companyName: sortOrder } };
-    } else if (sortBy === 'locationName') {
+    } else if (sortBy === 'locationName' || sortBy === 'locationNo') {
       orderBy = { location: { locationName: sortOrder } };
-    } else if (sortBy === 'subLocationName') {
+    } else if (sortBy === 'subLocationName' || sortBy === 'subLocationNo') {
       orderBy = { subLocation: { subLocationName: sortOrder } };
+    } else if (sortBy === 'address') {
+      orderBy = { subLocation: { address: sortOrder } };
+    } else if (sortBy === 'pendingTasksCount') {
+      orderBy = { pendingTasks: { _count: sortOrder } };
+    } else if (sortBy === 'completedTasksCount') {
+      orderBy = { completedTasks: { _count: sortOrder } };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on Project model, otherwise fallback to createdAt
+      const validProjectFields = ['id', 'projectNo', 'projectName', 'clientGroupId', 'companyId', 'locationId', 'subLocationId', 'deadline', 'priority', 'status', 'remark', 'createdAt', 'updatedAt'];
+      if (validProjectFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     // Handle Status Filter

@@ -699,12 +699,33 @@ export class TaskService {
         let data: any[] = [];
         let total = 0;
 
-        // Determine effective sortBy field (handle simple mappings if needed)
-        let effectiveSortBy = sortBy;
-        if (sortBy === 'completeTime' && isStrictlyCompleted)
-            effectiveSortBy = 'completedAt';
-
-        const order = { [effectiveSortBy]: sortOrder };
+        // Map frontend sort fields to Prisma orderBy
+        let order: any;
+        if (sortBy === 'projectName' || sortBy === 'projectNo') {
+            order = { project: { [sortBy === 'projectName' ? 'projectName' : 'projectNo']: sortOrder } };
+        } else if (sortBy === 'assigneeName' || sortBy === 'assignee') {
+            order = { assignee: { teamName: sortOrder } };
+        } else if (sortBy === 'creatorName' || sortBy === 'creator') {
+            order = { creator: { teamName: sortOrder } };
+        } else if (sortBy === 'targetTeamName' || sortBy === 'targetTeam') {
+            order = { targetTeam: { teamName: sortOrder } };
+        } else if (sortBy === 'targetGroupName' || sortBy === 'targetGroup') {
+            order = { targetGroup: { groupName: sortOrder } };
+        } else if (sortBy === 'workerName' || sortBy === 'workingBy') {
+            order = { worker: { teamName: sortOrder } };
+        } else if (sortBy === 'completeTime' && isStrictlyCompleted) {
+            order = { completedAt: sortOrder };
+        } else if (sortBy === 'createdTime') {
+            order = { createdTime: sortOrder };
+        } else {
+            // Check if field exists on the model, if not, fallback
+            const validFields = ['taskNo', 'taskTitle', 'deadline', 'priority', 'taskStatus', 'id', 'createdAt', 'updatedAt'];
+            if (validFields.includes(sortBy)) {
+                order = { [sortBy]: sortOrder };
+            } else {
+                order = { createdTime: sortOrder };
+            }
+        }
 
         if (isMixedView) {
             // MERGE STRATEGY: Fetch from both
@@ -733,8 +754,8 @@ export class TaskService {
 
             // Sort combined in memory using the same criteria
             combined.sort((a, b) => {
-                const valA = a[effectiveSortBy];
-                const valB = b[effectiveSortBy];
+                const valA = a[sortBy];
+                const valB = b[sortBy];
 
                 if (valA === valB) return 0;
                 if (valA == null) return 1;

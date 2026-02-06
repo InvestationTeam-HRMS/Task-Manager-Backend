@@ -113,13 +113,19 @@ export class SubLocationService {
     // Map frontend sort fields to Prisma orderBy
     let orderBy: any;
     if (sortBy === 'groupNo' || sortBy === 'groupName') {
-      orderBy = { clientGroup: { groupNo: sortOrder } };
+      orderBy = { clientGroup: { groupName: sortOrder } };
     } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
-      orderBy = { company: { companyNo: sortOrder } };
+      orderBy = { company: { companyName: sortOrder } };
     } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
-      orderBy = { location: { locationNo: sortOrder } };
+      orderBy = { location: { locationName: sortOrder } };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on SubLocation model, otherwise fallback to createdAt
+      const validFields = ['id', 'subLocationNo', 'subLocationName', 'subLocationCode', 'clientGroupId', 'companyId', 'locationId', 'address', 'status', 'remark', 'createdAt', 'updatedAt'];
+      if (validFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     // Handle Status Filter (handle possible multi-select from UI)

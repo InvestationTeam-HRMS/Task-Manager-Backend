@@ -111,10 +111,22 @@ export class GroupService {
 
     // Map frontend sort fields to Prisma orderBy
     let orderBy: any;
-    if (sortBy === 'clientGroupName' || sortBy === 'companyName' || sortBy === 'locationName' || sortBy === 'subLocationName' || sortBy === 'teamMemberEmails') {
+    if (sortBy === 'pendingTasksCount') {
+      orderBy = { pendingTasks: { _count: sortOrder } };
+    } else if (sortBy === 'completedTasksCount') {
+      orderBy = { completedTasks: { _count: sortOrder } };
+    } else if (sortBy === 'memberCount') {
+      orderBy = { members: { _count: sortOrder } };
+    } else if (sortBy === 'clientGroupName' || sortBy === 'companyName' || sortBy === 'locationName' || sortBy === 'subLocationName' || sortBy === 'teamMemberEmails') {
       orderBy = { createdAt: sortOrder };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on Group model, otherwise fallback to createdAt
+      const validFields = ['id', 'groupNo', 'groupName', 'status', 'remark', 'createdAt', 'updatedAt'];
+      if (validFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     // Handle Status Filter

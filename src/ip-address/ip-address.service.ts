@@ -113,15 +113,21 @@ export class IpAddressService {
     // Map frontend sort fields to Prisma orderBy
     let orderBy: any;
     if (sortBy === 'groupNo' || sortBy === 'groupName') {
-      orderBy = { clientGroup: { groupNo: sortOrder } };
+      orderBy = { clientGroup: { groupName: sortOrder } };
     } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
-      orderBy = { company: { companyNo: sortOrder } };
+      orderBy = { company: { companyName: sortOrder } };
     } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
-      orderBy = { location: { locationNo: sortOrder } };
+      orderBy = { location: { locationName: sortOrder } };
     } else if (sortBy === 'subLocationNo' || sortBy === 'subLocationName') {
-      orderBy = { subLocation: { subLocationNo: sortOrder } };
+      orderBy = { subLocation: { subLocationName: sortOrder } };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on IpAddress model, otherwise fallback to createdAt
+      const validFields = ['id', 'ipAddress', 'clientGroupId', 'companyId', 'locationId', 'subLocationId', 'status', 'remark', 'createdAt', 'updatedAt'];
+      if (validFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     // Handle Status Filter

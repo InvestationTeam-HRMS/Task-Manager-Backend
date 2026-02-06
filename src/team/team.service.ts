@@ -151,18 +151,27 @@ export class TeamService {
     // Map frontend sort fields to Prisma orderBy
     let orderBy: any;
     if (sortBy === 'groupNo' || sortBy === 'groupName') {
-      orderBy = { clientGroup: { groupNo: sortOrder } };
+      orderBy = { clientGroup: { groupName: sortOrder } };
     } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
-      orderBy = { company: { companyNo: sortOrder } };
+      orderBy = { company: { companyName: sortOrder } };
     } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
-      orderBy = { location: { locationNo: sortOrder } };
+      orderBy = { location: { locationName: sortOrder } };
     } else if (sortBy === 'subLocationNo' || sortBy === 'subLocationName') {
-      orderBy = { subLocation: { subLocationNo: sortOrder } };
+      orderBy = { subLocation: { subLocationName: sortOrder } };
     } else if (sortBy === 'assignedTo') {
-      // assignedTo doesn't exist in Team model, fallback to createdAt
       orderBy = { createdAt: sortOrder };
+    } else if (sortBy === 'pendingTasksCount') {
+      orderBy = { pendingTasks: { _count: sortOrder } };
+    } else if (sortBy === 'completedTasksCount') {
+      orderBy = { completedTasks: { _count: sortOrder } };
     } else {
-      orderBy = { [sortBy]: sortOrder };
+      // Check if field exists on Team model, otherwise fallback to createdAt
+      const validTeamFields = ['id', 'teamNo', 'teamName', 'email', 'phone', 'role', 'roleId', 'clientGroupId', 'companyId', 'locationId', 'subLocationId', 'status', 'loginMethod', 'createdAt', 'updatedAt'];
+      if (validTeamFields.includes(sortBy)) {
+        orderBy = { [sortBy]: sortOrder };
+      } else {
+        orderBy = { createdAt: sortOrder };
+      }
     }
 
     // Handle Status Filter
