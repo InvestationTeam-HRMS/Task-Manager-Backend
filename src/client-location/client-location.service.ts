@@ -45,7 +45,7 @@ export class ClientLocationService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateClientLocationDto, userId: string) {
     // Transform locationCode to uppercase
@@ -119,14 +119,24 @@ export class ClientLocationService {
     const andArray = where.AND as Array<Prisma.ClientLocationWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { clientGroup: { groupNo: sortOrder } };
+    } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
+      orderBy = { company: { companyNo: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter (handle possible multi-select from UI)
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -142,9 +152,9 @@ export class ClientLocationService {
       const groupIds =
         typeof filter.clientGroupId === 'string'
           ? filter.clientGroupId
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.clientGroupId)
             ? filter.clientGroupId
             : [filter.clientGroupId];
@@ -156,9 +166,9 @@ export class ClientLocationService {
       const companyIds =
         typeof filter.companyId === 'string'
           ? filter.companyId
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.companyId)
             ? filter.companyId
             : [filter.companyId];
@@ -351,7 +361,7 @@ export class ClientLocationService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           locationNo: true,
@@ -633,8 +643,8 @@ export class ClientLocationService {
         const { _rowNumber, ...payload } = locationDto as any;
         const locationName = toTitleCase(
           payload.locationName?.trim() ||
-            payload.locationCode ||
-            'Unnamed Location',
+          payload.locationCode ||
+          'Unnamed Location',
         );
         const address = payload.address
           ? toTitleCase(payload.address)
@@ -959,10 +969,10 @@ export class ClientLocationService {
       try {
         const status = row.status
           ? this.excelUploadService.validateEnum(
-              row.status as string,
-              LocationStatus,
-              'Status',
-            )
+            row.status as string,
+            LocationStatus,
+            'Status',
+          )
           : LocationStatus.Active;
 
         let companyId: string | undefined;
@@ -1062,15 +1072,15 @@ export class ClientLocationService {
     const [companies, clientGroups] = await Promise.all([
       companyNames.size > 0
         ? this.prisma.clientCompany.findMany({
-            where: { companyName: { in: Array.from(companyNames) } },
-            select: { id: true, companyName: true, groupId: true },
-          })
+          where: { companyName: { in: Array.from(companyNames) } },
+          select: { id: true, companyName: true, groupId: true },
+        })
         : [],
       clientGroupNames.size > 0
         ? this.prisma.clientGroup.findMany({
-            where: { groupName: { in: Array.from(clientGroupNames) } },
-            select: { id: true, groupName: true },
-          })
+          where: { groupName: { in: Array.from(clientGroupNames) } },
+          select: { id: true, groupName: true },
+        })
         : [],
     ]);
 
@@ -1103,10 +1113,10 @@ export class ClientLocationService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    String(row.status),
-                    LocationStatus,
-                    'Status',
-                  )
+                  String(row.status),
+                  LocationStatus,
+                  'Status',
+                )
                 : LocationStatus.Active;
 
               let companyId: string | undefined;

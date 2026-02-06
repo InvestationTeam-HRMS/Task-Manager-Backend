@@ -45,7 +45,7 @@ export class SubLocationService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateSubLocationDto, userId: string) {
     // Transform subLocationCode to uppercase
@@ -110,14 +110,26 @@ export class SubLocationService {
     const andArray = where.AND as Array<Prisma.SubLocationWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { clientGroup: { groupNo: sortOrder } };
+    } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
+      orderBy = { company: { companyNo: sortOrder } };
+    } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
+      orderBy = { location: { locationNo: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter (handle possible multi-select from UI)
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -276,7 +288,7 @@ export class SubLocationService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           subLocationNo: true,
@@ -570,8 +582,8 @@ export class SubLocationService {
         const { _rowNumber, ...payload } = subLocationDto as any;
         const subLocationName = toTitleCase(
           payload.subLocationName?.trim() ||
-            payload.subLocationCode ||
-            'Unnamed Sub-Location',
+          payload.subLocationCode ||
+          'Unnamed Sub-Location',
         );
         const address = payload.address
           ? toTitleCase(payload.address)
@@ -882,10 +894,10 @@ export class SubLocationService {
       try {
         const status = row.status
           ? this.excelUploadService.validateEnum(
-              row.status as string,
-              SubLocationStatus,
-              'Status',
-            )
+            row.status as string,
+            SubLocationStatus,
+            'Status',
+          )
           : SubLocationStatus.Active;
 
         const location = locationMap.get(row.locationName?.toLowerCase());
@@ -952,14 +964,14 @@ export class SubLocationService {
     const locations =
       locationNames.size > 0
         ? await this.prisma.clientLocation.findMany({
-            where: { locationName: { in: Array.from(locationNames) } },
-            select: {
-              id: true,
-              locationName: true,
-              clientGroupId: true,
-              companyId: true,
-            },
-          })
+          where: { locationName: { in: Array.from(locationNames) } },
+          select: {
+            id: true,
+            locationName: true,
+            clientGroupId: true,
+            companyId: true,
+          },
+        })
         : [];
 
     const locationMap = new Map(
@@ -986,10 +998,10 @@ export class SubLocationService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    String(row.status),
-                    SubLocationStatus,
-                    'Status',
-                  )
+                  String(row.status),
+                  SubLocationStatus,
+                  'Status',
+                )
                 : SubLocationStatus.Active;
 
               const location = locationMap.get(

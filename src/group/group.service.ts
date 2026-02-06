@@ -46,7 +46,7 @@ export class GroupService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateGroupDto, userId: string) {
     const { toTitleCase } = await import('../common/utils/string-helper');
@@ -101,7 +101,6 @@ export class GroupService {
       sortOrder = 'desc',
     } = pagination;
     const skip = (page - 1) * limit;
-
     const cleanedSearch = search?.trim();
     const where: Prisma.GroupWhereInput = {
       AND: [],
@@ -110,14 +109,22 @@ export class GroupService {
     const andArray = where.AND as Array<Prisma.GroupWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'clientGroupName' || sortBy === 'companyName' || sortBy === 'locationName' || sortBy === 'subLocationName' || sortBy === 'teamMemberEmails') {
+      orderBy = { createdAt: sortOrder };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -292,7 +299,7 @@ export class GroupService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         include: {
           members: {
             include: {
@@ -332,27 +339,27 @@ export class GroupService {
       await Promise.all([
         allClientGroupIds.length > 0
           ? this.prisma.clientGroup.findMany({
-              where: { id: { in: allClientGroupIds } },
-              select: { id: true, groupName: true },
-            })
+            where: { id: { in: allClientGroupIds } },
+            select: { id: true, groupName: true },
+          })
           : ([] as { id: string; groupName: string }[]),
         allCompanyIds.length > 0
           ? this.prisma.clientCompany.findMany({
-              where: { id: { in: allCompanyIds } },
-              select: { id: true, companyName: true },
-            })
+            where: { id: { in: allCompanyIds } },
+            select: { id: true, companyName: true },
+          })
           : ([] as { id: string; companyName: string }[]),
         allLocationIds.length > 0
           ? this.prisma.clientLocation.findMany({
-              where: { id: { in: allLocationIds } },
-              select: { id: true, locationName: true },
-            })
+            where: { id: { in: allLocationIds } },
+            select: { id: true, locationName: true },
+          })
           : ([] as { id: string; locationName: string }[]),
         allSubLocationIds.length > 0
           ? this.prisma.subLocation.findMany({
-              where: { id: { in: allSubLocationIds } },
-              select: { id: true, subLocationName: true },
-            })
+            where: { id: { in: allSubLocationIds } },
+            select: { id: true, subLocationName: true },
+          })
           : ([] as { id: string; subLocationName: string }[]),
       ]);
 
@@ -992,43 +999,43 @@ export class GroupService {
       await Promise.all([
         clientGroupNames.size > 0
           ? this.prisma.clientGroup.findMany({
-              where: { groupName: { in: Array.from(clientGroupNames) } },
-              select: { id: true, groupName: true },
-            })
+            where: { groupName: { in: Array.from(clientGroupNames) } },
+            select: { id: true, groupName: true },
+          })
           : [],
         companyNames.size > 0
           ? this.prisma.clientCompany.findMany({
-              where: { companyName: { in: Array.from(companyNames) } },
-              select: { id: true, companyName: true },
-            })
+            where: { companyName: { in: Array.from(companyNames) } },
+            select: { id: true, companyName: true },
+          })
           : [],
         locationNames.size > 0
           ? this.prisma.clientLocation.findMany({
-              where: { locationName: { in: Array.from(locationNames) } },
-              select: { id: true, locationName: true },
-            })
+            where: { locationName: { in: Array.from(locationNames) } },
+            select: { id: true, locationName: true },
+          })
           : [],
         subLocationNames.size > 0
           ? this.prisma.subLocation.findMany({
-              where: { subLocationName: { in: Array.from(subLocationNames) } },
-              select: { id: true, subLocationName: true },
-            })
+            where: { subLocationName: { in: Array.from(subLocationNames) } },
+            select: { id: true, subLocationName: true },
+          })
           : [],
         teamMemberTokens.size > 0
           ? this.prisma.team.findMany({
-              where: {
-                OR: Array.from(teamMemberTokens).flatMap((token) => [
-                  { email: { equals: token, mode: 'insensitive' } },
-                  { teamName: { equals: token, mode: 'insensitive' } },
-                ]),
-              },
-              select: { id: true, email: true, teamName: true },
-            })
+            where: {
+              OR: Array.from(teamMemberTokens).flatMap((token) => [
+                { email: { equals: token, mode: 'insensitive' } },
+                { teamName: { equals: token, mode: 'insensitive' } },
+              ]),
+            },
+            select: { id: true, email: true, teamName: true },
+          })
           : ([] as Array<{
-              id: string;
-              email: string | null;
-              teamName: string | null;
-            }>),
+            id: string;
+            email: string | null;
+            teamName: string | null;
+          }>),
       ]);
 
     const clientGroupMap = new Map<string, string>(
@@ -1163,10 +1170,10 @@ export class GroupService {
           teamMemberIds,
           status: row.status
             ? (this.excelUploadService.validateEnum(
-                row.status,
-                GroupStatus,
-                'Status',
-              ) as GroupStatus)
+              row.status,
+              GroupStatus,
+              'Status',
+            ) as GroupStatus)
             : GroupStatus.Active,
           remark: row.remark,
           _rowNumber: i + 2,
@@ -1248,43 +1255,43 @@ export class GroupService {
       await Promise.all([
         clientGroupNames.size > 0
           ? this.prisma.clientGroup.findMany({
-              where: { groupName: { in: Array.from(clientGroupNames) } },
-              select: { id: true, groupName: true },
-            })
+            where: { groupName: { in: Array.from(clientGroupNames) } },
+            select: { id: true, groupName: true },
+          })
           : [],
         companyNames.size > 0
           ? this.prisma.clientCompany.findMany({
-              where: { companyName: { in: Array.from(companyNames) } },
-              select: { id: true, companyName: true },
-            })
+            where: { companyName: { in: Array.from(companyNames) } },
+            select: { id: true, companyName: true },
+          })
           : [],
         locationNames.size > 0
           ? this.prisma.clientLocation.findMany({
-              where: { locationName: { in: Array.from(locationNames) } },
-              select: { id: true, locationName: true },
-            })
+            where: { locationName: { in: Array.from(locationNames) } },
+            select: { id: true, locationName: true },
+          })
           : [],
         subLocationNames.size > 0
           ? this.prisma.subLocation.findMany({
-              where: { subLocationName: { in: Array.from(subLocationNames) } },
-              select: { id: true, subLocationName: true },
-            })
+            where: { subLocationName: { in: Array.from(subLocationNames) } },
+            select: { id: true, subLocationName: true },
+          })
           : [],
         teamMemberTokens.size > 0
           ? this.prisma.team.findMany({
-              where: {
-                OR: Array.from(teamMemberTokens).flatMap((token) => [
-                  { email: { equals: token, mode: 'insensitive' } },
-                  { teamName: { equals: token, mode: 'insensitive' } },
-                ]),
-              },
-              select: { id: true, email: true, teamName: true },
-            })
+            where: {
+              OR: Array.from(teamMemberTokens).flatMap((token) => [
+                { email: { equals: token, mode: 'insensitive' } },
+                { teamName: { equals: token, mode: 'insensitive' } },
+              ]),
+            },
+            select: { id: true, email: true, teamName: true },
+          })
           : ([] as Array<{
-              id: string;
-              email: string | null;
-              teamName: string | null;
-            }>),
+            id: string;
+            email: string | null;
+            teamName: string | null;
+          }>),
       ]);
 
     const clientGroupMap = new Map<string, string>(
@@ -1430,10 +1437,10 @@ export class GroupService {
                 teamMemberIds,
                 status: row.status
                   ? (this.excelUploadService.validateEnum(
-                      row.status,
-                      GroupStatus,
-                      'Status',
-                    ) as GroupStatus)
+                    row.status,
+                    GroupStatus,
+                    'Status',
+                  ) as GroupStatus)
                   : GroupStatus.Active,
                 remark: row.remark,
                 _rowNumber: item.rowNumber,

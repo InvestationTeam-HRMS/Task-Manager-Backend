@@ -158,6 +158,9 @@ export class TeamService {
       orderBy = { location: { locationNo: sortOrder } };
     } else if (sortBy === 'subLocationNo' || sortBy === 'subLocationName') {
       orderBy = { subLocation: { subLocationNo: sortOrder } };
+    } else if (sortBy === 'assignedTo') {
+      // assignedTo doesn't exist in Team model, fallback to createdAt
+      orderBy = { createdAt: sortOrder };
     } else {
       orderBy = { [sortBy]: sortOrder };
     }

@@ -44,7 +44,7 @@ export class IpAddressService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateIpAddressDto, userId: string) {
     // Validate optional relationships
@@ -110,14 +110,28 @@ export class IpAddressService {
 
     const andArray = where.AND as Array<Prisma.IpAddressWhereInput>;
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { clientGroup: { groupNo: sortOrder } };
+    } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
+      orderBy = { company: { companyNo: sortOrder } };
+    } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
+      orderBy = { location: { locationNo: sortOrder } };
+    } else if (sortBy === 'subLocationNo' || sortBy === 'subLocationName') {
+      orderBy = { subLocation: { subLocationNo: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -269,7 +283,7 @@ export class IpAddressService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         include: {
           clientGroup: {
             select: { id: true, groupName: true, groupCode: true },
@@ -783,10 +797,10 @@ export class IpAddressService {
       try {
         const status = (row as any).status
           ? this.excelUploadService.validateEnum(
-              (row as any).status as string,
-              IpAddressStatus,
-              'Status',
-            )
+            (row as any).status as string,
+            IpAddressStatus,
+            'Status',
+          )
           : IpAddressStatus.Active;
 
         const clientGroupId = clientGroupMap.get(
@@ -880,27 +894,27 @@ export class IpAddressService {
       await Promise.all([
         clientGroupNames.size > 0
           ? this.prisma.clientGroup.findMany({
-              where: { groupName: { in: Array.from(clientGroupNames) } },
-              select: { id: true, groupName: true },
-            })
+            where: { groupName: { in: Array.from(clientGroupNames) } },
+            select: { id: true, groupName: true },
+          })
           : [],
         companyNames.size > 0
           ? this.prisma.clientCompany.findMany({
-              where: { companyName: { in: Array.from(companyNames) } },
-              select: { id: true, companyName: true },
-            })
+            where: { companyName: { in: Array.from(companyNames) } },
+            select: { id: true, companyName: true },
+          })
           : [],
         locationNames.size > 0
           ? this.prisma.clientLocation.findMany({
-              where: { locationName: { in: Array.from(locationNames) } },
-              select: { id: true, locationName: true },
-            })
+            where: { locationName: { in: Array.from(locationNames) } },
+            select: { id: true, locationName: true },
+          })
           : [],
         subLocationNames.size > 0
           ? this.prisma.subLocation.findMany({
-              where: { subLocationName: { in: Array.from(subLocationNames) } },
-              select: { id: true, subLocationName: true },
-            })
+            where: { subLocationName: { in: Array.from(subLocationNames) } },
+            select: { id: true, subLocationName: true },
+          })
           : [],
       ]);
 
@@ -944,10 +958,10 @@ export class IpAddressService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    String(row.status),
-                    IpAddressStatus,
-                    'Status',
-                  )
+                  String(row.status),
+                  IpAddressStatus,
+                  'Status',
+                )
                 : IpAddressStatus.Active;
 
               const clientGroupId = clientGroupMap.get(
