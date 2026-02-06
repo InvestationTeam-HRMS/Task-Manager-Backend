@@ -592,6 +592,11 @@ export class ClientLocationService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{
+      rowNumber?: number;
+      locationCode: string;
+      locationNo: string;
+    }> = [];
 
     // Optimization 1: Batch check for locationCode duplicates
     const providedCodes = dto.locations
@@ -625,21 +630,22 @@ export class ClientLocationService {
 
     for (const locationDto of dto.locations) {
       try {
+        const { _rowNumber, ...payload } = locationDto as any;
         const locationName = toTitleCase(
-          locationDto.locationName?.trim() ||
-            locationDto.locationCode ||
+          payload.locationName?.trim() ||
+            payload.locationCode ||
             'Unnamed Location',
         );
-        const address = locationDto.address
-          ? toTitleCase(locationDto.address)
+        const address = payload.address
+          ? toTitleCase(payload.address)
           : undefined;
-        const remark = locationDto.remark
-          ? toTitleCase(locationDto.remark)
+        const remark = payload.remark
+          ? toTitleCase(payload.remark)
           : undefined;
 
         // Unique code logic
         let finalLocationCode =
-          locationDto.locationCode?.trim()?.toUpperCase() ||
+          payload.locationCode?.trim()?.toUpperCase() ||
           `LOC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         if (existingCodes.has(finalLocationCode)) {
           let suffix = 1;
@@ -652,7 +658,7 @@ export class ClientLocationService {
         existingCodes.add(finalLocationCode);
 
         // Unique number logic
-        let finalLocationNo = locationDto.locationNo?.trim();
+        let finalLocationNo = payload.locationNo?.trim();
         if (!finalLocationNo || existingNos.has(finalLocationNo)) {
           finalLocationNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -660,20 +666,105 @@ export class ClientLocationService {
         existingNos.add(finalLocationNo);
 
         dataToInsert.push({
-          ...locationDto,
+          ...payload,
           locationName,
           address,
           remark,
           locationCode: finalLocationCode,
           locationNo: finalLocationNo,
-          status: locationDto.status || LocationStatus.Active,
+          status: payload.status || LocationStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          locationCode: finalLocationCode,
+          locationNo: finalLocationNo,
         });
       } catch (err) {
         errors.push({
           locationCode: locationDto.locationCode,
           error: err.message,
         });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const codesToCheck = metaToInsert
+      .map((m) => m.locationCode)
+      .filter(Boolean);
+    const nosToCheck = metaToInsert.map((m) => m.locationNo).filter(Boolean);
+
+    if (codesToCheck.length > 0 || nosToCheck.length > 0) {
+      const existing = await this.prisma.clientLocation.findMany({
+        where: {
+          OR: [
+            codesToCheck.length > 0
+              ? { locationCode: { in: codesToCheck } }
+              : undefined,
+            nosToCheck.length > 0 ? { locationNo: { in: nosToCheck } } : undefined,
+          ].filter(Boolean) as any,
+        },
+        select: { locationCode: true, locationNo: true },
+      });
+
+      const existingCodeSet = new Set(
+        existing.map((item) => item.locationCode),
+      );
+      const existingNoSet = new Set(existing.map((item) => item.locationNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupCode =
+          !!meta.locationCode && existingCodeSet.has(meta.locationCode);
+        const dupNo = !!meta.locationNo && existingNoSet.has(meta.locationNo);
+
+        if (!dupCode && !dupNo) continue;
+
+        const originalCode = meta.locationCode;
+        const originalNo = meta.locationNo;
+        let updated = false;
+
+        if (dupCode) {
+          let suffix = 1;
+          let newCode = originalCode;
+          while (existingCodes.has(newCode) || existingCodeSet.has(newCode)) {
+            newCode = `${originalCode}-${suffix}`;
+            suffix++;
+          }
+          existingCodes.add(newCode);
+          dataToInsert[i].locationCode = newCode;
+          metaToInsert[i].locationCode = newCode;
+          updated = true;
+        }
+
+        if (dupNo) {
+          let newNo = `${prefix}${currentNum}`;
+          while (existingNos.has(newNo) || existingNoSet.has(newNo)) {
+            currentNum++;
+            newNo = `${prefix}${currentNum}`;
+          }
+          currentNum++;
+          existingNos.add(newNo);
+          dataToInsert[i].locationNo = newNo;
+          metaToInsert[i].locationNo = newNo;
+          updated = true;
+        }
+
+        if (updated) {
+          errors.push({
+            row: meta.rowNumber,
+            locationCode: originalCode,
+            locationNo: originalNo,
+            newLocationCode: metaToInsert[i].locationCode,
+            newLocationNo: metaToInsert[i].locationNo,
+            error:
+              dupCode && dupNo
+                ? 'Duplicate locationCode and locationNo (auto-adjusted)'
+                : dupCode
+                  ? 'Duplicate locationCode (auto-adjusted)'
+                  : 'Duplicate locationNo (auto-adjusted)',
+          });
+        }
       }
     }
 
@@ -686,6 +777,12 @@ export class ClientLocationService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -852,7 +949,9 @@ export class ClientLocationService {
     );
 
     // 2. Build processing data
-    const processedData: CreateClientLocationDto[] = [];
+    const processedData: Array<
+      CreateClientLocationDto & { _rowNumber?: number }
+    > = [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -909,6 +1008,7 @@ export class ClientLocationService {
           address: row.address,
           status: status as LocationStatus,
           remark: row.remark,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -994,7 +1094,9 @@ export class ClientLocationService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateClientLocationDto[] = [];
+          const toInsert: Array<
+            CreateClientLocationDto & { _rowNumber?: number }
+          > = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -1060,6 +1162,7 @@ export class ClientLocationService {
                 address: row.address,
                 status: status as LocationStatus,
                 remark: row.remark,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -1178,11 +1281,13 @@ export class ClientLocationService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { locations: providedData },
@@ -1190,6 +1295,7 @@ export class ClientLocationService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1210,6 +1316,7 @@ export class ClientLocationService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} client locations.`,
+          errors: errorsDetail,
         });
       }
 

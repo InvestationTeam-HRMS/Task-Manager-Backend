@@ -517,6 +517,11 @@ export class ClientCompanyService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{
+      rowNumber?: number;
+      companyCode: string;
+      companyNo: string;
+    }> = [];
 
     // Optimization 1: Batch check for companyCode duplicates
     const providedCodes = dto.companies
@@ -551,21 +556,22 @@ export class ClientCompanyService {
     // 2. Pre-process in memory
     for (const companyDto of dto.companies) {
       try {
+        const { _rowNumber, ...payload } = companyDto as any;
         const companyName = toTitleCase(
-          companyDto.companyName?.trim() ||
-            companyDto.companyCode ||
+          payload.companyName?.trim() ||
+            payload.companyCode ||
             'Unnamed Company',
         );
-        const address = companyDto.address
-          ? toTitleCase(companyDto.address)
+        const address = payload.address
+          ? toTitleCase(payload.address)
           : undefined;
-        const remark = companyDto.remark
-          ? toTitleCase(companyDto.remark)
+        const remark = payload.remark
+          ? toTitleCase(payload.remark)
           : undefined;
 
         // Unique code logic
         let finalCompanyCode =
-          companyDto.companyCode?.trim()?.toUpperCase() ||
+          payload.companyCode?.trim()?.toUpperCase() ||
           `COMP-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         if (existingCodes.has(finalCompanyCode)) {
           let suffix = 1;
@@ -578,7 +584,7 @@ export class ClientCompanyService {
         existingCodes.add(finalCompanyCode);
 
         // Unique number logic
-        let finalCompanyNo = companyDto.companyNo?.trim();
+        let finalCompanyNo = payload.companyNo?.trim();
         if (!finalCompanyNo || existingNos.has(finalCompanyNo)) {
           finalCompanyNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -586,20 +592,105 @@ export class ClientCompanyService {
         existingNos.add(finalCompanyNo);
 
         dataToInsert.push({
-          ...companyDto,
+          ...payload,
           companyName,
           address,
           remark,
           companyCode: finalCompanyCode,
           companyNo: finalCompanyNo,
-          status: companyDto.status || CompanyStatus.Active,
+          status: payload.status || CompanyStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          companyCode: finalCompanyCode,
+          companyNo: finalCompanyNo,
         });
       } catch (err) {
         errors.push({
           companyCode: companyDto.companyCode,
           error: err.message,
         });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const codesToCheck = metaToInsert
+      .map((m) => m.companyCode)
+      .filter(Boolean);
+    const nosToCheck = metaToInsert.map((m) => m.companyNo).filter(Boolean);
+
+    if (codesToCheck.length > 0 || nosToCheck.length > 0) {
+      const existing = await this.prisma.clientCompany.findMany({
+        where: {
+          OR: [
+            codesToCheck.length > 0
+              ? { companyCode: { in: codesToCheck } }
+              : undefined,
+            nosToCheck.length > 0 ? { companyNo: { in: nosToCheck } } : undefined,
+          ].filter(Boolean) as any,
+        },
+        select: { companyCode: true, companyNo: true },
+      });
+
+      const existingCodeSet = new Set(
+        existing.map((item) => item.companyCode),
+      );
+      const existingNoSet = new Set(existing.map((item) => item.companyNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupCode =
+          !!meta.companyCode && existingCodeSet.has(meta.companyCode);
+        const dupNo = !!meta.companyNo && existingNoSet.has(meta.companyNo);
+
+        if (!dupCode && !dupNo) continue;
+
+        const originalCode = meta.companyCode;
+        const originalNo = meta.companyNo;
+        let updated = false;
+
+        if (dupCode) {
+          let suffix = 1;
+          let newCode = originalCode;
+          while (existingCodes.has(newCode) || existingCodeSet.has(newCode)) {
+            newCode = `${originalCode}-${suffix}`;
+            suffix++;
+          }
+          existingCodes.add(newCode);
+          dataToInsert[i].companyCode = newCode;
+          metaToInsert[i].companyCode = newCode;
+          updated = true;
+        }
+
+        if (dupNo) {
+          let newNo = `${prefix}${currentNum}`;
+          while (existingNos.has(newNo) || existingNoSet.has(newNo)) {
+            currentNum++;
+            newNo = `${prefix}${currentNum}`;
+          }
+          currentNum++;
+          existingNos.add(newNo);
+          dataToInsert[i].companyNo = newNo;
+          metaToInsert[i].companyNo = newNo;
+          updated = true;
+        }
+
+        if (updated) {
+          errors.push({
+            row: meta.rowNumber,
+            companyCode: originalCode,
+            companyNo: originalNo,
+            newCompanyCode: metaToInsert[i].companyCode,
+            newCompanyNo: metaToInsert[i].companyNo,
+            error:
+              dupCode && dupNo
+                ? 'Duplicate companyCode and companyNo (auto-adjusted)'
+                : dupCode
+                  ? 'Duplicate companyCode (auto-adjusted)'
+                  : 'Duplicate companyNo (auto-adjusted)',
+          });
+        }
       }
     }
 
@@ -613,6 +704,12 @@ export class ClientCompanyService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -752,7 +849,8 @@ export class ClientCompanyService {
     );
 
     // 2. Build processing data
-    const processedData: CreateClientCompanyDto[] = [];
+    const processedData: Array<CreateClientCompanyDto & { _rowNumber?: number }> =
+      [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -779,6 +877,7 @@ export class ClientCompanyService {
           address: row.address,
           status: status as CompanyStatus,
           remark: row.remark,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -852,7 +951,9 @@ export class ClientCompanyService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateClientCompanyDto[] = [];
+          const toInsert: Array<
+            CreateClientCompanyDto & { _rowNumber?: number }
+          > = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -880,6 +981,7 @@ export class ClientCompanyService {
                 address: row.address,
                 status: status as CompanyStatus,
                 remark: row.remark,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -998,11 +1100,13 @@ export class ClientCompanyService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { companies: providedData },
@@ -1010,6 +1114,7 @@ export class ClientCompanyService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1030,6 +1135,7 @@ export class ClientCompanyService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} client companies.`,
+          errors: errorsDetail,
         });
       }
 

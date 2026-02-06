@@ -611,29 +611,33 @@ export class TeamService {
     if (isNaN(currentNum)) currentNum = 11001;
 
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{ rowNumber?: number; teamNo: string }> = [];
 
     for (const teamDto of dto.teams) {
       try {
-        const email = teamDto.email.toLowerCase();
+        const { _rowNumber, ...payload } = teamDto as any;
+        const email = payload.email.toLowerCase();
         if (existingEmails.has(email)) {
-          errors.push({ email, error: 'Email already exists' });
+          errors.push({ row: _rowNumber, email, error: 'Email already exists' });
           continue;
         }
+        existingEmails.add(email);
 
-        let teamNo = teamDto.teamNo?.trim();
+        let teamNo = payload.teamNo?.trim();
         if (!teamNo || existingTeamNos.has(teamNo)) {
           teamNo = `${prefix}${currentNum}`;
           currentNum++;
         }
         existingTeamNos.add(teamNo);
 
-        const password = teamDto.password
-          ? await bcrypt.hash(teamDto.password, 10)
+        const password = payload.password
+          ? await bcrypt.hash(payload.password, 10)
           : defaultPasswordHash;
 
-        const roleName = toTitleCase(teamDto.role || 'Employee');
+        const roleName = toTitleCase(payload.role || 'Employee');
         if (isAdminRole(roleName)) {
           errors.push({
+            row: _rowNumber,
             email,
             error: 'Admin role can only be created via system setup',
           });
@@ -641,18 +645,56 @@ export class TeamService {
         }
 
         dataToInsert.push({
-          ...teamDto,
-          teamName: toTitleCase(teamDto.teamName),
+          ...payload,
+          teamName: toTitleCase(payload.teamName),
           email,
           password,
-          status: teamDto.status || TeamStatus.Active,
-          loginMethod: teamDto.loginMethod || LoginMethod.General,
+          status: payload.status || TeamStatus.Active,
+          loginMethod: payload.loginMethod || LoginMethod.General,
           teamNo,
           role: roleName,
           createdBy: userId,
         });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          teamNo,
+        });
       } catch (err) {
         errors.push({ email: teamDto.email, error: err.message });
+      }
+    }
+
+    // Check existing duplicates in DB and auto-adjust teamNo
+    const nosToCheck = metaToInsert.map((m) => m.teamNo).filter(Boolean);
+    if (nosToCheck.length > 0) {
+      const existing = await this.prisma.team.findMany({
+        where: { teamNo: { in: nosToCheck as string[] } },
+        select: { teamNo: true },
+      });
+      const existingNoSet = new Set(existing.map((item) => item.teamNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupNo = !!meta.teamNo && existingNoSet.has(meta.teamNo);
+        if (!dupNo) continue;
+
+        const originalNo = meta.teamNo;
+        let newNo = `${prefix}${currentNum}`;
+        while (existingTeamNos.has(newNo) || existingNoSet.has(newNo)) {
+          currentNum++;
+          newNo = `${prefix}${currentNum}`;
+        }
+        currentNum++;
+        existingTeamNos.add(newNo);
+        dataToInsert[i].teamNo = newNo;
+        metaToInsert[i].teamNo = newNo;
+
+        errors.push({
+          row: meta.rowNumber,
+          teamNo: originalNo,
+          newTeamNo: newNo,
+          error: 'Duplicate teamNo (auto-adjusted)',
+        });
       }
     }
 
@@ -665,6 +707,12 @@ export class TeamService {
         skipDuplicates: true,
       });
       totalInserted += result.count;
+      if (result.count !== chunk.length) {
+        const skipped = chunk.length - result.count;
+        errors.push({
+          error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+        });
+      }
     }
 
     this.logger.log(
@@ -749,7 +797,7 @@ export class TeamService {
         requiredColumns,
       );
 
-    const processedData: any[] = [];
+    const processedData: Array<CreateTeamDto & { _rowNumber?: number }> = [];
     const processingErrors: any[] = [];
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -765,6 +813,7 @@ export class TeamService {
             : TeamStatus.Active,
           role: row.role ? toTitleCase(row.role) : 'Employee',
           loginMethod: LoginMethod.General,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -797,7 +846,7 @@ export class TeamService {
         requiredColumns,
         500, // Reduced from 1000 to 500 for better memory management
         async (batch) => {
-          const toInsert: CreateTeamDto[] = [];
+          const toInsert: Array<CreateTeamDto & { _rowNumber?: number }> = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -815,6 +864,7 @@ export class TeamService {
                 status: status as TeamStatus,
                 role: row.role ? toTitleCase(row.role) : 'Employee',
                 loginMethod: LoginMethod.General,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -931,15 +981,18 @@ export class TeamService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate({ teams: providedData }, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -960,6 +1013,7 @@ export class TeamService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} team members.`,
+          errors: errorsDetail,
         });
       }
 

@@ -576,6 +576,10 @@ export class ProjectService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{
+      rowNumber?: number;
+      projectNo: string;
+    }> = [];
 
     // Optimization: Fetch existing projectNos provided in DTO to check for duplicates
     const providedProjectNos = dto.projects
@@ -595,15 +599,16 @@ export class ProjectService {
 
     for (const projectDto of dto.projects) {
       try {
+        const { _rowNumber, ...payload } = projectDto as any;
         const projectName = toTitleCase(
-          projectDto.projectName?.trim() || 'Unnamed Project',
+          payload.projectName?.trim() || 'Unnamed Project',
         );
-        const remark = projectDto.remark
-          ? toTitleCase(projectDto.remark)
+        const remark = payload.remark
+          ? toTitleCase(payload.remark)
           : undefined;
 
         // Unique number logic
-        let finalProjectNo = projectDto.projectNo?.trim();
+        let finalProjectNo = payload.projectNo?.trim();
         if (!finalProjectNo || existingProvided.has(finalProjectNo)) {
           finalProjectNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -611,19 +616,58 @@ export class ProjectService {
         existingProvided.add(finalProjectNo);
 
         dataToInsert.push({
-          ...projectDto,
+          ...payload,
           projectName,
           remark,
           projectNo: finalProjectNo,
-          deadline: projectDto.deadline ? new Date(projectDto.deadline) : null,
-          priority: projectDto.priority || ProjectPriority.Medium,
-          status: projectDto.status || ProjectStatus.Active,
+          deadline: payload.deadline ? new Date(payload.deadline) : null,
+          priority: payload.priority || ProjectPriority.Medium,
+          status: payload.status || ProjectStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          projectNo: finalProjectNo,
         });
       } catch (err) {
         errors.push({
           projectName: projectDto.projectName,
           error: err.message,
+        });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const nosToCheck = metaToInsert.map((m) => m.projectNo).filter(Boolean);
+    if (nosToCheck.length > 0) {
+      const existing = await this.prisma.project.findMany({
+        where: { projectNo: { in: nosToCheck as string[] } },
+        select: { projectNo: true },
+      });
+      const existingNoSet = new Set(existing.map((item) => item.projectNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupNo =
+          !!meta.projectNo && existingNoSet.has(meta.projectNo);
+        if (!dupNo) continue;
+
+        const originalNo = meta.projectNo;
+        let newNo = `${prefix}${currentNum}`;
+        while (existingProvided.has(newNo) || existingNoSet.has(newNo)) {
+          currentNum++;
+          newNo = `${prefix}${currentNum}`;
+        }
+        currentNum++;
+        existingProvided.add(newNo);
+        dataToInsert[i].projectNo = newNo;
+        metaToInsert[i].projectNo = newNo;
+
+        errors.push({
+          row: meta.rowNumber,
+          projectNo: originalNo,
+          newProjectNo: newNo,
+          error: 'Duplicate projectNo (auto-adjusted)',
         });
       }
     }
@@ -640,6 +684,12 @@ export class ProjectService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -795,7 +845,7 @@ export class ProjectService {
     );
 
     // 2. Build processing data
-    const processedData: CreateProjectDto[] = [];
+    const processedData: Array<CreateProjectDto & { _rowNumber?: number }> = [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -844,6 +894,7 @@ export class ProjectService {
           priority: priority as ProjectPriority,
           status: status as ProjectStatus,
           remark: row.remark,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -929,7 +980,7 @@ export class ProjectService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateProjectDto[] = [];
+          const toInsert: Array<CreateProjectDto & { _rowNumber?: number }> = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -976,6 +1027,7 @@ export class ProjectService {
                 priority: priority as ProjectPriority,
                 status: status as ProjectStatus,
                 remark: row.remark,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -1093,11 +1145,13 @@ export class ProjectService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { projects: providedData },
@@ -1105,6 +1159,7 @@ export class ProjectService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1125,6 +1180,7 @@ export class ProjectService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} projects.`,
+          errors: errorsDetail,
         });
       }
 

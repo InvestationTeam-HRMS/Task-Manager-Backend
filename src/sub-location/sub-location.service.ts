@@ -527,6 +527,11 @@ export class SubLocationService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{
+      rowNumber?: number;
+      subLocationCode: string;
+      subLocationNo: string;
+    }> = [];
 
     // Optimization 1: Batch check for subLocationCode duplicates
     const providedCodes = dto.subLocations
@@ -562,21 +567,22 @@ export class SubLocationService {
 
     for (const subLocationDto of dto.subLocations) {
       try {
+        const { _rowNumber, ...payload } = subLocationDto as any;
         const subLocationName = toTitleCase(
-          subLocationDto.subLocationName?.trim() ||
-            subLocationDto.subLocationCode ||
+          payload.subLocationName?.trim() ||
+            payload.subLocationCode ||
             'Unnamed Sub-Location',
         );
-        const address = subLocationDto.address
-          ? toTitleCase(subLocationDto.address)
+        const address = payload.address
+          ? toTitleCase(payload.address)
           : undefined;
-        const remark = subLocationDto.remark
-          ? toTitleCase(subLocationDto.remark)
+        const remark = payload.remark
+          ? toTitleCase(payload.remark)
           : undefined;
 
         // Unique code logic
         let finalSubLocationCode =
-          subLocationDto.subLocationCode?.trim()?.toUpperCase() ||
+          payload.subLocationCode?.trim()?.toUpperCase() ||
           `SLOC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         if (existingCodes.has(finalSubLocationCode)) {
           let suffix = 1;
@@ -589,7 +595,7 @@ export class SubLocationService {
         existingCodes.add(finalSubLocationCode);
 
         // Unique number logic
-        let finalSubLocationNo = subLocationDto.subLocationNo?.trim();
+        let finalSubLocationNo = payload.subLocationNo?.trim();
         if (!finalSubLocationNo || existingNos.has(finalSubLocationNo)) {
           finalSubLocationNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -597,20 +603,111 @@ export class SubLocationService {
         existingNos.add(finalSubLocationNo);
 
         dataToInsert.push({
-          ...subLocationDto,
+          ...payload,
           subLocationName,
           address,
           remark,
           subLocationCode: finalSubLocationCode,
           subLocationNo: finalSubLocationNo,
-          status: subLocationDto.status || SubLocationStatus.Active,
+          status: payload.status || SubLocationStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          subLocationCode: finalSubLocationCode,
+          subLocationNo: finalSubLocationNo,
         });
       } catch (err) {
         errors.push({
           subLocationCode: subLocationDto.subLocationCode,
           error: err.message,
         });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const codesToCheck = metaToInsert
+      .map((m) => m.subLocationCode)
+      .filter(Boolean);
+    const nosToCheck = metaToInsert.map((m) => m.subLocationNo).filter(Boolean);
+
+    if (codesToCheck.length > 0 || nosToCheck.length > 0) {
+      const existing = await this.prisma.subLocation.findMany({
+        where: {
+          OR: [
+            codesToCheck.length > 0
+              ? { subLocationCode: { in: codesToCheck } }
+              : undefined,
+            nosToCheck.length > 0
+              ? { subLocationNo: { in: nosToCheck } }
+              : undefined,
+          ].filter(Boolean) as any,
+        },
+        select: { subLocationCode: true, subLocationNo: true },
+      });
+
+      const existingCodeSet = new Set(
+        existing.map((item) => item.subLocationCode),
+      );
+      const existingNoSet = new Set(
+        existing.map((item) => item.subLocationNo),
+      );
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupCode =
+          !!meta.subLocationCode &&
+          existingCodeSet.has(meta.subLocationCode);
+        const dupNo =
+          !!meta.subLocationNo && existingNoSet.has(meta.subLocationNo);
+
+        if (!dupCode && !dupNo) continue;
+
+        const originalCode = meta.subLocationCode;
+        const originalNo = meta.subLocationNo;
+        let updated = false;
+
+        if (dupCode) {
+          let suffix = 1;
+          let newCode = originalCode;
+          while (existingCodes.has(newCode) || existingCodeSet.has(newCode)) {
+            newCode = `${originalCode}-${suffix}`;
+            suffix++;
+          }
+          existingCodes.add(newCode);
+          dataToInsert[i].subLocationCode = newCode;
+          metaToInsert[i].subLocationCode = newCode;
+          updated = true;
+        }
+
+        if (dupNo) {
+          let newNo = `${prefix}${currentNum}`;
+          while (existingNos.has(newNo) || existingNoSet.has(newNo)) {
+            currentNum++;
+            newNo = `${prefix}${currentNum}`;
+          }
+          currentNum++;
+          existingNos.add(newNo);
+          dataToInsert[i].subLocationNo = newNo;
+          metaToInsert[i].subLocationNo = newNo;
+          updated = true;
+        }
+
+        if (updated) {
+          errors.push({
+            row: meta.rowNumber,
+            subLocationCode: originalCode,
+            subLocationNo: originalNo,
+            newSubLocationCode: metaToInsert[i].subLocationCode,
+            newSubLocationNo: metaToInsert[i].subLocationNo,
+            error:
+              dupCode && dupNo
+                ? 'Duplicate subLocationCode and subLocationNo (auto-adjusted)'
+                : dupCode
+                  ? 'Duplicate subLocationCode (auto-adjusted)'
+                  : 'Duplicate subLocationNo (auto-adjusted)',
+          });
+        }
       }
     }
 
@@ -623,6 +720,12 @@ export class SubLocationService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -770,7 +873,8 @@ export class SubLocationService {
     );
 
     // Build processing data
-    const processedData: CreateSubLocationDto[] = [];
+    const processedData: Array<CreateSubLocationDto & { _rowNumber?: number }> =
+      [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -798,6 +902,7 @@ export class SubLocationService {
           address: row.address,
           status: status as SubLocationStatus,
           remark: row.remark,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -872,7 +977,9 @@ export class SubLocationService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateSubLocationDto[] = [];
+          const toInsert: Array<
+            CreateSubLocationDto & { _rowNumber?: number }
+          > = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -904,6 +1011,7 @@ export class SubLocationService {
                 address: row.address,
                 status: status as SubLocationStatus,
                 remark: row.remark,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -1025,11 +1133,13 @@ export class SubLocationService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { subLocations: providedData },
@@ -1037,6 +1147,7 @@ export class SubLocationService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1057,6 +1168,7 @@ export class SubLocationService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} sub-locations.`,
+          errors: errorsDetail,
         });
       }
 

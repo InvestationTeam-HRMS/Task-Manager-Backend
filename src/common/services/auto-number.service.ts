@@ -266,7 +266,7 @@ export class AutoNumberService {
 
     const likePattern = `${prefix}%`;
     const query = `
-      SELECT MAX(NULLIF(REGEXP_REPLACE(${column}, '\\\\D', '', 'g'), '')::bigint) AS max
+      SELECT MAX(NULLIF(REGEXP_REPLACE(${column}, '[^0-9]', '', 'g'), '')::bigint) AS max
       FROM ${table}
       WHERE ${column} ILIKE $1
     `;

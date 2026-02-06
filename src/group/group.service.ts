@@ -642,6 +642,7 @@ export class GroupService {
     const { toTitleCase } = await import('../common/utils/string-helper');
     const errors: any[] = [];
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{ rowNumber?: number; groupNo: string }> = [];
 
     // Optimization 1: Batch check for group name duplicates
     const providedNames = dto.groups.map((g) => toTitleCase(g.groupName));
@@ -678,14 +679,19 @@ export class GroupService {
 
     for (const groupDto of dto.groups) {
       try {
-        const groupName = toTitleCase(groupDto.groupName);
+        const { _rowNumber, ...payload } = groupDto as any;
+        const groupName = toTitleCase(payload.groupName);
         if (existingNames.has(groupName)) {
-          errors.push({ groupName, error: 'Group name already exists' });
+          errors.push({
+            row: _rowNumber,
+            groupName,
+            error: 'Group name already exists',
+          });
           continue;
         }
         existingNames.add(groupName);
 
-        let groupNo = groupDto.groupNo?.trim();
+        let groupNo = payload.groupNo?.trim();
         if (!groupNo || existingNos.has(groupNo)) {
           groupNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -693,17 +699,55 @@ export class GroupService {
         existingNos.add(groupNo);
 
         // Extract teamMemberIds from dto (not a Prisma field)
-        const { teamMemberIds, ...groupData } = groupDto;
+        const { teamMemberIds, ...groupData } = payload;
 
         dataToInsert.push({
           ...groupData,
           groupName,
           groupNo,
-          status: groupDto.status || GroupStatus.Active,
+          status: payload.status || GroupStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          groupNo,
         });
       } catch (err) {
         errors.push({ groupName: groupDto.groupName, error: err.message });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const nosToCheck = metaToInsert.map((m) => m.groupNo).filter(Boolean);
+    if (nosToCheck.length > 0) {
+      const existing = await this.prisma.group.findMany({
+        where: { groupNo: { in: nosToCheck as string[] } },
+        select: { groupNo: true },
+      });
+      const existingNoSet = new Set(existing.map((item) => item.groupNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupNo = !!meta.groupNo && existingNoSet.has(meta.groupNo);
+        if (!dupNo) continue;
+
+        const originalNo = meta.groupNo;
+        let newNo = `${prefix}${currentNum}`;
+        while (existingNos.has(newNo) || existingNoSet.has(newNo)) {
+          currentNum++;
+          newNo = `${prefix}${currentNum}`;
+        }
+        currentNum++;
+        existingNos.add(newNo);
+        dataToInsert[i].groupNo = newNo;
+        metaToInsert[i].groupNo = newNo;
+
+        errors.push({
+          row: meta.rowNumber,
+          groupNo: originalNo,
+          newGroupNo: newNo,
+          error: 'Duplicate groupNo (auto-adjusted)',
+        });
       }
     }
 
@@ -716,6 +760,12 @@ export class GroupService {
         skipDuplicates: true,
       });
       totalInserted += result.count;
+      if (result.count !== chunk.length) {
+        const skipped = chunk.length - result.count;
+        errors.push({
+          error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+        });
+      }
     }
 
     this.logger.log(
@@ -799,7 +849,7 @@ export class GroupService {
         requiredColumns,
       );
 
-    const processedData: any[] = [];
+    const processedData: Array<CreateGroupDto & { _rowNumber?: number }> = [];
     const processingErrors: any[] = [];
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -813,6 +863,7 @@ export class GroupService {
                 'Status',
               )
             : GroupStatus.Active,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -845,7 +896,7 @@ export class GroupService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateGroupDto[] = [];
+          const toInsert: Array<CreateGroupDto & { _rowNumber?: number }> = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -859,6 +910,7 @@ export class GroupService {
                       'Status',
                     )
                   : GroupStatus.Active,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -975,15 +1027,18 @@ export class GroupService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate({ groups: providedData }, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1004,6 +1059,7 @@ export class GroupService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} groups.`,
+          errors: errorsDetail,
         });
       }
 

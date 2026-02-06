@@ -465,6 +465,7 @@ export class IpAddressService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{ rowNumber?: number; ipNo: string }> = [];
 
     // For large datasets, we don't fetch all ipNo.
     // We only check for the ones provided in the DTO if they exist.
@@ -483,27 +484,67 @@ export class IpAddressService {
 
     for (const ipAddressDto of dto.ipAddresses) {
       try {
+        const { _rowNumber, ...payload } = ipAddressDto as any;
         const ipAddressName =
-          ipAddressDto.ipAddressName?.trim() ||
-          ipAddressDto.ipAddress ||
+          payload.ipAddressName?.trim() ||
+          payload.ipAddress ||
           'Unnamed IP';
 
         // Unique number logic
-        let finalIpNo = ipAddressDto.ipNo?.trim();
+        let finalIpNo = payload.ipNo?.trim();
         if (!finalIpNo || existingProvided.has(finalIpNo)) {
           finalIpNo = `${prefix}${currentNum}`;
           currentNum++;
         }
+        existingProvided.add(finalIpNo);
 
         dataToInsert.push({
-          ...ipAddressDto,
+          ...payload,
           ipAddressName,
           ipNo: finalIpNo,
-          status: ipAddressDto.status || IpAddressStatus.Active,
+          status: payload.status || IpAddressStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          ipNo: finalIpNo,
         });
       } catch (err) {
         errors.push({ ipAddress: ipAddressDto.ipAddress, error: err.message });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and auto-adjust
+    const nosToCheck = metaToInsert.map((m) => m.ipNo).filter(Boolean);
+    if (nosToCheck.length > 0) {
+      const existing = await this.prisma.ipAddress.findMany({
+        where: { ipNo: { in: nosToCheck as string[] } },
+        select: { ipNo: true },
+      });
+      const existingNoSet = new Set(existing.map((item) => item.ipNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupNo = !!meta.ipNo && existingNoSet.has(meta.ipNo);
+        if (!dupNo) continue;
+
+        const originalNo = meta.ipNo;
+        let newNo = `${prefix}${currentNum}`;
+        while (existingProvided.has(newNo) || existingNoSet.has(newNo)) {
+          currentNum++;
+          newNo = `${prefix}${currentNum}`;
+        }
+        currentNum++;
+        existingProvided.add(newNo);
+        dataToInsert[i].ipNo = newNo;
+        metaToInsert[i].ipNo = newNo;
+
+        errors.push({
+          row: meta.rowNumber,
+          ipNo: originalNo,
+          newIpNo: newNo,
+          error: 'Duplicate ipNo (auto-adjusted)',
+        });
       }
     }
 
@@ -519,6 +560,12 @@ export class IpAddressService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -727,7 +774,8 @@ export class IpAddressService {
       ),
     );
 
-    const processedData: CreateIpAddressDto[] = [];
+    const processedData: Array<CreateIpAddressDto & { _rowNumber?: number }> =
+      [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -769,6 +817,7 @@ export class IpAddressService {
           subLocationId: subLocationId,
           status: status as IpAddressStatus,
           remark: (row as any).remark,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
@@ -887,7 +936,8 @@ export class IpAddressService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateIpAddressDto[] = [];
+          const toInsert: Array<CreateIpAddressDto & { _rowNumber?: number }> =
+            [];
 
           for (const item of batch) {
             const row = item.data;
@@ -929,6 +979,7 @@ export class IpAddressService {
                 subLocationId: subLocationId,
                 status: status as IpAddressStatus,
                 remark: row.remark,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -1050,11 +1101,13 @@ export class IpAddressService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { ipAddresses: providedData },
@@ -1062,6 +1115,7 @@ export class IpAddressService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -1082,6 +1136,7 @@ export class IpAddressService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} IP addresses.`,
+          errors: errorsDetail,
         });
       }
 
