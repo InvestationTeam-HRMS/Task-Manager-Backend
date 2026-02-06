@@ -14,7 +14,10 @@ export class ExcelUploadService {
   private readonly logger = new Logger(ExcelUploadService.name);
 
   private normalizeHeader(value: string): string {
-    return value.toLowerCase().trim().replace(/[\s_-]/g, '');
+    return value
+      .toLowerCase()
+      .trim()
+      .replace(/[\s_-]/g, '');
   }
 
   private normalizeMapping(
@@ -60,13 +63,13 @@ export class ExcelUploadService {
 
     if (typeof val === 'object') {
       if ('result' in val) {
-        return (val as any).result?.toString().trim() || '';
+        return val.result?.toString().trim() || '';
       }
       if ('text' in val) {
-        return (val as any).text?.toString().trim() || '';
+        return val.text?.toString().trim() || '';
       }
       if ('richText' in val) {
-        return (val as any).richText
+        return val.richText
           .map((rt: any) => rt.text)
           .join('')
           .trim();
@@ -337,9 +340,7 @@ export class ExcelUploadService {
     batchSize: number,
     onBatch: (batch: Array<{ rowNumber: number; data: T }>) => Promise<void>,
   ): Promise<{ processed: number; errors: any[] }> {
-    this.logger.log(
-      `[PARSE_FILE] Using XLSX streaming parser for ${fileName}`,
-    );
+    this.logger.log(`[PARSE_FILE] Using XLSX streaming parser for ${fileName}`);
 
     const errors: any[] = [];
     let processed = 0;
@@ -519,9 +520,7 @@ export class ExcelUploadService {
       stream.on('end', async () => {
         if (!headerReady) {
           reject(
-            new BadRequestException(
-              'The file is empty or missing data rows.',
-            ),
+            new BadRequestException('The file is empty or missing data rows.'),
           );
           return;
         }
@@ -733,7 +732,7 @@ export class ExcelUploadService {
   }
 
   validateEnum(value: string, enumObj: any, fieldName: string): string {
-    const validValues = Object.values(enumObj) as string[];
+    const validValues = Object.values(enumObj);
     const trimmedVal = value.trim();
 
     // Case-insensitive find

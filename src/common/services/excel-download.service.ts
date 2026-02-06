@@ -25,47 +25,58 @@ export class ExcelDownloadService {
     // 2. Add Data
     worksheet.addRows(data);
 
-    // 3. Formatting - SKIP expensive formatting for very large datasets
+    // 3. Always apply consistent header styling (cheap, even for large datasets)
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 30;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE6B8B7' },
+      };
+      cell.font = { bold: true, size: 11, color: { argb: 'FF000000' } };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'left',
+        indent: 1,
+      };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+    });
+
+    // 4. Auto Filter (always, to match template)
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: columns.length },
+    };
+
+    // 5. Data formatting - SKIP expensive formatting for very large datasets
     if (!isLargeDataset) {
       worksheet.eachRow((row, rowNumber) => {
-        // ===== HEADER ROW =====
-        if (rowNumber === 1) {
-          row.height = 30;
-          row.eachCell((cell) => {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFE6B8B7' },
-            };
-            cell.font = { bold: true, size: 11, color: { argb: 'FF000000' } };
-            cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-            cell.border = {
-              top: { style: 'thin' },
-              left: { style: 'thin' },
-              bottom: { style: 'thin' },
-              right: { style: 'thin' },
-            };
-          });
-        }
-        // ===== DATA ROWS =====
-        else {
-          row.height = 20;
-          row.eachCell({ includeEmpty: true }, (cell) => {
-            if (cell.value === undefined || cell.value === null || cell.value === '') {
-              cell.value = '-';
-            }
-            cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-          });
-        }
+        // Skip header row (already styled)
+        if (rowNumber === 1) return;
+        row.height = 20;
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          if (
+            cell.value === undefined ||
+            cell.value === null ||
+            cell.value === ''
+          ) {
+            cell.value = '-';
+          }
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: 'left',
+            indent: 1,
+          };
+        });
       });
 
-      // 4. Auto Filter
-      worksheet.autoFilter = {
-        from: { row: 1, column: 1 },
-        to: { row: 1, column: columns.length },
-      };
-
-      // 5. Auto Column Width
+      // 6. Auto Column Width (small datasets only)
       worksheet.columns.forEach((column: any) => {
         let maxLength = 0;
         const headerText = column.header ? column.header.toString() : '';
@@ -79,11 +90,14 @@ export class ExcelDownloadService {
         column.width = Math.min(Math.max(maxLength + 4, 12), 50);
       });
     } else {
-      // Basic minimal formatting for large files to keep them readable but fast
-      worksheet.getRow(1).font = { bold: true };
+      // Minimal width based on header text for large datasets (fast, consistent look)
+      worksheet.columns.forEach((column: any) => {
+        const headerText = column.header ? column.header.toString() : '';
+        column.width = Math.min(Math.max(headerText.length + 4, 12), 30);
+      });
     }
 
-    // 6. Response
+    // 7. Response
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

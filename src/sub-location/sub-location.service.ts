@@ -730,11 +730,7 @@ export class SubLocationService {
         status: ['status', 'state', 'active'],
         remark: ['remark', 'remarks', 'notes', 'description', 'comment'],
       },
-      requiredColumns: [
-        'subLocationName',
-        'subLocationCode',
-        'locationName',
-      ],
+      requiredColumns: ['subLocationName', 'subLocationCode', 'locationName'],
     };
   }
 
@@ -833,7 +829,7 @@ export class SubLocationService {
         2000,
         async (batch) => {
           for (const item of batch) {
-            const row = item.data as any;
+            const row = item.data;
             if (row.locationName) {
               locationNames.add(String(row.locationName).trim());
             }
@@ -879,7 +875,7 @@ export class SubLocationService {
           const toInsert: CreateSubLocationDto[] = [];
 
           for (const item of batch) {
-            const row = item.data as any;
+            const row = item.data;
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(

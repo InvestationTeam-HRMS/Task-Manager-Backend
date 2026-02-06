@@ -48,7 +48,7 @@ export class TeamService {
     private excelDownloadService: ExcelDownloadService,
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
   async create(dto: CreateTeamDto, userId: string) {
     // Email duplication check
@@ -153,9 +153,9 @@ export class TeamService {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-            .split(/[,\:;|]/)
-            .map((v) => v.trim())
-            .filter(Boolean)
+              .split(/[,\:;|]/)
+              .map((v) => v.trim())
+              .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -172,9 +172,9 @@ export class TeamService {
       const values =
         typeof value === 'string'
           ? value
-            .split(/[,\:;|]/)
-            .map((v) => v.trim())
-            .filter(Boolean)
+              .split(/[,\:;|]/)
+              .map((v) => v.trim())
+              .filter(Boolean)
           : Array.isArray(value)
             ? value
             : [value];
@@ -538,17 +538,17 @@ export class TeamService {
     const { _count } = team;
     const childCounts = [
       _count.createdPendingTasks > 0 &&
-      `${_count.createdPendingTasks} created pending tasks`,
+        `${_count.createdPendingTasks} created pending tasks`,
       _count.assignedPendingTasks > 0 &&
-      `${_count.assignedPendingTasks} assigned pending tasks`,
+        `${_count.assignedPendingTasks} assigned pending tasks`,
       _count.workingPendingTasks > 0 &&
-      `${_count.workingPendingTasks} working pending tasks`,
+        `${_count.workingPendingTasks} working pending tasks`,
       _count.createdCompletedTasks > 0 &&
-      `${_count.createdCompletedTasks} created completed tasks`,
+        `${_count.createdCompletedTasks} created completed tasks`,
       _count.assignedCompletedTasks > 0 &&
-      `${_count.assignedCompletedTasks} assigned completed tasks`,
+        `${_count.assignedCompletedTasks} assigned completed tasks`,
       _count.workingCompletedTasks > 0 &&
-      `${_count.workingCompletedTasks} working completed tasks`,
+        `${_count.workingCompletedTasks} working completed tasks`,
     ].filter(Boolean);
 
     if (childCounts.length > 0) {
@@ -758,10 +758,10 @@ export class TeamService {
           ...row,
           status: row.status
             ? this.excelUploadService.validateEnum(
-              row.status,
-              TeamStatus,
-              'Status',
-            )
+                row.status,
+                TeamStatus,
+                'Status',
+              )
             : TeamStatus.Active,
           role: row.role ? toTitleCase(row.role) : 'Employee',
           loginMethod: LoginMethod.General,
@@ -800,14 +800,14 @@ export class TeamService {
           const toInsert: CreateTeamDto[] = [];
 
           for (const item of batch) {
-            const row = item.data as any;
+            const row = item.data;
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                  row.status,
-                  TeamStatus,
-                  'Status',
-                )
+                    row.status,
+                    TeamStatus,
+                    'Status',
+                  )
                 : TeamStatus.Active;
 
               toInsert.push({

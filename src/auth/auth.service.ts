@@ -25,7 +25,10 @@ import {
 import { NotificationService } from '../notification/notification.service';
 import { CloudinaryService } from '../common/services/cloudinary.service';
 import { AutoNumberService } from '../common/services/auto-number.service';
-import { ADMIN_PERMISSIONS, ADMIN_ROLE_NAME } from '../common/constants/admin-permissions';
+import {
+  ADMIN_PERMISSIONS,
+  ADMIN_ROLE_NAME,
+} from '../common/constants/admin-permissions';
 import { isAdminRole } from '../common/utils/role-utils';
 import { toTitleCase } from '../common/utils/string-helper';
 // Removed UserRole import from @prisma/client
@@ -125,7 +128,13 @@ export class AuthService {
             { isSystemUser: true },
             {
               role: {
-                in: ['Admin', 'ADMIN', 'Super Admin', 'SUPER ADMIN', 'SUPER_ADMIN'],
+                in: [
+                  'Admin',
+                  'ADMIN',
+                  'Super Admin',
+                  'SUPER ADMIN',
+                  'SUPER_ADMIN',
+                ],
               },
             },
           ],
@@ -400,9 +409,7 @@ export class AuthService {
       const storedOtp = await this.redisService.getLoginOTP(dto.email);
       // ... OTP check removed ...
     }
-    this.logger.log(
-      `[AUTH] Login verified for ${dto.email} (No OTP required)`,
-    );
+    this.logger.log(`[AUTH] Login verified for ${dto.email} (No OTP required)`);
 
     // Create session
     const sessionId = uuidv4();

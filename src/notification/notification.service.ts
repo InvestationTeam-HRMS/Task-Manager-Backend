@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationStrategy } from './interfaces/notification-strategy.interface';
 import { EmailStrategy } from './strategies/email.strategy';
@@ -30,7 +35,10 @@ export class NotificationService implements OnModuleInit {
   }
 
   @OnEvent('notification.created', { async: true })
-  async handleNotificationCreated(payload: { teamId: string; notification: any }) {
+  async handleNotificationCreated(payload: {
+    teamId: string;
+    notification: any;
+  }) {
     const { teamId, notification } = payload;
 
     // Send Background Push Notifications
@@ -42,13 +50,20 @@ export class NotificationService implements OnModuleInit {
         data: {
           id: String(notification.id || ''),
           type: notification.type || 'SYSTEM',
-          ...(notification.metadata ? Object.fromEntries(
-            Object.entries(notification.metadata).map(([k, v]) => [k, String(v)])
-          ) : {}),
+          ...(notification.metadata
+            ? Object.fromEntries(
+                Object.entries(notification.metadata).map(([k, v]) => [
+                  k,
+                  String(v),
+                ]),
+              )
+            : {}),
         },
       });
     } catch (err) {
-      this.logger.error(`Push notification failed for user ${teamId}: ${err.message}`);
+      this.logger.error(
+        `Push notification failed for user ${teamId}: ${err.message}`,
+      );
     }
   }
 
@@ -103,7 +118,9 @@ export class NotificationService implements OnModuleInit {
         const notification = await this.createNotification(member.userId, data);
         if (notification) count++;
       } catch (err) {
-        this.logger.error(`Failed to broadcast to member ${member.userId}: ${err.message}`);
+        this.logger.error(
+          `Failed to broadcast to member ${member.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -261,5 +278,4 @@ export class NotificationService implements OnModuleInit {
       );
     }
   }
-
 }

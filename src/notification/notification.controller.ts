@@ -25,7 +25,7 @@ export class NotificationController {
   constructor(
     private readonly notificationService: NotificationService,
     private readonly fcmService: FcmService,
-  ) { }
+  ) {}
 
   @Get()
   findAll(@GetUser('id') userId: string) {
@@ -53,8 +53,6 @@ export class NotificationController {
   markAllAsRead(@GetUser('id') userId: string) {
     return this.notificationService.markAllAsRead(userId);
   }
-
-
 
   // FCM Endpoints
   @Post('fcm/register')

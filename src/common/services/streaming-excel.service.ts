@@ -18,7 +18,7 @@ export class StreamingExcelService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) { }
+  ) {}
 
   /**
    * Stream-based Excel processing for large files
@@ -114,7 +114,7 @@ export class StreamingExcelService {
 
     this.logger.log(
       `[STREAMING_UPLOAD] Completed ${entityType} upload: ` +
-      `Processed: ${totalProcessed}, Inserted: ${totalInserted}, Failed: ${totalFailed}, Duration: ${duration}ms`,
+        `Processed: ${totalProcessed}, Inserted: ${totalInserted}, Failed: ${totalFailed}, Duration: ${duration}ms`,
     );
 
     return {

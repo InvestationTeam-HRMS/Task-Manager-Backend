@@ -13,6 +13,7 @@ export type UploadJobRecord = {
   message?: string;
   success?: number;
   failed?: number;
+  errors?: any[];
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -68,13 +69,19 @@ export class UploadJobService {
 
   async markCompleted(
     jobId: string,
-    params: { success: number; failed: number; message?: string },
+    params: {
+      success: number;
+      failed: number;
+      message?: string;
+      errors?: any[];
+    },
   ): Promise<UploadJobRecord | null> {
     return this.updateJob(jobId, {
       status: 'completed',
       success: params.success,
       failed: params.failed,
       message: params.message,
+      errors: params.errors,
       finishedAt: new Date().toISOString(),
     });
   }

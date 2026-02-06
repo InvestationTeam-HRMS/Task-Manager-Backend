@@ -49,7 +49,10 @@ export class ClientGroupService {
     private notificationService: NotificationService,
   ) {
     const configuredBytes = Number(
-      this.configService.get('EXCEL_BACKGROUND_THRESHOLD_BYTES', 1 * 1024 * 1024),
+      this.configService.get(
+        'EXCEL_BACKGROUND_THRESHOLD_BYTES',
+        1 * 1024 * 1024,
+      ),
     );
     this.BACKGROUND_UPLOAD_BYTES = Number.isFinite(configuredBytes)
       ? configuredBytes
@@ -461,6 +464,11 @@ export class ClientGroupService {
 
     const BATCH_SIZE = 1000;
     const dataToInsert: any[] = [];
+    const metaToInsert: Array<{
+      rowNumber?: number;
+      groupCode: string;
+      groupNo: string;
+    }> = [];
 
     // Optimization 1: Batch check for groupCode duplicates
     const providedCodes = dto.clientGroups
@@ -495,21 +503,22 @@ export class ClientGroupService {
     // 2. Pre-process and validate in memory
     for (const clientGroupDto of dto.clientGroups) {
       try {
+        const { _rowNumber, ...payload } = clientGroupDto as any;
         const groupName = toTitleCase(
-          clientGroupDto.groupName?.trim() ||
-            clientGroupDto.groupCode ||
+          payload.groupName?.trim() ||
+            payload.groupCode ||
             'Unnamed Group',
         );
-        const country = clientGroupDto.country
-          ? toTitleCase(clientGroupDto.country)
+        const country = payload.country
+          ? toTitleCase(payload.country)
           : 'Unknown';
-        const remark = clientGroupDto.remark
-          ? toTitleCase(clientGroupDto.remark)
+        const remark = payload.remark
+          ? toTitleCase(payload.remark)
           : undefined;
 
         // Unique Code Logic
         let finalGroupCode =
-          clientGroupDto.groupCode?.trim()?.toUpperCase() ||
+          payload.groupCode?.trim()?.toUpperCase() ||
           `GC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         if (existingCodes.has(finalGroupCode)) {
           let suffix = 1;
@@ -522,7 +531,7 @@ export class ClientGroupService {
         existingCodes.add(finalGroupCode);
 
         // Unique Number Logic
-        let finalGroupNo = clientGroupDto.groupNo?.trim();
+        let finalGroupNo = payload.groupNo?.trim();
         if (!finalGroupNo || existingNos.has(finalGroupNo)) {
           finalGroupNo = `${prefix}${currentNum}`;
           currentNum++;
@@ -530,20 +539,105 @@ export class ClientGroupService {
         existingNos.add(finalGroupNo);
 
         dataToInsert.push({
-          ...clientGroupDto,
+          ...payload,
           groupName,
           country,
           remark,
           groupCode: finalGroupCode,
           groupNo: finalGroupNo,
-          status: clientGroupDto.status || ClientGroupStatus.Active,
+          status: payload.status || ClientGroupStatus.Active,
           createdBy: userId,
+        });
+        metaToInsert.push({
+          rowNumber: _rowNumber,
+          groupCode: finalGroupCode,
+          groupNo: finalGroupNo,
         });
       } catch (err) {
         errors.push({
           groupCode: clientGroupDto.groupCode,
           error: err.message,
         });
+      }
+    }
+
+    // 2.5 Check existing duplicates in DB and skip them with proper error info
+    const codesToCheck = metaToInsert
+      .map((m) => m.groupCode)
+      .filter(Boolean);
+    const nosToCheck = metaToInsert.map((m) => m.groupNo).filter(Boolean);
+
+    if (codesToCheck.length > 0 || nosToCheck.length > 0) {
+      const existing = await this.prisma.clientGroup.findMany({
+        where: {
+          OR: [
+            codesToCheck.length > 0
+              ? { groupCode: { in: codesToCheck } }
+              : undefined,
+            nosToCheck.length > 0 ? { groupNo: { in: nosToCheck } } : undefined,
+          ].filter(Boolean) as any,
+        },
+        select: { groupCode: true, groupNo: true },
+      });
+
+      const existingCodeSet = new Set(
+        existing.map((item) => item.groupCode),
+      );
+      const existingNoSet = new Set(existing.map((item) => item.groupNo));
+
+      for (let i = 0; i < dataToInsert.length; i++) {
+        const meta = metaToInsert[i];
+        const dupCode =
+          !!meta.groupCode && existingCodeSet.has(meta.groupCode);
+        const dupNo = !!meta.groupNo && existingNoSet.has(meta.groupNo);
+
+        if (!dupCode && !dupNo) continue;
+
+        const originalCode = meta.groupCode;
+        const originalNo = meta.groupNo;
+        let updated = false;
+
+        if (dupCode) {
+          let suffix = 1;
+          let newCode = originalCode;
+          while (existingCodes.has(newCode) || existingCodeSet.has(newCode)) {
+            newCode = `${originalCode}-${suffix}`;
+            suffix++;
+          }
+          existingCodes.add(newCode);
+          dataToInsert[i].groupCode = newCode;
+          metaToInsert[i].groupCode = newCode;
+          updated = true;
+        }
+
+        if (dupNo) {
+          let newNo = `${prefix}${currentNum}`;
+          while (existingNos.has(newNo) || existingNoSet.has(newNo)) {
+            currentNum++;
+            newNo = `${prefix}${currentNum}`;
+          }
+          currentNum++;
+          existingNos.add(newNo);
+          dataToInsert[i].groupNo = newNo;
+          metaToInsert[i].groupNo = newNo;
+          updated = true;
+        }
+
+        if (updated) {
+          errors.push({
+            row: meta.rowNumber,
+            groupCode: originalCode,
+            groupNo: originalNo,
+            newGroupCode: metaToInsert[i].groupCode,
+            newGroupNo: metaToInsert[i].groupNo,
+            error:
+              dupCode && dupNo
+                ? 'Duplicate groupCode and groupNo (auto-adjusted)'
+                : dupCode
+                  ? 'Duplicate groupCode (auto-adjusted)'
+                  : 'Duplicate groupNo (auto-adjusted)',
+          });
+        }
       }
     }
 
@@ -561,6 +655,12 @@ export class ClientGroupService {
           skipDuplicates: true,
         });
         totalInserted += result.count;
+        if (result.count !== chunk.length) {
+          const skipped = chunk.length - result.count;
+          errors.push({
+            error: `Skipped ${skipped} records due to duplicate constraints (race condition)`,
+          });
+        }
       } catch (err) {
         this.logger.error(`[BATCH_INSERT_ERROR] ${err.message}`);
         errors.push({ error: 'Batch insert failed', details: err.message });
@@ -570,6 +670,14 @@ export class ClientGroupService {
     this.logger.log(
       `[BULK_CREATE_COMPLETED] Processed: ${dto.clientGroups.length} | Inserted Actual: ${totalInserted} | Errors: ${errors.length}`,
     );
+
+    if (errors.length > 0) {
+      this.logger.warn(
+        `[BULK_CREATE_ERRORS] ${errors.length} errors. Sample: ${JSON.stringify(
+          errors.slice(0, 5),
+        )}`,
+      );
+    }
 
     await this.invalidateCache();
 
@@ -677,13 +785,22 @@ export class ClientGroupService {
     const data = parseResult.data as any[];
     const parseErrors = parseResult.errors;
 
+    if (parseErrors.length > 0) {
+      this.logger.warn(
+        `[UPLOAD_PARSE_ERRORS] ${parseErrors.length} parse errors. Sample: ${JSON.stringify(
+          parseErrors.slice(0, 5),
+        )}`,
+      );
+    }
+
     if (data.length === 0) {
       throw new BadRequestException(
         'No valid data found to import. Please check file format and column names.',
       );
     }
 
-    const processedData: CreateClientGroupDto[] = [];
+    const processedData: Array<CreateClientGroupDto & { _rowNumber?: number }> =
+      [];
     const processingErrors: any[] = [];
 
     for (let i = 0; i < data.length; i++) {
@@ -700,10 +817,19 @@ export class ClientGroupService {
         processedData.push({
           ...row,
           status: status as ClientGroupStatus,
+          _rowNumber: i + 2,
         });
       } catch (err) {
         processingErrors.push({ row: i + 2, error: err.message });
       }
+    }
+
+    if (processingErrors.length > 0) {
+      this.logger.warn(
+        `[UPLOAD_PROCESSING_ERRORS] ${processingErrors.length} validation errors. Sample: ${JSON.stringify(
+          processingErrors.slice(0, 5),
+        )}`,
+      );
     }
 
     if (processedData.length === 0 && processingErrors.length > 0) {
@@ -732,7 +858,9 @@ export class ClientGroupService {
         requiredColumns,
         1000,
         async (batch) => {
-          const toInsert: CreateClientGroupDto[] = [];
+          const toInsert: Array<
+            CreateClientGroupDto & { _rowNumber?: number }
+          > = [];
 
           for (const item of batch) {
             const row = item.data;
@@ -748,6 +876,7 @@ export class ClientGroupService {
               toInsert.push({
                 ...row,
                 status: status as ClientGroupStatus,
+                _rowNumber: item.rowNumber,
               });
             } catch (err) {
               totalFailed += 1;
@@ -772,6 +901,14 @@ export class ClientGroupService {
     totalFailed += parseErrors.length;
     if (parseErrors.length > 0) {
       errors.push(...parseErrors);
+    }
+
+    if (errors.length > 0) {
+      this.logger.warn(
+        `[UPLOAD_STREAMING_ERRORS] ${errors.length} errors. Sample: ${JSON.stringify(
+          errors.slice(0, 5),
+        )}`,
+      );
     }
 
     return {
@@ -870,11 +1007,13 @@ export class ClientGroupService {
 
       let totalSuccess = 0;
       let totalFailed = 0;
+      let errorsDetail: any[] = [];
 
       if (file) {
         const result = await this.processUploadStreaming(file, userId);
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else if (providedData && providedData.length > 0) {
         const result = await this.bulkCreate(
           { clientGroups: providedData },
@@ -882,6 +1021,7 @@ export class ClientGroupService {
         );
         totalSuccess = result.success;
         totalFailed = result.failed;
+        errorsDetail = result.errors || [];
       } else {
         throw new Error('No valid data found to import.');
       }
@@ -902,6 +1042,7 @@ export class ClientGroupService {
           success: totalSuccess,
           failed: totalFailed,
           message: `Successfully imported ${totalSuccess} client groups.`,
+          errors: errorsDetail,
         });
       }
 

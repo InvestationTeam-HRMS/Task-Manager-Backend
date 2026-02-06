@@ -15,7 +15,10 @@ export class UploadStatusController {
 
   @Get('status/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getStatus(@Param('jobId') jobId: string, @GetUser('id') userId: string) {
+  async getStatus(
+    @Param('jobId') jobId: string,
+    @GetUser('id') userId: string,
+  ) {
     const job = await this.uploadJobService.getJob(jobId);
     if (!job || job.userId !== userId) {
       throw new NotFoundException('Upload job not found');

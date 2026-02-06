@@ -10,7 +10,7 @@ import { isAdminRole } from '../../common/utils/role-utils';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) { }
+  constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
@@ -90,7 +90,7 @@ export class PermissionsGuard implements CanActivate {
       }
 
       // Get module permissions - handle both old array format and new object format
-      let modulePermissions = getModulePermissions(module);
+      const modulePermissions = getModulePermissions(module);
 
       // If no permissions for this module
       if (!modulePermissions) {

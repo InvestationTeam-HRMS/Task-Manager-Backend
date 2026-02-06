@@ -12,7 +12,12 @@ import { FirebaseAdminConfig } from '../config/firebase-admin.config';
 @Module({
   imports: [ConfigModule, PrismaModule, EventEmitterModule.forRoot()],
   controllers: [NotificationController],
-  providers: [NotificationService, EmailStrategy, FcmService, FirebaseAdminConfig],
+  providers: [
+    NotificationService,
+    EmailStrategy,
+    FcmService,
+    FirebaseAdminConfig,
+  ],
   exports: [NotificationService, FcmService],
 })
-export class NotificationModule { }
+export class NotificationModule {}

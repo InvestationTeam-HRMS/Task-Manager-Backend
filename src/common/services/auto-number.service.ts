@@ -9,6 +9,19 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 @Injectable()
 export class AutoNumberService {
+  private readonly modelTableMap: Record<string, string> = {
+    clientGroup: 'client_groups',
+    clientCompany: 'client_companies',
+    clientLocation: 'client_locations',
+    subLocation: 'sub_locations',
+    project: 'projects',
+    team: 'teams',
+    group: 'groups',
+    ipAddress: 'ip_addresses',
+    pendingTask: 'pending_tasks',
+    completedTask: 'completed_tasks',
+  };
+
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
@@ -167,6 +180,18 @@ export class AutoNumberService {
     let maxNum = startNumber - 1;
 
     for (const modelName of models) {
+      const maxFromDb = await this.getMaxNumericFromDb(
+        modelName,
+        fieldName,
+        prefix,
+      );
+      if (maxFromDb !== null && !isNaN(maxFromDb)) {
+        if (maxFromDb > maxNum) {
+          maxNum = maxFromDb;
+        }
+        continue;
+      }
+
       // Fetch top 10 records by field name descending to find the maximum number
       const topRecords = await (this.prisma as any)[modelName].findMany({
         where: { [fieldName]: { startsWith: prefix, mode: 'insensitive' } },
@@ -205,12 +230,56 @@ export class AutoNumberService {
     };
 
     let safetyCounter = 0;
-    while ((await checkExists(finalNo)) && safetyCounter < 100) {
+    while (await checkExists(finalNo)) {
       nextNum++;
       finalNo = `${prefix}${nextNum}`;
       safetyCounter++;
+      if (safetyCounter > 10000) {
+        throw new Error(
+          `Failed to generate unique number for ${fieldName}. Please retry.`,
+        );
+      }
     }
 
     return finalNo;
+  }
+
+  private toSnakeCase(value: string): string {
+    return value
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[\s-]+/g, '_')
+      .toLowerCase();
+  }
+
+  private async getMaxNumericFromDb(
+    modelName: string,
+    fieldName: string,
+    prefix: string,
+  ): Promise<number | null> {
+    const table = this.modelTableMap[modelName];
+    if (!table) return null;
+    const column = this.toSnakeCase(fieldName);
+
+    if (!/^[a-z0-9_]+$/.test(table) || !/^[a-z0-9_]+$/.test(column)) {
+      return null;
+    }
+
+    const likePattern = `${prefix}%`;
+    const query = `
+      SELECT MAX(NULLIF(REGEXP_REPLACE(${column}, '\\\\D', '', 'g'), '')::bigint) AS max
+      FROM ${table}
+      WHERE ${column} ILIKE $1
+    `;
+
+    try {
+      const result = await this.prisma.$queryRawUnsafe<
+        Array<{ max: bigint | number | null }>
+      >(query, likePattern);
+      const maxVal = result?.[0]?.max;
+      if (maxVal === null || maxVal === undefined) return null;
+      return typeof maxVal === 'bigint' ? Number(maxVal) : Number(maxVal);
+    } catch {
+      return null;
+    }
   }
 }
