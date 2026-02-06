@@ -639,7 +639,17 @@ export class TaskService {
                     { assignedTo: userId },
                     { workingBy: userId },
                     { targetTeamId: userId },
-                    { targetGroup: { members: { some: { userId } } } },
+                    {
+                        targetGroup: {
+                            members: { some: { userId } },
+                            taskAcceptances: {
+                                some: {
+                                    userId,
+                                    status: { not: 'REJECTED' },
+                                },
+                            },
+                        },
+                    },
                 ],
             });
         }
