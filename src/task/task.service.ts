@@ -211,8 +211,10 @@ export class TaskService {
 
         recipients.delete(userId);
 
+        const creatorName = task.creator?.teamName || 'System';
+
         for (const recipientId of recipients) {
-            let description = `A new task "${task.taskTitle}" has been assigned to you.`;
+            let description = `A new task "${task.taskTitle}" has been assigned to you by ${creatorName}.`;
 
             // If it's a group assignment and the user is NOT the primary individual assignee
             if (
@@ -220,7 +222,7 @@ export class TaskService {
                 recipientId !== task.assignedTo &&
                 recipientId !== task.targetTeamId
             ) {
-                description = `A new task "${task.taskTitle}" has been assigned to your group.`;
+                description = `A new task "${task.taskTitle}" has been assigned to your group by ${creatorName}.`;
             }
 
             await this.notificationService.createNotification(recipientId, {
@@ -284,7 +286,10 @@ export class TaskService {
         const { status } = dto;
         const acceptance = await (this.prisma as any).taskAcceptance.findUnique({
             where: { id },
-            include: { pendingTask: true },
+            include: {
+                pendingTask: true,
+                user: { select: { teamName: true } },
+            },
         });
 
         if (!acceptance || acceptance.userId !== userId) {
@@ -332,11 +337,12 @@ export class TaskService {
                 });
             }
 
+            const acceptorName = acceptance.user?.teamName || 'A member';
             await this.notificationService.createNotification(
                 updated.pendingTask.createdBy,
                 {
                     title: 'Task Accepted',
-                    description: `A member has accepted the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
+                    description: `${acceptorName} has accepted the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
                     type: 'TASK',
                     metadata: {
                         taskId: updated.pendingTask.id,
