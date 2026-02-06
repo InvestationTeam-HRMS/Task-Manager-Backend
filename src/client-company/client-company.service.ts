@@ -44,7 +44,7 @@ export class ClientCompanyService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateClientCompanyDto, userId: string) {
     // Transform companyCode to uppercase
@@ -109,14 +109,22 @@ export class ClientCompanyService {
     const andArray = where.AND as Array<Prisma.ClientCompanyWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { group: { groupNo: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter (handle possible multi-select from UI)
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -132,9 +140,9 @@ export class ClientCompanyService {
       const groupIds =
         typeof filter.groupId === 'string'
           ? filter.groupId
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.groupId)
             ? filter.groupId
             : [filter.groupId];
@@ -269,7 +277,7 @@ export class ClientCompanyService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           companyNo: true,
@@ -559,8 +567,8 @@ export class ClientCompanyService {
         const { _rowNumber, ...payload } = companyDto as any;
         const companyName = toTitleCase(
           payload.companyName?.trim() ||
-            payload.companyCode ||
-            'Unnamed Company',
+          payload.companyCode ||
+          'Unnamed Company',
         );
         const address = payload.address
           ? toTitleCase(payload.address)
@@ -858,10 +866,10 @@ export class ClientCompanyService {
       try {
         const status = row.status
           ? this.excelUploadService.validateEnum(
-              row.status as string,
-              CompanyStatus,
-              'Status',
-            )
+            row.status as string,
+            CompanyStatus,
+            'Status',
+          )
           : CompanyStatus.Active;
 
         const groupId = groupMap.get(row.clientGroupName?.toLowerCase());
@@ -960,10 +968,10 @@ export class ClientCompanyService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    row.status as string,
-                    CompanyStatus,
-                    'Status',
-                  )
+                  row.status as string,
+                  CompanyStatus,
+                  'Status',
+                )
                 : CompanyStatus.Active;
 
               const groupId = groupMap.get(row.clientGroupName?.toLowerCase());

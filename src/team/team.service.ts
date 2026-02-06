@@ -48,7 +48,7 @@ export class TeamService {
     private excelDownloadService: ExcelDownloadService,
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   async create(dto: CreateTeamDto, userId: string) {
     // Email duplication check
@@ -148,14 +148,28 @@ export class TeamService {
 
     const andArray = where.AND as Array<Prisma.TeamWhereInput>;
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { clientGroup: { groupNo: sortOrder } };
+    } else if (sortBy === 'companyNo' || sortBy === 'companyName') {
+      orderBy = { company: { companyNo: sortOrder } };
+    } else if (sortBy === 'locationNo' || sortBy === 'locationName') {
+      orderBy = { location: { locationNo: sortOrder } };
+    } else if (sortBy === 'subLocationNo' || sortBy === 'subLocationName') {
+      orderBy = { subLocation: { subLocationNo: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -172,9 +186,9 @@ export class TeamService {
       const values =
         typeof value === 'string'
           ? value
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(value)
             ? value
             : [value];
@@ -286,7 +300,7 @@ export class TeamService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           teamNo: true,
@@ -538,17 +552,17 @@ export class TeamService {
     const { _count } = team;
     const childCounts = [
       _count.createdPendingTasks > 0 &&
-        `${_count.createdPendingTasks} created pending tasks`,
+      `${_count.createdPendingTasks} created pending tasks`,
       _count.assignedPendingTasks > 0 &&
-        `${_count.assignedPendingTasks} assigned pending tasks`,
+      `${_count.assignedPendingTasks} assigned pending tasks`,
       _count.workingPendingTasks > 0 &&
-        `${_count.workingPendingTasks} working pending tasks`,
+      `${_count.workingPendingTasks} working pending tasks`,
       _count.createdCompletedTasks > 0 &&
-        `${_count.createdCompletedTasks} created completed tasks`,
+      `${_count.createdCompletedTasks} created completed tasks`,
       _count.assignedCompletedTasks > 0 &&
-        `${_count.assignedCompletedTasks} assigned completed tasks`,
+      `${_count.assignedCompletedTasks} assigned completed tasks`,
       _count.workingCompletedTasks > 0 &&
-        `${_count.workingCompletedTasks} working completed tasks`,
+      `${_count.workingCompletedTasks} working completed tasks`,
     ].filter(Boolean);
 
     if (childCounts.length > 0) {
@@ -806,10 +820,10 @@ export class TeamService {
           ...row,
           status: row.status
             ? this.excelUploadService.validateEnum(
-                row.status,
-                TeamStatus,
-                'Status',
-              )
+              row.status,
+              TeamStatus,
+              'Status',
+            )
             : TeamStatus.Active,
           role: row.role ? toTitleCase(row.role) : 'Employee',
           loginMethod: LoginMethod.General,
@@ -853,10 +867,10 @@ export class TeamService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    row.status,
-                    TeamStatus,
-                    'Status',
-                  )
+                  row.status,
+                  TeamStatus,
+                  'Status',
+                )
                 : TeamStatus.Active;
 
               toInsert.push({

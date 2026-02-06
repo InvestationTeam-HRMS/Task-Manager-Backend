@@ -114,13 +114,24 @@ export class ClientGroupService {
     const andArray = where.AND as Array<Prisma.ClientGroupWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    // Note: ClientGroup doesn't have direct relations to subLocation, company, location
+    // So we can't sort by those fields - default to createdAt instead
+    let orderBy: any;
+    if (sortBy === 'subLocationName' || sortBy === 'companyName' || sortBy === 'locationName') {
+      // These fields don't exist in ClientGroup, fallback to default
+      orderBy = { createdAt: sortOrder };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -241,7 +252,7 @@ export class ClientGroupService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           groupNo: true,
@@ -506,8 +517,8 @@ export class ClientGroupService {
         const { _rowNumber, ...payload } = clientGroupDto as any;
         const groupName = toTitleCase(
           payload.groupName?.trim() ||
-            payload.groupCode ||
-            'Unnamed Group',
+          payload.groupCode ||
+          'Unnamed Group',
         );
         const country = payload.country
           ? toTitleCase(payload.country)
@@ -808,10 +819,10 @@ export class ClientGroupService {
       try {
         const status = row.status
           ? this.excelUploadService.validateEnum(
-              String(row.status),
-              ClientGroupStatus,
-              'Status',
-            )
+            String(row.status),
+            ClientGroupStatus,
+            'Status',
+          )
           : ClientGroupStatus.Active;
 
         processedData.push({
@@ -867,10 +878,10 @@ export class ClientGroupService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    String(row.status),
-                    ClientGroupStatus,
-                    'Status',
-                  )
+                  String(row.status),
+                  ClientGroupStatus,
+                  'Status',
+                )
                 : ClientGroupStatus.Active;
 
               toInsert.push({

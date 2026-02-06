@@ -45,7 +45,7 @@ export class ProjectService {
     private uploadJobService: UploadJobService,
     private eventEmitter: EventEmitter2,
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(dto: CreateProjectDto, userId: string) {
     // Validate Client Group Existence
@@ -106,14 +106,28 @@ export class ProjectService {
     const andArray = where.AND as Array<Prisma.ProjectWhereInput>;
     const { toTitleCase } = await import('../common/utils/string-helper');
 
+    // Map frontend sort fields to Prisma orderBy
+    let orderBy: any;
+    if (sortBy === 'groupNo' || sortBy === 'groupName') {
+      orderBy = { clientGroup: { groupNo: sortOrder } };
+    } else if (sortBy === 'companyName') {
+      orderBy = { company: { companyName: sortOrder } };
+    } else if (sortBy === 'locationName') {
+      orderBy = { location: { locationName: sortOrder } };
+    } else if (sortBy === 'subLocationName') {
+      orderBy = { subLocation: { subLocationName: sortOrder } };
+    } else {
+      orderBy = { [sortBy]: sortOrder };
+    }
+
     // Handle Status Filter
     if (filter?.status) {
       const statusValues =
         typeof filter.status === 'string'
           ? filter.status
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.status)
             ? filter.status
             : [filter.status];
@@ -126,9 +140,9 @@ export class ProjectService {
       const priorityValues =
         typeof filter.priority === 'string'
           ? filter.priority
-              .split(/[,\:;|]/)
-              .map((v) => v.trim())
-              .filter(Boolean)
+            .split(/[,\:;|]/)
+            .map((v) => v.trim())
+            .filter(Boolean)
           : Array.isArray(filter.priority)
             ? filter.priority
             : [filter.priority];
@@ -331,7 +345,7 @@ export class ProjectService {
         where,
         skip: Number(skip),
         take: Number(limit),
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderBy,
         select: {
           id: true,
           projectNo: true,
@@ -860,17 +874,17 @@ export class ProjectService {
       try {
         const status = row.status
           ? this.excelUploadService.validateEnum(
-              row.status as string,
-              ProjectStatus,
-              'Status',
-            )
+            row.status as string,
+            ProjectStatus,
+            'Status',
+          )
           : ProjectStatus.Active;
         const priority = row.priority
           ? this.excelUploadService.validateEnum(
-              row.priority as string,
-              ProjectPriority,
-              'Priority',
-            )
+            row.priority as string,
+            ProjectPriority,
+            'Priority',
+          )
           : ProjectPriority.Medium;
 
         const subLocationId = subLocationMap.get(
@@ -951,25 +965,25 @@ export class ProjectService {
     const subLocations =
       subLocationNames.size > 0
         ? await this.prisma.subLocation.findMany({
-            where: { subLocationName: { in: Array.from(subLocationNames) } },
-            select: {
-              id: true,
-              subLocationName: true,
-              location: {
-                select: {
-                  id: true,
-                  company: {
-                    select: {
-                      id: true,
-                      group: {
-                        select: { id: true },
-                      },
+          where: { subLocationName: { in: Array.from(subLocationNames) } },
+          select: {
+            id: true,
+            subLocationName: true,
+            location: {
+              select: {
+                id: true,
+                company: {
+                  select: {
+                    id: true,
+                    group: {
+                      select: { id: true },
                     },
                   },
                 },
               },
             },
-          })
+          },
+        })
         : [];
 
     const subLocationMap = new Map(
@@ -994,17 +1008,17 @@ export class ProjectService {
             try {
               const status = row.status
                 ? this.excelUploadService.validateEnum(
-                    String(row.status),
-                    ProjectStatus,
-                    'Status',
-                  )
+                  String(row.status),
+                  ProjectStatus,
+                  'Status',
+                )
                 : ProjectStatus.Active;
               const priority = row.priority
                 ? this.excelUploadService.validateEnum(
-                    String(row.priority),
-                    ProjectPriority,
-                    'Priority',
-                  )
+                  String(row.priority),
+                  ProjectPriority,
+                  'Priority',
+                )
                 : ProjectPriority.Medium;
 
               const subLocation = subLocationMap.get(
