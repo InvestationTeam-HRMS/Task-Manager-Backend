@@ -1142,6 +1142,90 @@ export class TaskService {
                 document = [...existingDocs, ...savedUrls].join(',');
             }
 
+            const isSelfAssignedTask =
+                !!task.isSelfTask &&
+                task.createdBy === userId &&
+                task.assignedTo === userId &&
+                !task.targetGroupId &&
+                !task.targetTeamId;
+
+            // Self-assigned tasks should go directly to Completed after remark
+            if (isSelfAssignedTask) {
+                const previousStatus = task.taskStatus as any;
+                const now = new Date();
+
+                const completedTask = await this.prisma.$transaction(async (tx) => {
+                    const completedData: any = {
+                        id: task.id,
+                        taskNo: task.taskNo,
+                        taskTitle: task.taskTitle,
+                        priority: task.priority,
+                        taskStatus: TaskStatus.Completed as any,
+                        additionalNote: task.additionalNote,
+                        deadline: task.deadline,
+                        completeTime: now,
+                        completedAt: now,
+                        reviewedTime: Array.isArray(task.reviewedTime)
+                            ? [...task.reviewedTime, now]
+                            : [now],
+                        reminderTime: task.reminderTime || [],
+                        document: document,
+                        remarkChat: remark || task.remarkChat,
+                        createdTime: task.createdTime,
+                        editTime: task.editTime || [],
+                        projectId: task.projectId || null,
+                        assignedTo: task.assignedTo || null,
+                        targetGroupId: task.targetGroupId || null,
+                        targetTeamId: task.targetTeamId || null,
+                        createdBy: task.createdBy || null,
+                        workingBy: task.workingBy || userId,
+                        isSelfTask: (task as any).isSelfTask || false,
+                    };
+
+                    const completed = await tx.completedTask.create({
+                        data: completedData,
+                    });
+
+                    await tx.pendingTask.delete({
+                        where: { id: task.id },
+                    });
+
+                    return completed;
+                });
+
+                await this.logTaskActivity(
+                    userId,
+                    task.taskNo,
+                    completedTask.id,
+                    'TASK_STATUS_CHANGE',
+                    `Task marked as Completed`,
+                    { status: TaskStatus.Completed, previousStatus },
+                );
+
+                await this.logTaskActivity(
+                    userId,
+                    task.taskNo,
+                    completedTask.id,
+                    'TASK_REMARK',
+                    remark,
+                    { remark },
+                );
+
+                if (files && files.length > 0) {
+                    await this.logTaskActivity(
+                        userId,
+                        task.taskNo,
+                        completedTask.id,
+                        'TASK_FILE_ADDED',
+                        `${files.length} file(s) added`,
+                        { files: files.map((f) => f.originalname) },
+                    );
+                }
+
+                await this.invalidateCache();
+                return this.sortTaskDates(completedTask);
+            }
+
             const updated = await this.prisma.pendingTask.update({
                 where: { id },
                 data: {
