@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class FirebaseAdminConfig {
@@ -27,19 +29,35 @@ export class FirebaseAdminConfig {
     // If service account path is provided, use it
     if (serviceAccountPath) {
       try {
-        const serviceAccount = require(serviceAccountPath);
+        const resolvedPath = path.isAbsolute(serviceAccountPath)
+          ? serviceAccountPath
+          : path.resolve(process.cwd(), serviceAccountPath);
+
+        const finalPath = fs.existsSync(resolvedPath)
+          ? resolvedPath
+          : path.resolve(__dirname, '..', '..', serviceAccountPath);
+
+        if (!fs.existsSync(finalPath)) {
+          console.warn(
+            'Firebase service account not found, FCM notifications will be disabled',
+          );
+          return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const serviceAccount = require(finalPath);
         this.app = admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
-        console.log('✅ Firebase Admin initialized with service account');
+        console.log('Firebase Admin initialized with service account');
       } catch (error) {
         console.warn(
-          '⚠️ Firebase service account not found, FCM notifications will be disabled',
+          'Firebase service account not found, FCM notifications will be disabled',
         );
       }
     } else {
       console.warn(
-        '⚠️ FIREBASE_SERVICE_ACCOUNT_PATH not configured, FCM notifications will be disabled',
+        'FIREBASE_SERVICE_ACCOUNT_PATH not configured, FCM notifications will be disabled',
       );
     }
   }
