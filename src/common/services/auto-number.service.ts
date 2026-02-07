@@ -25,7 +25,7 @@ export class AutoNumberService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * Generate next number for Client Group (CG-11001, CG-11002, etc.)
@@ -150,7 +150,7 @@ export class AutoNumberService {
       'TASK_NUMBER_PREFIX',
       'TASK_NUMBER_START',
       'T-',
-      '11001',
+      '11101',
     );
   }
 
