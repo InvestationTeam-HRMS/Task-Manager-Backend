@@ -858,11 +858,10 @@ export class TaskService {
     ) {
         const existingTask = await this.findById(id);
 
-        // Permission Check: Only Admin/SuperAdmin can update tasks
-        // (Per user request: "admin ne hr ko task assign kia toh sirf admin edit kar skta hai")
-        const isAdmin = isAdminRole(role);
-        if (!isAdmin) {
-            throw new ForbiddenException('Only Admins can edit tasks.');
+        const isCreator = existingTask.createdBy === userId;
+
+        if (!isCreator) {
+            throw new ForbiddenException('Only the task creator can edit this task.');
         }
 
         const { toTitleCase } = await import('../common/utils/string-helper');
@@ -950,20 +949,38 @@ export class TaskService {
             include: { assignee: true, creator: true, targetTeam: true },
         });
 
-        // If assignment changed, notify new assignee (Optimized to avoid duplicate notification if nothing changed)
-        // For simplicity in this quick fix, we just assume if these fields are present, it's a reassignment
-        if (dto.assignedTo || dto.targetTeamId) {
+        if (dto.assignedTo !== undefined || dto.targetTeamId !== undefined || dto.targetGroupId !== undefined) {
+            const oldRecipient = existingTask.assignedTo || existingTask.targetTeamId;
             const newRecipient = dto.assignedTo || dto.targetTeamId;
-            if (newRecipient && newRecipient !== 'null' && newRecipient !== userId) {
+
+            const updater = await this.prisma.team.findUnique({
+                where: { id: userId },
+                select: { teamName: true }
+            });
+            const updaterName = updater?.teamName || 'System';
+
+            // 1. Notify the NEW recipient (if changed)
+            if (newRecipient && newRecipient !== 'null' && newRecipient !== userId && newRecipient !== oldRecipient) {
                 await this.notificationService.createNotification(newRecipient, {
-                    title: 'Task Re-Assigned',
-                    description: `Task "${updated.taskTitle}" has been re-assigned to you.`,
+                    title: 'New Task Assigned',
+                    description: `A new task "${updated.taskTitle}" (${updated.taskNo}) has been assigned to you by ${updaterName}.`,
                     type: 'TASK',
                     metadata: { taskId: updated.id, taskNo: updated.taskNo },
                 });
             }
+
+            // 2. Notify the OLD recipient (if assignment actually shifted away from them)
+            if (oldRecipient && oldRecipient !== userId && oldRecipient !== newRecipient) {
+                await this.notificationService.createNotification(oldRecipient, {
+                    title: 'Task Shifted',
+                    description: `Task "${updated.taskTitle}" (${updated.taskNo}) has been shifted to another member by ${updaterName}.`,
+                    type: 'TASK',
+                    metadata: { taskId: updated.id, taskNo: updated.taskNo },
+                });
+            }
+
             // Log assignment activity
-            const assigneeName = updated.assignee?.teamName || updated.targetTeam?.teamName;
+            const assigneeName = updated.assignee?.teamName || updated.targetTeam?.teamName || updated.targetGroup?.groupName;
             if (assigneeName) {
                 await this.logTaskActivity(
                     userId,
