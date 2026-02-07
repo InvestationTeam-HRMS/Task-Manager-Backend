@@ -640,13 +640,23 @@ export class AuthService {
       `[AUTH] Gravity Reset: Bypassing OTP check for ${dto.email}`,
     );
 
+    const emailLower = dto.email.toLowerCase();
+
+    const existingTeam = await this.prisma.team.findUnique({
+      where: { email: emailLower },
+    });
+
+    if (!existingTeam) {
+      throw new BadRequestException('Account not found with this email.');
+    }
+
     const hashedPassword = await bcrypt.hash(
       dto.newPassword,
       parseInt(this.configService.get('BCRYPT_ROUNDS', '12')),
     );
 
     const team = await this.prisma.team.update({
-      where: { email: dto.email },
+      where: { id: existingTeam.id },
       data: {
         password: hashedPassword,
         passwordChangedAt: new Date(),
