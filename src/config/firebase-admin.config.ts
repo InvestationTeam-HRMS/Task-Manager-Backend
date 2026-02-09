@@ -22,11 +22,29 @@ export class FirebaseAdminConfig {
       return;
     }
 
+    // 1. Try to get credentials from JSON string environment variable
+    const serviceAccountJson = this.configService.get<string>(
+      'FIREBASE_SERVICE_ACCOUNT_JSON',
+    );
+
+    if (serviceAccountJson) {
+      try {
+        const serviceAccount = JSON.parse(serviceAccountJson);
+        this.app = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log('Firebase Admin initialized with environment variable JSON');
+        return;
+      } catch (error) {
+        console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', error.message);
+      }
+    }
+
+    // 2. Fallback to file path method
     const serviceAccountPath = this.configService.get<string>(
       'FIREBASE_SERVICE_ACCOUNT_PATH',
     );
 
-    // If service account path is provided, use it
     if (serviceAccountPath) {
       try {
         const resolvedPath = path.isAbsolute(serviceAccountPath)
@@ -49,15 +67,15 @@ export class FirebaseAdminConfig {
         this.app = admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
-        console.log('Firebase Admin initialized with service account');
+        console.log('Firebase Admin initialized with service account file');
       } catch (error) {
         console.warn(
-          'Firebase service account not found, FCM notifications will be disabled',
+          'Firebase service account file error, FCM notifications will be disabled',
         );
       }
     } else {
       console.warn(
-        'FIREBASE_SERVICE_ACCOUNT_PATH not configured, FCM notifications will be disabled',
+        'Neither FIREBASE_SERVICE_ACCOUNT_JSON nor FIREBASE_SERVICE_ACCOUNT_PATH configured, FCM notifications will be disabled',
       );
     }
   }
