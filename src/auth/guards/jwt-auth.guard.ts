@@ -110,7 +110,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       },
     });
 
-    if (!team) return null;
+    if (!team || team.status !== 'Active') return null;
 
     // Parse permissions from role
     let permissions: any = {};

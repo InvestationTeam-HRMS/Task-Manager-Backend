@@ -734,7 +734,7 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    if (!user || user.status !== 'Active') {
       return null;
     }
 
