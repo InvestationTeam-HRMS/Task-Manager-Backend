@@ -600,6 +600,16 @@ export class TaskService {
             });
         }
 
+        // Privacy: Self tasks are only visible to the creator
+        if (userId) {
+            andArray.push({
+                OR: [
+                    { isSelfTask: false },
+                    { isSelfTask: true, createdBy: userId },
+                ],
+            });
+        }
+
         // Visibility Rules logic (unchanged structure)
         if (filter.viewMode && userId) {
             switch (filter.viewMode) {
@@ -926,6 +936,17 @@ export class TaskService {
                 ? this.prisma.completedTask
                 : this.prisma.pendingTask;
 
+        // Calculate new assignment values for isSelfTask and reassignment check
+        const currentAssignedTo = dto.assignedTo !== undefined ? dto.assignedTo : existingTask.assignedTo;
+        const currentTargetGroupId = dto.targetGroupId !== undefined ? dto.targetGroupId : existingTask.targetGroupId;
+        const currentTargetTeamId = dto.targetTeamId !== undefined ? dto.targetTeamId : existingTask.targetTeamId;
+
+        const isSelfTask = (currentAssignedTo === existingTask.createdBy && !currentTargetGroupId && !currentTargetTeamId);
+        const isReassigned =
+            (dto.assignedTo !== undefined && dto.assignedTo !== existingTask.assignedTo) ||
+            (dto.targetTeamId !== undefined && dto.targetTeamId !== existingTask.targetTeamId) ||
+            (dto.targetGroupId !== undefined && dto.targetGroupId !== existingTask.targetGroupId);
+
         const updated = await model.update({
             where: { id },
             data: {
@@ -939,6 +960,9 @@ export class TaskService {
                 reminderTime: reminderTime,
                 reviewedTime: reviewedTime,
                 document: document,
+                isSelfTask: isSelfTask,
+                // If re-assigned, clear the worker so new assignee can pick it up
+                workingBy: isReassigned ? null : (dto.workingBy !== undefined ? dto.workingBy : undefined),
                 // Handle Reassignment: If one is set, others must be null
                 assignedTo: dto.assignedTo !== undefined ? dto.assignedTo : undefined,
                 targetGroupId:
@@ -946,10 +970,11 @@ export class TaskService {
                 targetTeamId:
                     dto.targetTeamId !== undefined ? dto.targetTeamId : undefined,
             },
-            include: { assignee: true, creator: true, targetTeam: true },
+            include: { assignee: true, creator: true, targetTeam: true, targetGroup: true },
         });
 
-        if (dto.assignedTo !== undefined || dto.targetTeamId !== undefined || dto.targetGroupId !== undefined) {
+        let notifiedNewGuy = false;
+        if (isReassigned) {
             const oldRecipient = existingTask.assignedTo || existingTask.targetTeamId;
             const newRecipient = dto.assignedTo || dto.targetTeamId;
 
@@ -967,6 +992,7 @@ export class TaskService {
                     type: 'TASK',
                     metadata: { taskId: updated.id, taskNo: updated.taskNo },
                 });
+                notifiedNewGuy = true;
             }
 
             // 2. Notify the OLD recipient (if assignment actually shifted away from them)
@@ -1046,7 +1072,8 @@ export class TaskService {
         } else if (dto.taskTitle || dto.additionalNote || dto.deadline || dto.priority) {
             // CASE: Task details updated (title, note, deadline, priority changed)
             const workerId = updated.workingBy || updated.assignedTo || updated.targetTeamId;
-            if (workerId && workerId !== userId) {
+            // Only notify "Updated" if they haven't already been notified as "New Assignee"
+            if (workerId && workerId !== userId && !notifiedNewGuy) {
                 await this.notificationService.createNotification(workerId, {
                     title: 'Task Details Updated',
                     description: `The task "${updated.taskTitle}" (${updated.taskNo}) has been updated by the creator.`,
