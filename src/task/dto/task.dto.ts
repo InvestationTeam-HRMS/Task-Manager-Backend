@@ -217,6 +217,8 @@ export enum TaskViewMode {
   TEAM_COMPLETED = 'TEAM_COMPLETED',
   REVIEW_PENDING_BY_ME = 'REVIEW_PENDING_BY_ME',
   REVIEW_PENDING_BY_TEAM = 'REVIEW_PENDING_BY_TEAM',
+  ALL_PENDING = 'ALL_PENDING',
+  ALL_COMPLETED = 'ALL_COMPLETED',
 }
 export class UpdateTaskAcceptanceDto {
   @IsEnum(AcceptanceStatus)

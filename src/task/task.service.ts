@@ -436,6 +436,7 @@ export class TaskService {
         const isStrictlyCompleted =
             filter.viewMode === TaskViewMode.MY_COMPLETED ||
             filter.viewMode === TaskViewMode.TEAM_COMPLETED ||
+            filter.viewMode === TaskViewMode.ALL_COMPLETED ||
             (statusValues.length > 0 &&
                 statusValues.every((s) => s === TaskStatus.Completed));
 
@@ -444,6 +445,7 @@ export class TaskService {
             filter.viewMode === TaskViewMode.TEAM_PENDING ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_ME ||
             filter.viewMode === TaskViewMode.REVIEW_PENDING_BY_TEAM ||
+            filter.viewMode === TaskViewMode.ALL_PENDING ||
             (statusValues.length > 0 &&
                 statusValues.every((s) => s !== TaskStatus.Completed));
 
@@ -666,6 +668,59 @@ export class TaskService {
                         workingBy: userId,
                         isSelfTask: false,
                         createdBy: { not: userId }, // Exclude tasks created by the same user
+                    });
+                    break;
+                case TaskViewMode.ALL_PENDING:
+                    andArray.push({
+                        OR: [
+                            // My Pending
+                            {
+                                taskStatus: TaskStatus.Pending,
+                                OR: [
+                                    { assignedTo: userId },
+                                    {
+                                        AND: [{ assignedTo: null }, { targetTeamId: userId }],
+                                    },
+                                ],
+                            },
+                            // Team Pending
+                            {
+                                taskStatus: TaskStatus.Pending,
+                                isSelfTask: false,
+                                createdBy: userId,
+                                AND: [
+                                    { OR: [{ assignedTo: { not: userId } }, { assignedTo: null }] },
+                                    { OR: [{ targetTeamId: { not: userId } }, { targetTeamId: null }] },
+                                ],
+                            },
+                            // Review Pending by Me (Tasks I need to verify)
+                            {
+                                createdBy: userId,
+                                taskStatus: TaskStatus.ReviewPending,
+                            },
+                            // Review Pending by Team (Tasks team finished, waiting for my review - wait, actually Review Pending by Team usually means tasks I finished waiting for others)
+                            // Let's use the logic from REVIEW_PENDING_BY_TEAM case
+                            {
+                                taskStatus: TaskStatus.ReviewPending,
+                                workingBy: userId,
+                                isSelfTask: false,
+                                createdBy: { not: userId },
+                            },
+                        ],
+                    });
+                    break;
+                case TaskViewMode.ALL_COMPLETED:
+                    andArray.push({
+                        OR: [
+                            // My Completed
+                            { workingBy: userId },
+                            // Team Completed
+                            {
+                                createdBy: userId,
+                                isSelfTask: false,
+                                OR: [{ workingBy: { not: userId } }, { workingBy: null }],
+                            },
+                        ],
                     });
                     break;
             }
