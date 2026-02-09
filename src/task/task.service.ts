@@ -363,7 +363,7 @@ export class TaskService {
                         // Don't notify the one who just accepted
                         await this.notificationService.createNotification(member.userId, {
                             title: 'Task Accepted by Peer',
-                            description: `The task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}) has been accepted by someone else in your group.`,
+                            description: `The task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}) has been accepted by ${acceptorName} in your group.`,
                             type: 'TASK',
                             metadata: {
                                 taskId: updated.pendingTask.id,
@@ -388,11 +388,12 @@ export class TaskService {
             }
 
             // Notify creator that a group member rejected the task
+            const rejectorName = acceptance.user?.teamName || 'A group member';
             await this.notificationService.createNotification(
                 updated.pendingTask.createdBy,
                 {
                     title: 'Task Acceptance Rejected',
-                    description: `A group member has declined the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
+                    description: `${rejectorName} has declined the task "${updated.pendingTask.taskTitle}" (${updated.pendingTask.taskNo}).`,
                     type: 'TASK',
                     metadata: {
                         taskId: updated.pendingTask.id,
@@ -980,11 +981,11 @@ export class TaskService {
 
             const updater = await this.prisma.team.findUnique({
                 where: { id: userId },
-                select: { teamName: true }
+                select: { teamName: true },
             });
             const updaterName = updater?.teamName || 'System';
 
-            // 1. Notify the NEW recipient (if changed)
+            // 1. Notify the NEW individual/team recipient
             if (newRecipient && newRecipient !== 'null' && newRecipient !== userId && newRecipient !== oldRecipient) {
                 await this.notificationService.createNotification(newRecipient, {
                     title: 'New Task Assigned',
@@ -995,7 +996,7 @@ export class TaskService {
                 notifiedNewGuy = true;
             }
 
-            // 2. Notify the OLD recipient (if assignment actually shifted away from them)
+            // 2. Notify the OLD individual/team recipient (if assignment shifted)
             if (oldRecipient && oldRecipient !== userId && oldRecipient !== newRecipient) {
                 await this.notificationService.createNotification(oldRecipient, {
                     title: 'Task Shifted',
@@ -1003,6 +1004,55 @@ export class TaskService {
                     type: 'TASK',
                     metadata: { taskId: updated.id, taskNo: updated.taskNo },
                 });
+            }
+
+            // 3. Handle Group Assignment Logic
+            if (updated.targetGroupId) {
+                // If group re-assigned, refresh the acceptance records
+                await (this.prisma as any).taskAcceptance.deleteMany({
+                    where: { taskId: updated.id },
+                });
+
+                const members = await this.prisma.groupMember.findMany({
+                    where: { groupId: updated.targetGroupId },
+                });
+
+                if (members.length > 0) {
+                    const membersToNotify = members.filter((m) => m.userId !== userId);
+
+                    if (membersToNotify.length > 0) {
+                        const acceptanceData = membersToNotify.map((m) => ({
+                            taskId: updated.id,
+                            userId: m.userId,
+                            groupId: updated.targetGroupId,
+                            status: 'PENDING',
+                        }));
+
+                        await (this.prisma as any).taskAcceptance.createMany({
+                            data: acceptanceData,
+                            skipDuplicates: true,
+                        });
+
+                        for (const member of membersToNotify) {
+                            // Don't double notify if the user is already the primary individual assignee
+                            if (member.userId !== newRecipient) {
+                                await this.notificationService.createNotification(member.userId, {
+                                    title: 'New Task Assigned',
+                                    description: `A new task "${updated.taskTitle}" (${updated.taskNo}) has been assigned to your group by ${updaterName}.`,
+                                    type: 'TASK',
+                                    metadata: { taskId: updated.id, taskNo: updated.taskNo },
+                                });
+                            }
+                        }
+                    }
+                }
+            } else if (existingTask.targetGroupId) {
+                // If moved away from group, clean up acceptances
+                await (this.prisma as any).taskAcceptance.deleteMany({
+                    where: { taskId: updated.id },
+                });
+
+                // Optional: Notify old group members that task shifted (omitted to avoid notification spam unless requested)
             }
 
             // Log assignment activity
