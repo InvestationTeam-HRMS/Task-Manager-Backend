@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * Reusable Auto-Number Generator Service
- * Generates sequential numbers for all HRMS modules
+ * Generates sequential numbers for all Task Manager modules
  * Pattern: PREFIX + NUMBER (e.g., CG-11001, CC-11002, etc.)
  */
 @Injectable()

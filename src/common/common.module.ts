@@ -9,7 +9,7 @@ import { UploadStatusController } from './controllers/upload-status.controller';
 
 /**
  * Global Common Module
- * Provides reusable services across all HRMS modules
+ * Provides reusable services across all Task Manager modules
  */
 @Global()
 @Module({
@@ -30,4 +30,4 @@ import { UploadStatusController } from './controllers/upload-status.controller';
     UploadJobService,
   ],
 })
-export class CommonModule {}
+export class CommonModule { }

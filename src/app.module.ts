@@ -75,7 +75,7 @@ import { AppService } from './app.service';
     CommonModule,
     AuthModule,
 
-    // HRMS Modules
+    // Task Manager Modules
     ClientGroupModule,
     ClientCompanyModule,
     ClientLocationModule,
@@ -129,4 +129,4 @@ import { AppService } from './app.service';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

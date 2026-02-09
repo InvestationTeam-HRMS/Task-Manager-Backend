@@ -2,7 +2,7 @@
 
 ## 🚀 Overview
 
-A **complete, production-ready, highly secure, and scalable** Task Manager (Human Resource Management System) backend built with **NestJS**, **PostgreSQL**, **Prisma**, and **Redis**.
+A **complete, production-ready, highly secure, and scalable** Task Manager (Task Management System) backend built with **NestJS**, **PostgreSQL**, **Prisma**, and **Redis**.
 
 ## 📋 Features
 

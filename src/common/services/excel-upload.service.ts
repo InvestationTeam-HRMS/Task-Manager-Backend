@@ -7,7 +7,7 @@ import { toTitleCase } from '../utils/string-helper';
 
 /**
  * Reusable Excel/CSV Upload Service
- * Handles parsing of Excel and CSV files for all HRMS modules
+ * Handles parsing of Excel and CSV files for all Task Manager modules
  */
 @Injectable()
 export class ExcelUploadService {

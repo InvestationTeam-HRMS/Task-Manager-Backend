@@ -20,7 +20,7 @@ export class CloudinaryService {
 
   async uploadFile(
     file: Express.Multer.File,
-    folder: string = 'hrms/tasks',
+    folder: string = 'task-manager/tasks',
     customFileName?: string,
   ): Promise<UploadApiResponse | UploadApiErrorResponse> {
     return this.uploadImage(file, folder, customFileName);
@@ -90,7 +90,7 @@ export class CloudinaryService {
   ): Promise<string> {
     const result = await this.uploadImage(
       file,
-      'hrms/profiles',
+      'task-manager/profiles',
       `avatar_${userId}`,
       false,
     );

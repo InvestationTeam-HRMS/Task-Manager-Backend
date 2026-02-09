@@ -108,7 +108,7 @@ export class TaskService {
                 try {
                     const timestamp = Date.now();
                     const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
-                    const folder = `hrms/tasks/${sanitizedTaskNo}`;
+                    const folder = `task-manager/tasks/${sanitizedTaskNo}`;
                     const result = await this.cloudinaryService.uploadFile(
                         file,
                         folder,
@@ -1199,7 +1199,7 @@ export class TaskService {
                         // Remove # from task number for Cloudinary compatibility
                         const sanitizedTaskNo = task.taskNo.replace('#', '');
                         const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
-                        const folder = `hrms/tasks/${sanitizedTaskNo}`;
+                        const folder = `task-manager/tasks/${sanitizedTaskNo}`;
                         this.logger.log(`Uploading file: ${customName}`);
                         const result = await this.cloudinaryService.uploadFile(
                             file,
@@ -1403,7 +1403,7 @@ export class TaskService {
                 // Remove # from task number for Cloudinary compatibility
                 const sanitizedTaskNo = task.taskNo.replace('#', '');
                 const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
-                const folder = `hrms/tasks/${sanitizedTaskNo}`;
+                const folder = `taskManager/tasks/${sanitizedTaskNo}`;
                 const result = await this.cloudinaryService.uploadFile(
                     file,
                     folder,
@@ -1679,7 +1679,7 @@ export class TaskService {
                 // Remove # from task number for Cloudinary compatibility
                 const sanitizedTaskNo = task.taskNo.replace('#', '');
                 const customName = `${sanitizedTaskNo}_${timestamp}_${file.originalname}`;
-                const folder = `hrms/tasks/${sanitizedTaskNo}`;
+                const folder = `taskManager/tasks/${sanitizedTaskNo}`;
                 const result = await this.cloudinaryService.uploadFile(
                     file,
                     folder,
@@ -2365,7 +2365,7 @@ export class TaskService {
             }
 
             // Completion — only add if no real Completed event was already logged
-            // HRMS Rule: Only a Manager/Admin can mark as Completed, so use creator (not worker)
+            // Task Manager Rule: Only a Manager/Admin can mark as Completed, so use creator (not worker)
             const hasRealCompletedEvent = events.some(
                 e => e.type === 'UPDATE_TASK' && String(e.status) === 'Completed',
             );
@@ -2381,7 +2381,7 @@ export class TaskService {
                         ).getTime() / 1000,
                     ),
                     taskNo: taskDetails.taskNo,
-                    // HRMS: Completion is done by Manager/Creator, NOT the worker/employee
+                    // Task Manager: Completion is done by Manager/Creator, NOT the worker/employee
                     userName: taskDetails.creator?.teamName || 'System',
                     userImg: taskDetails.creator?.avatar || '',
                     status: 'Completed',

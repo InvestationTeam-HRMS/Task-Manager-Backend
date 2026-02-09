@@ -84,7 +84,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
 
   async sendOtp(recipient: string, otp: string): Promise<boolean> {
     const from =
-      this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
+      this.configService.get('SMTP_FROM') || 'Task Manager <no-reply@missiontaskmanager.com>';
     const subject = '🔐 Verification Code - Task Manager';
 
     try {
@@ -115,7 +115,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
     otp: string,
   ): Promise<boolean> {
     const from =
-      this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
+      this.configService.get('SMTP_FROM') || 'Task Manager <no-reply@missiontaskmanager.com>';
     const subject = '🔐 Password Reset Code - Task Manager';
 
     try {
@@ -147,7 +147,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
     token: string,
   ): Promise<boolean> {
     const from =
-      this.configService.get('SMTP_FROM') || 'HRMS <no-reply@missionhrms.com>';
+      this.configService.get('SMTP_FROM') || 'Task Manager <no-reply@missiontaskmanager.com>';
     const frontendUrl =
       this.configService.get('FRONTEND_URL') || 'http://localhost:5173';
     const invitationLink = `${frontendUrl}/set-password?token=${token}&email=${recipient}`;
@@ -220,7 +220,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
                     <p style="font-size: 14px; color: #666; margin-top: 20px;">⏱️ This code will expire in <strong>10 minutes</strong>.</p>
                     <p style="font-size: 14px; color: #666; margin-top: 10px;">If you didn't request this code, please ignore this email.</p>
                     <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} HRMS. All rights reserved.</p>
+                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} Task Manager. All rights reserved.</p>
                 </div>
             </body>
             </html>
@@ -248,7 +248,7 @@ export class EmailStrategy implements NotificationStrategy, OnModuleInit {
                     <p style="font-size: 14px; color: #666; margin-top: 20px;">⏱️ This code is valid for <strong>10 minutes</strong>.</p>
                     <p style="font-size: 14px; color: #666; margin-top: 10px;">If you didn't request a password reset, you can safely ignore this email.</p>
                     <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} HRMS. All rights reserved.</p>
+                    <p style="font-size: 12px; color: #999; text-align: center;">© ${new Date().getFullYear()} Task Manager. All rights reserved.</p>
                 </div>
             </body>
             </html>
