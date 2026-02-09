@@ -497,9 +497,92 @@ export class TaskService {
         }
 
         if (filter.assignedTo) {
-            if (isUuid(filter.assignedTo))
+            console.log('🔍 FILTER DEBUG:', {
+                assignedTo: filter.assignedTo,
+                assignedToType: filter.assignedToType,
+            });
+            if (isUuid(filter.assignedTo)) {
                 andArray.push({ assignedTo: filter.assignedTo });
-            else
+            } else if (filter.assignedToType === 'Group') {
+                // Group Mode: Must be a group task
+                andArray.push({
+                    targetGroupId: { not: null },
+                    OR: [
+                        {
+                            targetGroup: {
+                                groupName: { contains: filter.assignedTo, mode: 'insensitive' },
+                            },
+                        },
+                        {
+                            AND: [
+                                {
+                                    targetGroup: {
+                                        members: {
+                                            some: {
+                                                team: {
+                                                    OR: [
+                                                        {
+                                                            teamName: {
+                                                                contains: filter.assignedTo,
+                                                                mode: 'insensitive',
+                                                            },
+                                                        },
+                                                        {
+                                                            email: { contains: filter.assignedTo, mode: 'insensitive' },
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                                {
+                                    OR: [
+                                        { assignedTo: null },
+                                        {
+                                            assignee: {
+                                                OR: [
+                                                    {
+                                                        teamName: {
+                                                            contains: filter.assignedTo,
+                                                            mode: 'insensitive',
+                                                        },
+                                                    },
+                                                    {
+                                                        email: { contains: filter.assignedTo, mode: 'insensitive' },
+                                                    },
+                                                ],
+                                            },
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                });
+            } else if (filter.assignedToType === 'Individual') {
+                // Individual Mode: Only non-group tasks assigned to the person
+                andArray.push({
+                    AND: [
+                        {
+                            targetGroupId: null, // No group association
+                        },
+                        {
+                            assignee: {
+                                OR: [
+                                    {
+                                        teamName: { contains: filter.assignedTo, mode: 'insensitive' },
+                                    },
+                                    {
+                                        email: { contains: filter.assignedTo, mode: 'insensitive' },
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                });
+            } else {
+                // Default Search: Broad search (Existing logic)
                 andArray.push({
                     OR: [
                         {
@@ -524,6 +607,7 @@ export class TaskService {
                         },
                     ],
                 });
+            }
         }
 
         if (filter.createdBy) {

@@ -159,6 +159,11 @@ export class FilterTaskDto extends PaginationDto {
   @IsOptional()
   @IsString()
   @Transform(({ value }) => (value === 'null' || value === '' ? null : value))
+  assignedToType?: 'Individual' | 'Group';
+
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value === 'null' || value === '' ? null : value))
   targetGroupId?: string;
 
   @IsOptional()
