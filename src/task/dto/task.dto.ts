@@ -20,7 +20,7 @@ export enum TaskStatus {
 export class CreateTaskDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(80)
+  @MaxLength(140)
   taskTitle: string;
 
   @IsString()
@@ -68,7 +68,7 @@ export class CreateTaskDto {
 export class UpdateTaskDto {
   @IsOptional()
   @IsString()
-  @MaxLength(80)
+  @MaxLength(140)
   taskTitle?: string;
 
   @IsOptional()
