@@ -28,7 +28,7 @@ import { UpdateTaskAcceptanceDto } from './dto/task-acceptance.dto';
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
 export class TaskController {
-  constructor(private readonly taskService: TaskService) {}
+  constructor(private readonly taskService: TaskService) { }
 
   @Get('logs')
   async getActivityLogs(
@@ -90,9 +90,10 @@ export class TaskController {
   async exportExcel(
     @Query() filter: FilterTaskDto,
     @GetUser('id') userId: string,
+    @GetUser('role') role: string,
     @Res() res: Response,
   ) {
-    await this.taskService.downloadExcel(filter, userId, res);
+    await this.taskService.downloadExcel(filter, userId, role, res);
   }
 
   @Get('acceptances/pending')

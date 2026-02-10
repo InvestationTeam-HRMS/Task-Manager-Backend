@@ -2246,89 +2246,82 @@ export class TaskService {
         };
     }
 
-    async downloadExcel(filter: FilterTaskDto, userId: string, res: any) {
-        // Optimization: For formatted output with auto-width, we fetch and map
-        const baseWhere: any = {
-            OR: [
-                { assignedTo: userId },
-                { targetTeamId: userId },
-                { createdBy: userId },
-                { workingBy: userId },
-            ],
+    async downloadExcel(filter: FilterTaskDto, userId: string, role: string, res: any) {
+        // Use the same filtering logic as findAll - respect frontend paging if provided
+        const page = Number((filter as any).pageIndex) || 1;
+        const limit = Number((filter as any).pageSize) || 1000000;
+
+        const { data } = await this.findAll({ page, limit }, filter, userId, role);
+
+        const formatDate = (date: any) => {
+            if (!date) return '';
+            const d = new Date(date);
+            if (isNaN(d.getTime())) return '';
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${day}-${month}-${year} ${hours}:${minutes}`;
         };
 
-        const [pendingTasks, completedTasks] = await Promise.all([
-            this.prisma.pendingTask.findMany({
-                where: baseWhere,
-                include: {
-                    project: { select: { projectName: true } },
-                    assignee: { select: { teamName: true } },
-                    worker: { select: { teamName: true } },
-                },
-            }),
-            this.prisma.completedTask.findMany({
-                where: baseWhere,
-                include: {
-                    project: { select: { projectName: true } },
-                    assignee: { select: { teamName: true } },
-                    worker: { select: { teamName: true } },
-                    creator: { select: { teamName: true } },
-                },
-            }),
-        ]);
+        const mappedData = data.map((task: any, index) => {
+            let assignee = '-';
+            if (task.targetGroup) {
+                assignee = task.assignee?.teamName || task.targetGroup.groupName || '-';
+            } else if (task.assignee) {
+                assignee = task.assignee.teamName || task.assignee.email || '-';
+            } else if (task.targetTeam) {
+                assignee = task.targetTeam.teamName || '-';
+            }
 
-        const allTasks = [...pendingTasks, ...completedTasks];
-
-        const mappedData = allTasks.map((task: any, index) => ({
-            srNo: index + 1,
-            taskNo: task.taskNo,
-            taskTitle: task.taskTitle,
-            priority: task.priority,
-            taskStatus: task.taskStatus,
-            project: task.project?.projectName || '',
-            assignee: task.assignee?.teamName || '',
-            worker: task.worker?.teamName || '',
-            createdBy: task.creator?.teamName || '',
-            createdTime: task.createdTime
-                ? new Date(task.createdTime).toLocaleString()
-                : '',
-            deadline: task.deadline ? new Date(task.deadline).toLocaleString() : '',
-            editTime:
-                Array.isArray(task.editTime) && task.editTime.length > 0
-                    ? task.editTime
-                        .map((d: any) => new Date(d).toLocaleString())
-                        .join(', ')
-                    : '',
-            reminderTime:
-                Array.isArray(task.reminderTime) && task.reminderTime.length > 0
-                    ? task.reminderTime
-                        .map((d: any) => new Date(d).toLocaleString())
-                        .join(', ')
-                    : '',
-            reviewedTime:
-                Array.isArray(task.reviewedTime) && task.reviewedTime.length > 0
-                    ? task.reviewedTime
-                        .map((d: any) => new Date(d).toLocaleString())
-                        .join(', ')
-                    : '',
-            completeTime: task.completeTime
-                ? new Date(task.completeTime).toLocaleString()
-                : '',
-            remark: task.remarkChat || task.additionalNote || '',
-        }));
+            return {
+                srNo: index + 1,
+                taskNo: task.taskNo,
+                taskTitle: task.taskTitle,
+                deadline: formatDate(task.deadline),
+                assignee,
+                priority: task.priority,
+                document: task.document || '',
+                project: task.project?.projectName || '',
+                taskStatus: task.taskStatus,
+                createdBy: task.creator?.teamName || task.creator?.email || '-',
+                createdTime: formatDate(task.createdTime),
+                editTime:
+                    Array.isArray(task.editTime) && task.editTime.length > 0
+                        ? task.editTime
+                            .map((d: any) => formatDate(d))
+                            .join(' __ ')
+                        : '',
+                reminderTime:
+                    Array.isArray(task.reminderTime) && task.reminderTime.length > 0
+                        ? task.reminderTime
+                            .map((d: any) => formatDate(d))
+                            .join(' __ ')
+                        : '',
+                reviewedTime:
+                    Array.isArray(task.reviewedTime) && task.reviewedTime.length > 0
+                        ? task.reviewedTime
+                            .map((d: any) => formatDate(d))
+                            .join(' __ ')
+                        : '',
+                completeTime: formatDate(task.completeTime),
+                remark: task.remarkChat || task.additionalNote || '',
+            };
+        });
 
         const columns = [
             { header: '#', key: 'srNo', width: 10 },
-            { header: 'Task No', key: 'taskNo', width: 15 },
-            { header: 'Title', key: 'taskTitle', width: 35 },
+            { header: 'Task No.', key: 'taskNo', width: 15 },
+            { header: 'Task Title', key: 'taskTitle', width: 35 },
+            { header: 'Deadline', key: 'deadline', width: 25 },
+            { header: 'Assigned To', key: 'assignee', width: 25 },
             { header: 'Priority', key: 'priority', width: 12 },
-            { header: 'Status', key: 'taskStatus', width: 15 },
+            { header: 'Document', key: 'document', width: 25 },
             { header: 'Project', key: 'project', width: 25 },
-            { header: 'Assignee', key: 'assignee', width: 25 },
-            { header: 'Worker', key: 'worker', width: 25 },
+            { header: 'Status', key: 'taskStatus', width: 15 },
             { header: 'Created By', key: 'createdBy', width: 25 },
             { header: 'Created Time', key: 'createdTime', width: 25 },
-            { header: 'Deadline', key: 'deadline', width: 25 },
             { header: 'Edit Time', key: 'editTime', width: 25 },
             { header: 'Reminder Time', key: 'reminderTime', width: 25 },
             { header: 'In Review Time', key: 'reviewedTime', width: 25 },

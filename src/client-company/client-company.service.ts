@@ -334,9 +334,23 @@ export class ClientCompanyService {
   }
 
   async downloadExcel(query: any, userId: string, res: any) {
-    const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+    const page = Number(query.pageIndex) || 1;
+    const limit = Number(query.pageSize) || 1000000;
+    const { data } = await this.findAll({ page, limit }, query);
 
-    const mappedData = data.map((item, index) => ({
+    const formatDate = (date: any) => {
+      if (!date) return '-';
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '-';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}-${month}-${year} ${hours}:${minutes}`;
+    };
+
+    const mappedData = data.map((item: any, index) => ({
       srNo: index + 1,
       companyNo: item.companyNo,
       companyName: item.companyName,
@@ -349,8 +363,8 @@ export class ClientCompanyService {
 
     const columns = [
       { header: '#', key: 'srNo', width: 10 },
-      { header: 'Company No', key: 'companyNo', width: 15 },
-      { header: 'Company Name', key: 'companyName', width: 30 },
+      { header: 'Company No.', key: 'companyNo', width: 15 },
+      { header: 'Company', key: 'companyName', width: 30 },
       { header: 'Company Code', key: 'companyCode', width: 15 },
       { header: 'Client Group', key: 'clientGroupName', width: 25 },
       { header: 'Address', key: 'address', width: 35 },

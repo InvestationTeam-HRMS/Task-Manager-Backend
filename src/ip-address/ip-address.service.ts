@@ -433,9 +433,23 @@ export class IpAddressService {
   }
 
   async downloadExcel(query: any, userId: string, res: any) {
-    const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+    const page = Number(query.pageIndex) || 1;
+    const limit = Number(query.pageSize) || 1000000;
+    const { data } = await this.findAll({ page, limit }, query);
 
-    const mappedData = data.map((item, index) => ({
+    const formatDate = (date: any) => {
+      if (!date) return '-';
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '-';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}-${month}-${year} ${hours}:${minutes}`;
+    };
+
+    const mappedData = data.map((item: any, index) => ({
       srNo: index + 1,
       ipNo: item.ipNo,
       ipAddress: item.ipAddress,
@@ -450,7 +464,7 @@ export class IpAddressService {
 
     const columns = [
       { header: '#', key: 'srNo', width: 10 },
-      { header: 'IP No', key: 'ipNo', width: 15 },
+      { header: 'IP No.', key: 'ipNo', width: 15 },
       { header: 'IP Address', key: 'ipAddress', width: 20 },
       { header: 'IP Name', key: 'ipAddressName', width: 25 },
       { header: 'Client Group', key: 'clientGroupName', width: 20 },

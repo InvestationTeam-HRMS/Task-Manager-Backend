@@ -428,13 +428,28 @@ export class ClientLocationService {
   }
 
   async downloadExcel(query: any, userId: string, res: any) {
-    const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+    const page = Number(query.pageIndex) || 1;
+    const limit = Number(query.pageSize) || 1000000;
+    const { data } = await this.findAll({ page, limit }, query);
 
-    const mappedData = data.map((item, index) => ({
+    const formatDate = (date: any) => {
+      if (!date) return '-';
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '-';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}-${month}-${year} ${hours}:${minutes}`;
+    };
+
+    const mappedData = data.map((item: any, index) => ({
       srNo: index + 1,
       locationNo: item.locationNo,
       locationName: item.locationName,
       locationCode: item.locationCode,
+      clientGroupName: item.clientGroup?.groupName || '',
       company: item.company?.companyName || '',
       address: item.address || '',
       status: item.status,
@@ -443,9 +458,10 @@ export class ClientLocationService {
 
     const columns = [
       { header: '#', key: 'srNo', width: 10 },
-      { header: 'Location No', key: 'locationNo', width: 15 },
-      { header: 'Location Name', key: 'locationName', width: 30 },
+      { header: 'Location No.', key: 'locationNo', width: 15 },
+      { header: 'Location', key: 'locationName', width: 30 },
       { header: 'Location Code', key: 'locationCode', width: 15 },
+      { header: 'Client Group', key: 'clientGroupName', width: 25 },
       { header: 'Company', key: 'company', width: 25 },
       { header: 'Address', key: 'address', width: 35 },
       { header: 'Status', key: 'status', width: 15 },

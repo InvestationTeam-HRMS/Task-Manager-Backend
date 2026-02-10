@@ -423,7 +423,21 @@ export class ProjectService {
   }
 
   async downloadExcel(query: any, userId: string, res: any) {
-    const { data } = await this.findAll({ page: 1, limit: 1000000 }, query);
+    const page = Number(query.pageIndex) || 1;
+    const limit = Number(query.pageSize) || 1000000;
+    const { data } = await this.findAll({ page, limit }, query);
+
+    const formatDate = (date: any) => {
+      if (!date) return '-';
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '-';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}-${month}-${year} ${hours}:${minutes}`;
+    };
 
     const mappedData = data.map((item, index) => ({
       srNo: index + 1,
@@ -433,26 +447,24 @@ export class ProjectService {
       company: item.companyName || '',
       location: item.locationName || '',
       subLocation: item.subLocationName || '',
-      priority: item.priority,
+      deadline: formatDate(item.deadline),
       status: item.status,
-      deadline: item.deadline
-        ? new Date(item.deadline).toLocaleDateString()
-        : '',
+      priority: item.priority,
       remark: item.remark || '',
     }));
 
     const columns = [
       { header: '#', key: 'srNo', width: 10 },
-      { header: 'Project No', key: 'projectNo', width: 15 },
+      { header: 'Project No.', key: 'projectNo', width: 15 },
       { header: 'Project Name', key: 'projectName', width: 30 },
       { header: 'Client Group', key: 'clientGroup', width: 25 },
       { header: 'Company', key: 'company', width: 25 },
       { header: 'Location', key: 'location', width: 25 },
-      { header: 'Sub Location', key: 'subLocation', width: 25 },
-      { header: 'Priority', key: 'priority', width: 12 },
+      { header: 'Sublocation', key: 'subLocation', width: 25 },
+      { header: 'Deadline', key: 'deadline', width: 25 },
       { header: 'Status', key: 'status', width: 15 },
-      { header: 'Deadline', key: 'deadline', width: 15 },
-      { header: 'Remark', key: 'remark', width: 30 },
+      { header: 'Priority', key: 'priority', width: 12 },
+      { header: 'Remark', key: 'remark', width: 35 },
     ];
 
     await this.excelDownloadService.downloadExcel(
