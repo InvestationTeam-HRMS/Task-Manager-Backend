@@ -1402,7 +1402,7 @@ export class TaskService {
                         deadline: task.deadline,
                         completeTime: now,
                         completedAt: now,
-                        completionStatus: completionStatus,
+                        completionStatus: completionStatus as any,
                         reviewedTime: Array.isArray(task.reviewedTime)
                             ? [...task.reviewedTime, now]
                             : [now],
@@ -1477,10 +1477,10 @@ export class TaskService {
                     taskStatus: TaskStatus.ReviewPending as any,
                     remarkChat: remark,
                     workingBy: userId,
-                    reviewedTime: { push: now },
+                    reviewedTime: { push: now } as any,
                     document: document,
-                    completionStatus: completionStatus,
-                },
+                    completionStatus: completionStatus as any,
+                } as any,
                 include: { creator: true, project: true },
             });
 
@@ -1605,7 +1605,7 @@ export class TaskService {
                     deadline: task.deadline,
                     completeTime: now,
                     completedAt: now,
-                    completionStatus: completionStatus,
+                    completionStatus: completionStatus as any,
                     reviewedTime: Array.isArray(task.reviewedTime)
                         ? [...task.reviewedTime, now]
                         : [now],
