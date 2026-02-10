@@ -435,7 +435,7 @@ export class IpAddressService {
   async downloadExcel(query: any, userId: string, res: any) {
     const page = Number(query.pageIndex) || 1;
     const limit = Number(query.pageSize) || 1000000;
-    const { data } = await this.findAll({ page, limit }, query);
+    const { data } = await this.findAll({ ...query, page, limit }, query);
 
     const formatDate = (date: any) => {
       if (!date) return '-';

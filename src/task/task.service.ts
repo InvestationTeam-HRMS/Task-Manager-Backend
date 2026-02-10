@@ -2251,7 +2251,7 @@ export class TaskService {
         const page = Number((filter as any).pageIndex) || 1;
         const limit = Number((filter as any).pageSize) || 1000000;
 
-        const { data } = await this.findAll({ page, limit }, filter, userId, role);
+        const { data } = await this.findAll({ ...filter, page, limit } as any, filter, userId, role);
 
         const formatDate = (date: any) => {
             if (!date) return '';
