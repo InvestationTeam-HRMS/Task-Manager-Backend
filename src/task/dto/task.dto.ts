@@ -212,6 +212,10 @@ export class FilterTaskDto extends PaginationDto {
   @IsOptional()
   @IsString()
   viewMode?: TaskViewMode;
+
+  @IsOptional()
+  @IsString()
+  completionStatus?: 'Before Deadline' | 'After Deadline';
 }
 
 export enum TaskViewMode {

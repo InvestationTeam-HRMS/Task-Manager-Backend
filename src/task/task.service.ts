@@ -846,7 +846,26 @@ export class TaskService {
                 });
         }
 
-        const where = { AND: andArray };
+        // Build separate where clauses for Pending and Completed tasks
+        const wherePending: any = { AND: [...andArray] };
+        const whereCompleted: any = { AND: [...andArray] };
+
+        // Handle Completion Status (Before/After Deadline) - only applies to Completed Tasks
+        if (filter.completionStatus) {
+            if (filter.completionStatus === 'Before Deadline') {
+                whereCompleted.AND.push({
+                    deadline: { not: null },
+                    completeTime: { lte: (this.prisma.completedTask as any).fields.deadline }
+                });
+                wherePending.AND.push({ id: { in: [] } }); // Force empty for Pending Tasks
+            } else if (filter.completionStatus === 'After Deadline') {
+                whereCompleted.AND.push({
+                    deadline: { not: null },
+                    completeTime: { gt: (this.prisma.completedTask as any).fields.deadline }
+                });
+                wherePending.AND.push({ id: { in: [] } }); // Force empty for Pending Tasks
+            }
+        }
         const include = {
             project: { select: { id: true, projectName: true, projectNo: true } },
             assignee: { select: { id: true, teamName: true, email: true } },
@@ -894,19 +913,19 @@ export class TaskService {
             const [pendingData, pendingCount, completedData, completedCount] =
                 await Promise.all([
                     this.prisma.pendingTask.findMany({
-                        where: where as any,
+                        where: wherePending as any,
                         take: fetchTake,
                         orderBy: order,
                         include,
                     }),
-                    this.prisma.pendingTask.count({ where: where as any }),
+                    this.prisma.pendingTask.count({ where: wherePending as any }),
                     this.prisma.completedTask.findMany({
-                        where: where as any,
+                        where: whereCompleted as any,
                         take: fetchTake,
                         orderBy: order,
                         include,
                     }),
-                    this.prisma.completedTask.count({ where: where as any }),
+                    this.prisma.completedTask.count({ where: whereCompleted as any }),
                 ]);
 
             total = pendingCount + completedCount;
@@ -941,13 +960,13 @@ export class TaskService {
         } else if (isStrictlyCompleted) {
             const [cData, cCount] = await Promise.all([
                 this.prisma.completedTask.findMany({
-                    where: where as any,
+                    where: whereCompleted as any,
                     skip,
                     take: limit,
                     orderBy: order,
                     include,
                 }),
-                this.prisma.completedTask.count({ where: where as any }),
+                this.prisma.completedTask.count({ where: whereCompleted as any }),
             ]);
             data = cData;
             total = cCount;
@@ -955,13 +974,13 @@ export class TaskService {
             // Pending (Default)
             const [pData, pCount] = await Promise.all([
                 this.prisma.pendingTask.findMany({
-                    where: where as any,
+                    where: wherePending as any,
                     skip,
                     take: limit,
                     orderBy: order,
                     include,
                 }),
-                this.prisma.pendingTask.count({ where: where as any }),
+                this.prisma.pendingTask.count({ where: wherePending as any }),
             ]);
             data = pData;
             total = pCount;
