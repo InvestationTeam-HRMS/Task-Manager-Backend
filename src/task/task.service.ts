@@ -521,15 +521,8 @@ export class TaskService {
                                             some: {
                                                 team: {
                                                     OR: [
-                                                        {
-                                                            teamName: {
-                                                                contains: filter.assignedTo,
-                                                                mode: 'insensitive',
-                                                            },
-                                                        },
-                                                        {
-                                                            email: { contains: filter.assignedTo, mode: 'insensitive' },
-                                                        },
+                                                        { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                                        { email: { contains: filter.assignedTo, mode: 'insensitive' } },
                                                     ],
                                                 },
                                             },
@@ -542,15 +535,16 @@ export class TaskService {
                                         {
                                             assignee: {
                                                 OR: [
-                                                    {
-                                                        teamName: {
-                                                            contains: filter.assignedTo,
-                                                            mode: 'insensitive',
-                                                        },
-                                                    },
-                                                    {
-                                                        email: { contains: filter.assignedTo, mode: 'insensitive' },
-                                                    },
+                                                    { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                                    { email: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                                ],
+                                            },
+                                        },
+                                        {
+                                            worker: {
+                                                OR: [
+                                                    { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                                    { email: { contains: filter.assignedTo, mode: 'insensitive' } },
                                                 ],
                                             },
                                         },
@@ -561,21 +555,31 @@ export class TaskService {
                     ],
                 });
             } else if (filter.assignedToType === 'Individual') {
-                // Individual Mode: Only non-group tasks assigned to the person
+                // Individual Mode: Only non-group tasks assigned to the person (directly or via team/worker fields)
                 andArray.push({
-                    AND: [
-                        {
-                            targetGroupId: null, // No group association
-                        },
+                    targetGroupId: null, // No group association
+                    OR: [
                         {
                             assignee: {
                                 OR: [
-                                    {
-                                        teamName: { contains: filter.assignedTo, mode: 'insensitive' },
-                                    },
-                                    {
-                                        email: { contains: filter.assignedTo, mode: 'insensitive' },
-                                    },
+                                    { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                    { email: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                ],
+                            },
+                        },
+                        {
+                            worker: {
+                                OR: [
+                                    { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                    { email: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                ],
+                            },
+                        },
+                        {
+                            targetTeam: {
+                                OR: [
+                                    { teamName: { contains: filter.assignedTo, mode: 'insensitive' } },
+                                    { email: { contains: filter.assignedTo, mode: 'insensitive' } },
                                 ],
                             },
                         },
