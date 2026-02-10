@@ -850,21 +850,14 @@ export class TaskService {
         const wherePending: any = { AND: [...andArray] };
         const whereCompleted: any = { AND: [...andArray] };
 
-        // Handle Completion Status (Before/After Deadline) - only applies to Completed Tasks
+        // Handle Completion Status (Before/After Deadline)
         if (filter.completionStatus) {
-            if (filter.completionStatus === 'Before Deadline') {
-                whereCompleted.AND.push({
-                    deadline: { not: null },
-                    completeTime: { lte: (this.prisma.completedTask as any).fields.deadline }
-                });
-                wherePending.AND.push({ id: { in: [] } }); // Force empty for Pending Tasks
-            } else if (filter.completionStatus === 'After Deadline') {
-                whereCompleted.AND.push({
-                    deadline: { not: null },
-                    completeTime: { gt: (this.prisma.completedTask as any).fields.deadline }
-                });
-                wherePending.AND.push({ id: { in: [] } }); // Force empty for Pending Tasks
-            }
+            whereCompleted.AND.push({
+                completionStatus: filter.completionStatus
+            });
+            wherePending.AND.push({
+                completionStatus: filter.completionStatus
+            });
         }
         const include = {
             project: { select: { id: true, projectName: true, projectNo: true } },
@@ -1392,6 +1385,11 @@ export class TaskService {
             if (isSelfAssignedTask) {
                 const previousStatus = task.taskStatus as any;
                 const now = new Date();
+                const deadline = task.deadline ? new Date(task.deadline) : null;
+                let completionStatus: string | null = null;
+                if (deadline) {
+                    completionStatus = now <= deadline ? 'Before Deadline' : 'After Deadline';
+                }
 
                 const completedTask = await this.prisma.$transaction(async (tx) => {
                     const completedData: any = {
@@ -1404,6 +1402,7 @@ export class TaskService {
                         deadline: task.deadline,
                         completeTime: now,
                         completedAt: now,
+                        completionStatus: completionStatus,
                         reviewedTime: Array.isArray(task.reviewedTime)
                             ? [...task.reviewedTime, now]
                             : [now],
@@ -1465,14 +1464,22 @@ export class TaskService {
                 return this.sortTaskDates(completedTask);
             }
 
+            const now = new Date();
+            const deadline = task.deadline ? new Date(task.deadline) : null;
+            let completionStatus: string | null = null;
+            if (deadline) {
+                completionStatus = now <= deadline ? 'Before Deadline' : 'After Deadline';
+            }
+
             const updated = await this.prisma.pendingTask.update({
                 where: { id },
                 data: {
                     taskStatus: TaskStatus.ReviewPending as any,
                     remarkChat: remark,
                     workingBy: userId,
-                    reviewedTime: { push: new Date() },
+                    reviewedTime: { push: now },
                     document: document,
+                    completionStatus: completionStatus,
                 },
                 include: { creator: true, project: true },
             });
@@ -1581,6 +1588,13 @@ export class TaskService {
 
         try {
             const completedTask = await this.prisma.$transaction(async (tx) => {
+                const now = new Date();
+                const deadline = task.deadline ? new Date(task.deadline) : null;
+                let completionStatus: string | null = null;
+                if (deadline) {
+                    completionStatus = now <= deadline ? 'Before Deadline' : 'After Deadline';
+                }
+
                 const completedData: any = {
                     id: task.id,
                     taskNo: task.taskNo,
@@ -1589,11 +1603,12 @@ export class TaskService {
                     taskStatus: TaskStatus.Completed as any,
                     additionalNote: task.additionalNote,
                     deadline: task.deadline,
-                    completeTime: new Date(),
-                    completedAt: new Date(),
+                    completeTime: now,
+                    completedAt: now,
+                    completionStatus: completionStatus,
                     reviewedTime: Array.isArray(task.reviewedTime)
-                        ? [...task.reviewedTime, new Date()]
-                        : [new Date()],
+                        ? [...task.reviewedTime, now]
+                        : [now],
                     reminderTime: task.reminderTime || [],
                     document: document,
                     remarkChat: remark || task.remarkChat,
