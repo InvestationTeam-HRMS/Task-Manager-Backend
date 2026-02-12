@@ -1092,6 +1092,19 @@ export class TaskService {
                 ? this.prisma.completedTask
                 : this.prisma.pendingTask;
 
+        // SMART PROTECTION: If task belongs to a group and someone already accepted it,
+        // don't let a "null" assignee from the edit form unassign them accidentally during title/note edits.
+        if (existingTask.targetGroupId && existingTask.assignedTo && (dto.assignedTo === null || dto.assignedTo === 'null')) {
+            // If they are not changing the group or team, keep the existing owner
+            const groupIsSame = dto.targetGroupId === undefined || String(dto.targetGroupId) === String(existingTask.targetGroupId);
+            const teamIsSame = dto.targetTeamId === undefined || String(dto.targetTeamId) === String(existingTask.targetTeamId);
+
+            if (groupIsSame && teamIsSame) {
+                // Keep the current acceptor as the assignee
+                dto.assignedTo = existingTask.assignedTo;
+            }
+        }
+
         // Calculate new assignment values for isSelfTask and reassignment check
         const currentAssignedTo = dto.assignedTo !== undefined ? dto.assignedTo : existingTask.assignedTo;
         const currentTargetGroupId = dto.targetGroupId !== undefined ? dto.targetGroupId : existingTask.targetGroupId;
@@ -1099,9 +1112,9 @@ export class TaskService {
 
         const isSelfTask = (currentAssignedTo === existingTask.createdBy && !currentTargetGroupId && !currentTargetTeamId);
         const isReassigned =
-            (dto.assignedTo !== undefined && dto.assignedTo !== existingTask.assignedTo) ||
-            (dto.targetTeamId !== undefined && dto.targetTeamId !== existingTask.targetTeamId) ||
-            (dto.targetGroupId !== undefined && dto.targetGroupId !== existingTask.targetGroupId);
+            (dto.assignedTo !== undefined && String(dto.assignedTo) !== String(existingTask.assignedTo)) ||
+            (dto.targetTeamId !== undefined && String(dto.targetTeamId) !== String(existingTask.targetTeamId)) ||
+            (dto.targetGroupId !== undefined && String(dto.targetGroupId) !== String(existingTask.targetGroupId));
 
         const updated = await model.update({
             where: { id },
@@ -1132,7 +1145,7 @@ export class TaskService {
         let notifiedNewGuy = false;
         if (isReassigned) {
             const oldRecipient = existingTask.assignedTo || existingTask.targetTeamId;
-            const newRecipient = dto.assignedTo || dto.targetTeamId;
+            const newRecipient = currentAssignedTo || currentTargetTeamId;
 
             const updater = await this.prisma.team.findUnique({
                 where: { id: userId },
@@ -1162,7 +1175,11 @@ export class TaskService {
             }
 
             // 3. Handle Group Assignment Logic
-            if (updated.targetGroupId) {
+            // Only trigger if group changed OR if task moved from individual back to group pool (assignee cleared)
+            const groupWasChanged = dto.targetGroupId !== undefined && String(dto.targetGroupId) !== String(existingTask.targetGroupId);
+            const assigneeWasCleared = existingTask.assignedTo && updated.assignedTo === null;
+
+            if (updated.targetGroupId && (groupWasChanged || assigneeWasCleared)) {
                 // If group re-assigned, refresh the acceptance records
                 await (this.prisma as any).taskAcceptance.deleteMany({
                     where: { taskId: updated.id },
@@ -1222,6 +1239,66 @@ export class TaskService {
                     { assigneeName },
                 );
             }
+        } else if (updated.targetGroupId && !isReassigned) {
+            // SMART LOGIC: Handle group task edits based on acceptance status
+            // If someone already accepted → notify only them (handled below in "Task Details Updated")
+            // If no one accepted yet → create acceptance records for all group members
+
+            // Check if task is already assigned to someone (meaning someone accepted it)
+            if (!updated.assignedTo) {
+                // No one has accepted yet - create acceptance records for group members
+                const updater = await this.prisma.team.findUnique({
+                    where: { id: userId },
+                    select: { teamName: true },
+                });
+                const updaterName = updater?.teamName || 'System';
+
+                // Refresh acceptance records for the group
+                await (this.prisma as any).taskAcceptance.deleteMany({
+                    where: { taskId: updated.id },
+                });
+
+                const members = await this.prisma.groupMember.findMany({
+                    where: { groupId: updated.targetGroupId },
+                });
+
+                if (members.length > 0) {
+                    const membersToNotify = members.filter((m) => m.userId !== userId);
+
+                    if (membersToNotify.length > 0) {
+                        const acceptanceData = membersToNotify.map((m) => ({
+                            taskId: updated.id,
+                            userId: m.userId,
+                            groupId: updated.targetGroupId,
+                            status: 'PENDING',
+                        }));
+
+                        await (this.prisma as any).taskAcceptance.createMany({
+                            data: acceptanceData,
+                            skipDuplicates: true,
+                        });
+
+                        // Send notification to group members about new task
+                        for (const member of membersToNotify) {
+                            await this.notificationService.createNotification(member.userId, {
+                                title: 'New Task Assigned',
+                                description: `A new task "${updated.taskTitle}" (${updated.taskNo}) has been assigned to your group by ${updaterName}.`,
+                                type: 'TASK',
+                                metadata: { taskId: updated.id, taskNo: updated.taskNo },
+                            });
+                        }
+                    }
+                }
+            } else {
+                // Someone has already accepted - ensure NO pending records exist for others
+                await (this.prisma as any).taskAcceptance.deleteMany({
+                    where: {
+                        taskId: updated.id,
+                        status: 'PENDING'
+                    },
+                });
+            }
+            // If assignedTo exists, the person who accepted will be notified below in "Task Details Updated" section
         }
 
         // Logic for Status Change Notification (e.g., Manually setting to Pending/Completed)
