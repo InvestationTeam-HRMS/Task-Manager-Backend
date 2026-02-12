@@ -464,10 +464,6 @@ export class TeamService {
       throw new NotFoundException('Team member not found');
     }
 
-    if (isAdminRole(team.role) || team.isSystemUser) {
-      throw new BadRequestException('System admin cannot be deleted');
-    }
-
     return team;
   }
 
@@ -475,8 +471,12 @@ export class TeamService {
     const existing = await this.findById(id);
     const existingIsAdmin = isAdminRole(existing.role) || existing.isSystemUser;
 
-    if (existingIsAdmin && (dto.role || dto.roleId)) {
-      throw new BadRequestException('Admin role cannot be modified');
+    if (existingIsAdmin) {
+      // If it's an admin, we only allow certain updates if absolutely necessary, 
+      // but the user's request is to protect them. So let's block role changes and status changes for sure.
+      if (dto.role || dto.roleId || dto.status) {
+        throw new BadRequestException('System admin role or status cannot be modified');
+      }
     }
 
     // Email duplication check if changed
@@ -569,6 +569,12 @@ export class TeamService {
 
     if (!team) {
       throw new NotFoundException('Team member not found');
+    }
+
+    if (isAdminRole(team.role) || team.isSystemUser) {
+      throw new BadRequestException(
+        'System admin accounts cannot be deleted for security reasons',
+      );
     }
 
     const { _count } = team;
