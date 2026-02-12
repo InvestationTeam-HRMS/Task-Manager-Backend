@@ -1206,15 +1206,7 @@ export class TaskService {
                         });
 
                         for (const member of membersToNotify) {
-                            // Don't double notify if the user is already the primary individual assignee
-                            if (member.userId !== newRecipient) {
-                                await this.notificationService.createNotification(member.userId, {
-                                    title: 'New Task Assigned',
-                                    description: `A new task "${updated.taskTitle}" (${updated.taskNo}) has been assigned to your group by ${updaterName}.`,
-                                    type: 'TASK',
-                                    metadata: { taskId: updated.id, taskNo: updated.taskNo },
-                                });
-                            }
+                            // SKIP: Redundant notification. Acceptance Popup is enough for Group Tasks.
                         }
                     }
                 }
@@ -1280,12 +1272,7 @@ export class TaskService {
 
                         // Send notification to group members about new task
                         for (const member of membersToNotify) {
-                            await this.notificationService.createNotification(member.userId, {
-                                title: 'New Task Assigned',
-                                description: `A new task "${updated.taskTitle}" (${updated.taskNo}) has been assigned to your group by ${updaterName}.`,
-                                type: 'TASK',
-                                metadata: { taskId: updated.id, taskNo: updated.taskNo },
-                            });
+                            // SKIP: Redundant notification. Acceptance Popup is enough for Group Tasks.
                         }
                     }
                 }
