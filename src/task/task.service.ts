@@ -216,21 +216,20 @@ export class TaskService {
         for (const recipientId of recipients) {
             let description = `A new task "${task.taskTitle}" has been assigned to you by ${creatorName}.`;
 
-            // If it's a group assignment and the user is NOT the primary individual assignee
-            if (
-                task.targetGroupId &&
+            // If it's a group assignment and the user is NOT the primary individual assignee,
+            // SKIP the notification because the "Acceptance Popup" is enough.
+            const isGroupMemberOnly = task.targetGroupId &&
                 recipientId !== task.assignedTo &&
-                recipientId !== task.targetTeamId
-            ) {
-                description = `A new task "${task.taskTitle}" has been assigned to your group by ${creatorName}.`;
-            }
+                recipientId !== task.targetTeamId;
 
-            await this.notificationService.createNotification(recipientId, {
-                title: 'New Task Assigned',
-                description,
-                type: 'TASK',
-                metadata: { taskId: task.id, taskNo: task.taskNo },
-            });
+            if (!isGroupMemberOnly) {
+                await this.notificationService.createNotification(recipientId, {
+                    title: 'New Task Assigned',
+                    description,
+                    type: 'TASK',
+                    metadata: { taskId: task.id, taskNo: task.taskNo },
+                });
+            }
         }
 
         // Log task creation activity
