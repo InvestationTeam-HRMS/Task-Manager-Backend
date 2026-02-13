@@ -12,14 +12,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: Redis;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) { }
 
   async onModuleInit() {
     this.client = new Redis({
       host: this.configService.get('REDIS_HOST'),
       port: this.configService.get('REDIS_PORT'),
+      username: this.configService.get('REDIS_USERNAME', 'default'),
       password: this.configService.get('REDIS_PASSWORD'),
       db: this.configService.get('REDIS_DB', 0),
+      tls: this.configService.get('REDIS_TLS') === 'true' ? {} : undefined,
       retryStrategy: (times) => {
         const delay = Math.min(times * 50, 2000);
         return delay;
