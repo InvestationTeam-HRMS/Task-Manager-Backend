@@ -149,8 +149,8 @@ export class AutoNumberService {
       'taskNo',
       'TASK_NUMBER_PREFIX',
       'TASK_NUMBER_START',
-      'T-',
-      '11101',
+      '#',
+      '111001',
     );
   }
 
